@@ -1,0 +1,139 @@
+#pragma once
+#include <windows.h>
+
+#include <atomic>
+#include <functional>
+#include <set>
+#include <map>
+#include <string>
+#include <vector>
+
+#include <json.hpp>
+
+#include "I18n.h"
+#include "OllamaClient.h"
+#include "Store.h"
+#include "TrayIcon.h"
+
+class StickerWindow;
+class GroupWindow;
+class ManagerWindow;
+class WebViewHost;
+
+constexpr UINT WM_APP_TRAY = WM_APP + 1;
+constexpr UINT WM_APP_RUNNABLE = WM_APP + 2;
+
+class App {
+public:
+    static App& I();
+
+    bool Init(HINSTANCE hinst, bool startHidden);
+    HINSTANCE hinst() const { return hinst_; }
+
+    Settings settings;
+    Store store;
+    I18n i18n;
+    OllamaClient ollama;
+
+    std::string EffectiveTheme() const;  // "light" | "dark"
+    // 삭제 확인 네이티브 대화상자. 그룹 콘텐츠 창은 SetWindowRgn으로 잘려 있어
+    // 페이지 내 confirm()이 반투명/절단되어 보이므로 항상 네이티브로 띄운다.
+    static bool ConfirmYesNo(HWND owner, const std::string& msgKey);
+    static bool ConfirmYesNoText(HWND owner, const std::wstring& msg);
+    // 삭제 확인 문구: 휴지통 사용 여부에 따라 "휴지통으로 이동"/"완전 삭제"를 구분
+    std::string DeleteConfirmKey() const {
+        return settings.trashEnabled ? "confirm.deleteToTrash" : "confirm.deleteSticker";
+    }
+    void RunOnUi(std::function<void()> fn);
+    void RunOnUiDelayed(UINT delayMs, std::function<void()> fn);
+
+    // 스티커 관리
+    StickerWindow* CreateStickerWindow(const StickerData& d, bool show, bool activate);
+    void NewSticker(const std::string& type = "rich");
+    void DeleteSticker(const std::string& id);
+    StickerWindow* FindSticker(const std::string& id);
+    void ShowSticker(const std::string& id);
+    bool AnyStickerVisible() const;
+    void SetAllVisible(bool visible);
+    void ToggleAllVisible();
+    void OnStickerDestroyed(StickerWindow* w);
+
+    // 그룹 관리
+    GroupWindow* FindGroup(const std::string& id);
+    GroupWindow* CreateGroupWindow(const GroupData& g, bool show, bool activate);
+    void NewGroup();  // 커서 근처에 새 그룹 생성
+    void DeleteGroupReleaseMembers(const std::string& groupId);  // 멤버는 플로팅으로 분리
+    void OnGroupDestroyed(GroupWindow* w);
+    void AddStickerToGroup(StickerWindow* w, GroupWindow* g);  // 창 파괴 후 그룹에 흡수
+    // 그룹에서 분리. (x,y) 물리 좌표가 주어지면 그 지점에 배치하고,
+    // 그 지점이 다른 그룹 위이면 해당 그룹으로 이동.
+    void PopOutStickerAt(const std::string& stickerId, int x = -1, int y = -1);
+    void NewMemoInGroup(const std::string& groupId, const std::string& type = "rich");
+    void ReorderGroupMembers(GroupWindow* g, const std::vector<std::string>& order);
+    void SaveMemberContent(const nlohmann::json& p);  // 그룹 카드 인라인 편집 저장
+    StickerData* FindStickerData(const std::string& id);  // 창 유무 무관 데이터 조회
+
+    // 플로팅 스티커 드래그 → 그룹 드롭 감지
+    void HandleStickerMoveEnd(StickerWindow* w);
+    void UpdateDragHover(StickerWindow* w);  // WM_MOVING 중 하이라이트
+
+    // 해상도/모니터 변경 시 모든 창을 작업 영역 안으로 보정
+    void ClampAllWindowsToScreen();
+
+    // 진행 중인 Ollama 요청을 소유 창(스티커 id) 기준으로 중단
+    // — 스티커 삭제/창 파괴 시 낭비되는 생성 요청을 취소
+    void AbortOllamaByOwner(const std::string& ownerId);
+
+    // Ollama 공식 설치 프로그램을 내려받아 무인 설치 (워커 스레드).
+    // 진행: ollama.installProgress {stage, total, received} / 완료: ollama.installDone.
+    void InstallOllama();
+    static bool IsOllamaInstalled();
+    // 설정 창을 닫을 때: 진행 중인 설치/모델 다운로드 확인·중단
+    bool HasActiveOllamaTasks() const;
+    void AbortOllamaTasks();
+
+    // 휴지통
+    void PurgeExpiredTrash();                 // 보관 기간 지난 항목 완전 삭제
+    void EmptyTrashInteractive(HWND owner);   // 확인 팝업 → 휴지통 비우기
+    void RestoreTrashSticker(const std::string& id);  // 개별 스티커로 복원·표시
+
+    // Manager(설정/목록) 창
+    void OpenManager(const std::string& tab);
+    void OnManagerDestroyed();
+
+    // 설정 반영 + 웹 브로드캐스트
+    void ApplySettingsPatch(const nlohmann::json& patch);
+    void BroadcastEvent(const std::string& ev, const nlohmann::json& data);
+
+    // 브리지: 모든 창에 공통으로 등록되는 메서드 (settings/ollama/stickers/app)
+    void SetupCommonBridge(WebViewHost& host);
+    nlohmann::json MakeInitJson(const std::string& page, const std::string& stickerId);
+
+    void Quit();
+
+private:
+    static LRESULT CALLBACK SWndProc(HWND, UINT, WPARAM, LPARAM);
+    LRESULT WndProc(HWND, UINT, WPARAM, LPARAM);
+    void ShowTrayMenu();
+    void OnEnvironmentReady(bool startHidden);
+
+    GroupWindow* GroupUnderCursor();          // 커서 아래 표시 중인 그룹 (없으면 nullptr)
+    GroupWindow* GroupAtPoint(POINT pt);      // 특정 지점의 표시 중인 그룹 (z-order 상단 우선)
+
+    HINSTANCE hinst_ = nullptr;
+    HWND hwnd_ = nullptr;  // 숨김 최상위 창 (트레이/브로드캐스트 수신)
+    TrayIcon tray_;
+    std::vector<StickerWindow*> stickers_;
+    std::vector<GroupWindow*> groups_;
+    std::map<std::string, StickerData> groupedStickers_;  // 창이 없는(그룹 소속) 메모 데이터
+    ManagerWindow* manager_ = nullptr;
+    std::string lastDragHoverGroup_;
+    std::map<UINT_PTR, std::function<void()>> delayedTasks_;
+    std::map<std::string, std::string> ollamaOwners_;  // requestId → 스티커 id
+    std::atomic<bool> installingOllama_{false};
+    std::atomic<bool> installAbort_{false};       // 설치 다운로드 중단 플래그
+    std::set<std::string> activePulls_;           // 진행 중인 모델 다운로드 requestId
+    UINT_PTR nextTimerId_ = 100;
+    UINT taskbarCreatedMsg_ = 0;
+    bool quitting_ = false;
+};

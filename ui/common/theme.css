@@ -1,0 +1,36 @@
+/* 라이트/다크 테마 변수. 스티커 배경 팔레트는 src/Theme.cpp와 동기화 유지할 것. */
+:root {
+  --fg: #1f2328;
+  --muted: #6b7280;
+  --bg: #f7f7f8;
+  --panel-bg: #ffffff;
+  --border: #d9dbe0;
+  --accent: #2563eb;
+  --accent-fg: #ffffff;
+  --hover: rgba(0, 0, 0, 0.07);
+  --active: rgba(0, 0, 0, 0.12);
+  --scrollbar: rgba(0, 0, 0, 0.25);
+  --danger: #dc2626;
+
+  /* 스티커 배경·글자색은 ui/common/color.js가 인라인 CSS 변수로 지정
+     (--note-bg, --note-fg, --note-titlebar) — 아래는 폴백 기본값 */
+  --note-bg: #FFF4B8;
+  --note-titlebar: rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme="dark"] {
+  --fg: #e6e6e9;
+  --muted: #9ca3af;
+  --bg: #1e1e22;
+  --panel-bg: #2a2a2e;
+  --border: #3f3f46;
+  --accent: #3b82f6;
+  --accent-fg: #ffffff;
+  --hover: rgba(255, 255, 255, 0.09);
+  --active: rgba(255, 255, 255, 0.16);
+  --scrollbar: rgba(255, 255, 255, 0.25);
+  --danger: #f87171;
+
+  --note-bg: #4A4420;
+  --note-titlebar: rgba(255, 255, 255, 0.08);
+}

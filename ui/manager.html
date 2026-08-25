@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Super Sticker</title>
+  <script>
+    (function () {
+      var init = window.__init || {};
+      document.documentElement.dataset.theme = init.theme || 'light';
+    })();
+  </script>
+  <link rel="stylesheet" href="/common/base.css">
+  <link rel="stylesheet" href="/common/theme.css">
+  <link rel="stylesheet" href="/manager.css">
+</head>
+<body>
+  <header id="tabs">
+    <button class="tab" data-tab="list" data-i18n="manager.tabList"></button>
+    <button class="tab" data-tab="groups" data-i18n="manager.tabGroups"></button>
+    <button class="tab" data-tab="trash" data-i18n="manager.tabTrash"></button>
+    <button class="tab" data-tab="settings" data-i18n="manager.tabSettings"></button>
+  </header>
+
+  <main id="listTab" class="tabpage">
+    <div class="list-toolbar">
+      <button id="newStickerBtn" class="primary" data-i18n="manager.newSticker"></button>
+    </div>
+    <div id="cards"></div>
+    <div id="listEmpty" class="empty hidden" data-i18n="manager.empty"></div>
+  </main>
+
+  <main id="groupsTab" class="tabpage hidden">
+    <div id="groupCards"></div>
+    <div id="groupsEmpty" class="empty hidden" data-i18n="manager.groupsEmpty"></div>
+  </main>
+
+  <main id="trashTab" class="tabpage hidden">
+    <p class="desc" data-i18n="manager.trashDesc"></p>
+    <div id="trashCards"></div>
+    <div id="trashEmptyMsg" class="empty hidden" data-i18n="manager.trashEmpty"></div>
+  </main>
+
+  <main id="settingsTab" class="tabpage hidden">
+    <section>
+      <h2 data-i18n="settings.appearance"></h2>
+      <div class="row">
+        <label data-i18n="settings.theme"></label>
+        <div class="seg" id="themeSeg">
+          <button data-value="light" data-i18n="settings.themeLight"></button>
+          <button data-value="dark" data-i18n="settings.themeDark"></button>
+          <button data-value="system" data-i18n="settings.themeSystem"></button>
+        </div>
+      </div>
+      <div class="row">
+        <label data-i18n="settings.language"></label>
+        <select id="langSelect">
+          <option value="ko">한국어</option>
+          <option value="en">English</option>
+        </select>
+      </div>
+      <div class="row">
+        <label data-i18n="settings.uiScale"></label>
+        <select id="uiScaleSelect">
+          <option value="0.3">30%</option>
+          <option value="0.4">40%</option>
+          <option value="0.5">50%</option>
+          <option value="0.6">60%</option>
+          <option value="0.7">70%</option>
+          <option value="0.8">80%</option>
+          <option value="0.9">90%</option>
+          <option value="1">100%</option>
+          <option value="1.1">110%</option>
+          <option value="1.25">125%</option>
+          <option value="1.5">150%</option>
+          <option value="1.75">175%</option>
+          <option value="2">200%</option>
+        </select>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="settings.general"></h2>
+      <div class="row">
+        <label class="check-label">
+          <input type="checkbox" id="autostartCheck">
+          <span data-i18n="settings.autostart"></span>
+        </label>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="settings.trash"></h2>
+      <p class="desc" data-i18n="settings.trashDesc"></p>
+      <div class="row">
+        <label class="check-label">
+          <input type="checkbox" id="trashEnabledCheck">
+          <span data-i18n="settings.trashEnabled"></span>
+        </label>
+      </div>
+      <div class="row">
+        <label data-i18n="settings.trashRetention"></label>
+        <input type="number" id="trashDaysInput" min="1" max="36500" step="1" style="width:90px">
+        <label class="check-label">
+          <input type="checkbox" id="trashNoAutoCheck">
+          <span data-i18n="settings.trashNoAutoDelete"></span>
+        </label>
+      </div>
+      <div class="row">
+        <button id="emptyTrashBtn" class="danger" data-i18n="settings.trashEmptyBtn"></button>
+        <span id="trashCount" class="status"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="settings.ollama"></h2>
+      <p class="desc" data-i18n="settings.ollamaDesc"></p>
+      <div class="row">
+        <label data-i18n="settings.endpoint"></label>
+        <input type="text" id="endpointInput" spellcheck="false">
+        <button id="testBtn" data-i18n="settings.test"></button>
+      </div>
+      <div class="row">
+        <label></label>
+        <span id="ollamaStatus" class="status"></span>
+      </div>
+      <div class="row">
+        <label data-i18n="settings.model"></label>
+        <select id="modelSelect"></select>
+      </div>
+
+      <!-- 접이식 다운로드 섹션 (기본 접힘) -->
+      <button id="dlToggle" class="dl-toggle">
+        <span id="dlArrow">▸</span>
+        <span data-i18n="settings.downloadSection"></span>
+      </button>
+      <div id="dlPanel" class="hidden">
+        <div class="row">
+          <button id="installOllamaBtn" data-i18n="settings.installOllama"></button>
+          <button id="downloadPageBtn" class="hidden" data-i18n="settings.openDownloadPage"></button>
+          <span id="installStatus" class="status"></span>
+        </div>
+        <div class="row hidden" id="installProgressRow">
+          <progress id="installProgress" max="100" value="0"></progress>
+          <span id="installPct" class="status"></span>
+        </div>
+        <div class="row">
+          <select id="pullModelSelect"></select>
+          <button id="pullBtn" data-i18n="settings.pull"></button>
+        </div>
+        <div class="row hidden" id="pullProgressRow">
+          <progress id="pullProgress" max="100" value="0"></progress>
+        </div>
+        <div class="row">
+          <span id="pullStatus" class="status"></span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/common/bridge.js"></script>
+  <script src="/common/i18n.js"></script>
+  <script src="/common/color.js"></script>
+  <script src="/manager.js"></script>
+</body>
+</html>

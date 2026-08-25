@@ -1,0 +1,7 @@
+build/
+out/
+.claude/
+installer/Output/
+installer/redist/*.exe
+*.user
+.vs/

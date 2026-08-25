@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Sticker</title>
+  <script>
+    // 문서 생성 시 주입된 __init으로 첫 페인트 전에 테마를 적용해 깜빡임 방지
+    (function () {
+      var init = window.__init || {};
+      document.documentElement.dataset.theme = init.theme || 'light';
+    })();
+  </script>
+  <link rel="stylesheet" href="/common/base.css">
+  <link rel="stylesheet" href="/common/theme.css">
+  <link rel="stylesheet" href="/sticker.css">
+</head>
+<body>
+  <div id="titlebar">
+    <div class="tb-group">
+      <button id="colorBtn" class="tb-btn" data-i18n-title="tt.color">
+        <span id="colorDot" class="color-dot"></span>
+      </button>
+      <button id="pinBtn" class="tb-btn" data-i18n-title="tt.pin">
+        <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M9.5 1.5 14.5 6.5 13 8l-.7-.2-2.6 2.6.3 2.1-1.5 1.5-3-3L2 14.5 1.5 14 5 10.5l-3-3L3.5 6l2.1.3 2.6-2.6L8 3z"/></svg>
+      </button>
+      <span id="typeBadge"></span>
+    </div>
+    <span id="stTitle" class="hidden"></span>
+    <button id="stTitleEditBtn" class="tb-btn hidden" data-i18n-title="tt.editTitle">
+      <svg viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M11.3 2.1a1.5 1.5 0 0 1 2.12 0l.48.48a1.5 1.5 0 0 1 0 2.12L6.75 11.85 3.5 12.5l.65-3.25zM10.6 3.86l1.54 1.54.9-.9a.5.5 0 0 0 0-.7l-.84-.84a.5.5 0 0 0-.7 0zM11.43 6.1 9.9 4.57 4.98 9.49l-.33 1.86 1.86-.33z"/></svg>
+    </button>
+    <input id="stTitleInput" type="text" spellcheck="false" class="hidden">
+    <div id="dragArea"></div>
+    <div class="tb-group">
+      <button id="aiReviewBtn" class="tb-btn wide hidden" disabled data-i18n-title="tt.aiReview">AI Review</button>
+      <button id="newBtn" class="tb-btn" data-i18n-title="tt.new">
+        <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M7.25 2h1.5v5.25H14v1.5H8.75V14h-1.5V8.75H2v-1.5h5.25z"/></svg>
+      </button>
+      <button id="aiBtn" class="tb-btn" data-i18n-title="tt.ai">
+        <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M8 1l1.6 4.1L14 6.7l-4.4 1.6L8 12.4 6.4 8.3 2 6.7l4.4-1.6zM12.8 10.6l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
+      </button>
+      <button id="deleteBtn" class="tb-btn" data-i18n-title="tt.delete">
+        <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M6 2h4l.5 1H14v1.5H2V3h3.5zM3 6h10l-.8 8.2c-.1.5-.5.8-1 .8H4.8c-.5 0-.9-.3-1-.8z"/></svg>
+      </button>
+      <button id="hideBtn" class="tb-btn" data-i18n-title="tt.hide">
+        <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M3.05 2 8 6.95 12.95 2 14 3.05 9.05 8 14 12.95 12.95 14 8 9.05 3.05 14 2 12.95 6.95 8 2 3.05z"/></svg>
+      </button>
+    </div>
+    <div id="newMenu" class="hidden">
+      <button data-newtype="rich" data-i18n="menu.newRich"></button>
+      <button data-newtype="markdown" data-i18n="menu.newMarkdown"></button>
+      <button data-newtype="file" data-i18n="menu.newFile"></button>
+      <button data-newtype="web" data-i18n="menu.newWeb"></button>
+      <button data-newtype="pdf" data-i18n="menu.newPdf"></button>
+      <button data-newtype="group" data-i18n="menu.newGroup"></button>
+    </div>
+    <div id="colorPopover" class="hidden">
+      <div id="colorGrid"></div>
+      <div id="colorCustomRow">
+        <label id="colorCustomLabel" for="colorCustom" data-i18n="color.custom"></label>
+        <input type="color" id="colorCustom">
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Review: 표시 언어 선택 (메모 최상위) -->
+  <div id="langSeg" class="hidden">
+    <button data-lang="ko">한국어</button>
+    <button data-lang="en">English</button>
+  </div>
+
+  <!-- AI Review 요약 (메모 상단) -->
+  <div id="summaryBox" class="hidden">
+    <span id="summaryLabel" data-i18n="review.summaryLabel"></span>
+    <div id="summaryText"></div>
+  </div>
+
+  <!-- 번역 뷰 (선택 언어가 원문과 다를 때 본문 대신 표시) -->
+  <div id="transView" class="hidden"></div>
+
+  <!-- 웹 메모: URL 바 (이 아래 영역은 네이티브 사이트 브라우저 뷰가 덮는다) -->
+  <div id="webBar" class="hidden">
+    <button id="webHomeBtn" class="tb-btn" data-i18n-title="web.home">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M8 1.5 14.5 7.5h-2V14h-3.5v-4h-2v4H3.5V7.5h-2z"/></svg>
+    </button>
+    <button id="webLastBtn" class="tb-btn" data-i18n-title="web.last">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M8 2a6 6 0 1 1-6 6h1.5A4.5 4.5 0 1 0 8 3.5V6L4.5 3 8 0z"/></svg>
+    </button>
+    <input id="webUrlInput" type="text" spellcheck="false" data-i18n-ph="web.urlPlaceholder">
+    <button id="webGoBtn" class="tb-btn" data-i18n-title="web.go">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 7.25h9L7.5 3.75 8.55 2.7 13.85 8l-5.3 5.3-1.05-1.05L11 8.75H2z"/></svg>
+    </button>
+    <button id="webSetHomeBtn" class="tb-btn" data-i18n-title="web.setHome">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="m8 1.8 1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z"/></svg>
+    </button>
+  </div>
+
+  <!-- 리치 메모 -->
+  <div id="editor" contenteditable="true" spellcheck="false" class="hidden"></div>
+
+  <!-- 마크다운 메모 -->
+  <textarea id="mdSource" class="hidden" spellcheck="false"></textarea>
+  <div id="mdPreview" class="hidden"></div>
+  <div id="mdSuggest" class="hidden"></div>
+
+  <!-- 파일 메모 -->
+  <div id="fileArea" class="hidden">
+    <div id="fileList" class="list"></div>
+    <div id="fileEmpty" class="hidden" data-i18n="file.empty"></div>
+  </div>
+
+  <!-- PDF 메모 -->
+  <div id="pdfArea" class="hidden">
+    <iframe id="pdfFrame" class="hidden"></iframe>
+    <div id="pdfEmpty">
+      <button id="pdfPickBtn" data-i18n="pdf.pick"></button>
+      <div class="pdf-hint" data-i18n="pdf.dropHint"></div>
+    </div>
+  </div>
+
+  <!-- 태그 (서식 툴바 바로 위) -->
+  <div id="tagBar" class="hidden">
+    <div id="tagChips"></div>
+    <input id="tagInput" type="text" spellcheck="false" data-i18n-ph="tags.placeholder">
+  </div>
+
+  <!-- 서식 툴바 (rich / markdown) -->
+  <div id="toolbar" class="hidden">
+    <button class="tb-btn fmt" data-cmd="bold" data-i18n-title="tt.bold"><b>B</b></button>
+    <button class="tb-btn fmt" data-cmd="italic" data-i18n-title="tt.italic"><i>I</i></button>
+    <button class="tb-btn fmt" data-cmd="underline" data-i18n-title="tt.underline"><u>U</u></button>
+    <button class="tb-btn fmt" data-cmd="strikeThrough" data-i18n-title="tt.strike"><s>S</s></button>
+    <span class="tb-sep"></span>
+    <button class="tb-btn fmt" data-cmd="insertUnorderedList" data-i18n-title="tt.ul">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 3.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm0 4a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm0 4a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM5.5 4h9v1.5h-9zm0 4h9v1.5h-9zm0 4h9v1.5h-9z"/></svg>
+    </button>
+    <button class="tb-btn fmt" data-cmd="insertOrderedList" data-i18n-title="tt.ol">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2.3 2h1v3h-1V3.2l-.6.3-.4-.8zM1.2 8.7c0-.9.7-1.4 1.4-1.4s1.3.5 1.3 1.2c0 .5-.3.9-.8 1.3l-.5.4h1.4V11H1.2v-.8l1.3-1.1c.3-.3.4-.4.4-.6 0-.2-.2-.4-.4-.4-.3 0-.4.2-.5.5zM5.5 4h9v1.5h-9zm0 4h9v1.5h-9zm0 4h9v1.5h-9zM1.2 13.4c.1-.6.6-1 1.3-1 .8 0 1.3.4 1.3 1 0 .4-.2.6-.5.8.4.1.6.4.6.8 0 .7-.6 1.1-1.4 1.1-.7 0-1.2-.4-1.3-1h.9c0 .2.2.3.4.3.3 0 .4-.1.4-.4 0-.2-.1-.3-.4-.3h-.3v-.7h.3c.2 0 .4-.1.4-.3s-.1-.3-.4-.3c-.2 0-.3.1-.4.3z"/></svg>
+    </button>
+    <button class="tb-btn" id="checkBtn" data-i18n-title="tt.check">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M2.5 2.5h11v11h-11z"/><path fill="none" stroke="currentColor" stroke-width="1.6" d="m4.5 8 2.5 2.5L11.5 5"/></svg>
+    </button>
+    <span class="tb-sep"></span>
+    <button class="tb-btn" id="imageBtn" data-i18n-title="tt.image">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M2.2 2.7h11.6v10.6H2.2z"/><circle fill="currentColor" cx="5.5" cy="6" r="1.2"/><path fill="currentColor" d="m3 12 3.5-4 2.5 3 1.8-2 2.5 3z"/></svg>
+    </button>
+    <button class="tb-btn" id="videoBtn" data-i18n-title="tt.video">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M2.2 3.7h8.6v8.6H2.2z"/><path fill="currentColor" d="M11.8 7 15 4.5v7L11.8 9z"/><path fill="currentColor" d="m5.5 6 3.5 2-3.5 2z"/></svg>
+    </button>
+    <span class="tb-spacer"></span>
+    <button class="tb-btn hidden" id="previewBtn"></button>
+  </div>
+
+  <!-- 파일 메모 툴바 -->
+  <div id="fileToolbar" class="hidden">
+    <button class="tb-btn wide" id="fileAddBtn" data-i18n="file.addFile"></button>
+    <button class="tb-btn wide" id="folderAddBtn" data-i18n="file.addFolder"></button>
+    <span class="tb-sep"></span>
+    <button class="tb-btn" id="viewListBtn" data-i18n-title="file.viewList">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 3h12v2H2zm0 4h12v2H2zm0 4h12v2H2z"/></svg>
+    </button>
+    <button class="tb-btn" id="viewThumbSBtn" data-i18n-title="file.viewThumbS">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 2h3.5v3.5H2zm4.5 0H10v3.5H6.5zM11 2h3v3.5h-3zM2 6.5h3.5V10H2zm4.5 0H10V10H6.5zm4.5 0h3V10h-3zM2 11h3.5v3H2zm4.5 0H10v3H6.5zm4.5 0h3v3h-3z"/></svg>
+    </button>
+    <button class="tb-btn" id="viewThumbLBtn" data-i18n-title="file.viewThumbL">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 2h5.5v5.5H2zm6.5 0H14v5.5H8.5zM2 8.5h5.5V14H2zm6.5 0H14V14H8.5z"/></svg>
+    </button>
+    <span class="tb-sep"></span>
+    <button class="tb-btn wide" id="fileCopyBtn" data-i18n="file.copy"></button>
+    <button class="tb-btn wide" id="fileRemoveBtn" data-i18n="file.remove"></button>
+  </div>
+
+  <div id="aiPanel" class="hidden">
+    <div class="ai-tasks">
+      <button class="ai-task" data-task="summarize" data-i18n="ai.summarize"></button>
+      <button class="ai-task" data-task="polish" data-i18n="ai.polish"></button>
+      <button class="ai-task" data-task="koToEn" data-i18n="ai.koToEn"></button>
+      <button class="ai-task" data-task="enToKo" data-i18n="ai.enToKo"></button>
+      <button class="ai-task" data-task="ask" data-i18n="ai.ask"></button>
+      <div class="ai-spacer"></div>
+      <button id="aiCloseBtn" class="tb-btn" data-i18n-title="ai.close">
+        <svg viewBox="0 0 16 16" width="12" height="12"><path fill="currentColor" d="M3.05 2 8 6.95 12.95 2 14 3.05 9.05 8 14 12.95 12.95 14 8 9.05 3.05 14 2 12.95 6.95 8 2 3.05z"/></svg>
+      </button>
+    </div>
+    <div id="aiAskRow" class="hidden">
+      <textarea id="aiQuestion" rows="2" data-i18n-ph="ai.askPlaceholder"></textarea>
+      <button id="aiRunBtn" class="ai-primary" data-i18n="ai.run"></button>
+    </div>
+    <div id="aiOutput" class="hidden"></div>
+    <div id="aiActions" class="hidden">
+      <button id="aiInsertBtn" data-i18n="ai.insert"></button>
+      <button id="aiReplaceBtn" data-i18n="ai.replace"></button>
+      <button id="aiCopyBtn" data-i18n="ai.copy"></button>
+      <button id="aiStopBtn" class="ai-danger" data-i18n="ai.stop"></button>
+    </div>
+  </div>
+
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/common/bridge.js"></script>
+  <script src="/common/i18n.js"></script>
+  <script src="/common/color.js"></script>
+  <script src="/common/prompts.js"></script>
+  <script src="/editor/editor.js"></script>
+  <script src="/editor/media.js"></script>
+  <script src="/editor/markdown.js"></script>
+  <script src="/sticker.js"></script>
+</body>
+</html>
