@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Super Sticker — 바탕화면 스티커 메모</title>
+<meta name="description" content="Windows용 무료 오픈소스 스티커 메모 앱. 서식 있는 텍스트·이미지·동영상·PDF·3D 모델을 바탕화면에 붙이고, 로컬 AI로 요약·번역하세요. 데이터는 내 PC에만 남습니다.">
+<link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+
+<meta property="og:type" content="website">
+<meta property="og:title" content="Super Sticker — 바탕화면 스티커 메모">
+<meta property="og:description" content="Windows용 무료 오픈소스 스티커 메모 앱. 로컬 AI로 요약·번역까지, 데이터는 내 PC에만.">
+<meta property="og:image" content="/assets/img/og.png">
+<meta name="twitter:card" content="summary_large_image">
+
+<script>
+/* 깜빡임 방지: 저장된 테마·언어를 렌더 전에 적용한다. */
+(function () {
+  try {
+    var t = localStorage.getItem('ss-theme');
+    if (t) document.documentElement.setAttribute('data-theme', t);
+    var l = localStorage.getItem('ss-lang');
+    document.documentElement.lang = l ||
+      ((navigator.language || '').toLowerCase().indexOf('ko') === 0 ? 'ko' : 'en');
+  } catch (e) {}
+})();
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/logo.svg" alt="">
+      <span>Super Sticker</span>
+    </a>
+    <nav class="nav">
+      <a href="#kinds"><span data-lang-ko>메모 종류</span><span data-lang-en>Note types</span></a>
+      <a href="#group"><span data-lang-ko>그룹</span><span data-lang-en>Groups</span></a>
+      <a href="#ai"><span data-lang-ko>로컬 AI</span><span data-lang-en>Local AI</span></a>
+      <a href="#download"><span data-lang-ko>다운로드</span><span data-lang-en>Download</span></a>
+      <a href="https://github.com/80dots/SuperStickers">GitHub</a>
+    </nav>
+    <div class="header-actions">
+      <button class="icon-btn" id="lang-toggle" type="button">EN</button>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme">☾</button>
+    </div>
+  </div>
+</header>
+
+<main>
+
+<!-- ---------------- 히어로 ---------------- -->
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-inner">
+      <p class="eyebrow">
+        <span data-lang-ko>Windows 10/11 · 무료 · 오픈소스</span>
+        <span data-lang-en>Windows 10/11 · Free · Open source</span>
+      </p>
+      <h1>
+        <span data-lang-ko>바탕화면에 붙이는<br>똑똑한 스티커 메모</span>
+        <span data-lang-en>Smart sticky notes<br>for your desktop</span>
+      </h1>
+      <p class="lede">
+        <span data-lang-ko>가볍고 빠른 네이티브 앱입니다. 서식 있는 텍스트부터 이미지·동영상·PDF·3D 모델까지
+          붙여 두고, 로컬 AI로 요약과 번역까지 처리하세요. 데이터는 전부 내 PC에만 남습니다.</span>
+        <span data-lang-en>A fast, lightweight native app. Pin rich text, images, video, PDFs and even 3D models
+          to your desktop, then summarize and translate them with local AI. Your data never leaves your PC.</span>
+      </p>
+
+      <div class="cta-row">
+        <a class="btn btn-primary" href="/download">
+          <svg width="17" height="17" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 1a.75.75 0 0 1 .75.75v7.19l2.72-2.72a.75.75 0 1 1 1.06 1.06l-4 4a.75.75 0 0 1-1.06 0l-4-4a.75.75 0 0 1 1.06-1.06l2.72 2.72V1.75A.75.75 0 0 1 8 1M2.75 13a.75.75 0 0 0 0 1.5h10.5a.75.75 0 0 0 0-1.5z"/>
+          </svg>
+          <span data-lang-ko>Windows용 무료 다운로드</span>
+          <span data-lang-en>Download for Windows</span>
+        </a>
+        <a class="btn btn-ghost" href="/download/portable">
+          <span data-lang-ko>포터블 ZIP</span>
+          <span data-lang-en>Portable ZIP</span>
+        </a>
+      </div>
+
+      <p class="meta-line">
+        <b data-rel-version>v1.1.0</b> ·
+        <span data-rel-setup-size>7.0 MB</span> ·
+        <span data-lang-ko>Windows 10/11 (64비트) · 설치에 관리자 권한이 필요 없습니다</span>
+        <span data-lang-en>Windows 10/11 (64-bit) · No administrator rights required</span>
+      </p>
+
+      <details class="notice">
+        <summary>
+          <span data-lang-ko>설치 시 &ldquo;Windows에서 PC를 보호했습니다&rdquo; 경고가 뜬다면</span>
+          <span data-lang-en>If Windows SmartScreen warns you during install</span>
+        </summary>
+        <div class="notice-body">
+          <span data-lang-ko>
+            이 앱은 아직 코드 서명 인증서가 없어 SmartScreen이 경고를 표시합니다. 악성 코드라는 뜻이 아니라,
+            내려받은 횟수가 적어 평판이 쌓이지 않은 프로그램에 붙는 안내입니다.
+            소스 코드 전체는 GitHub에 공개되어 있으니 직접 확인하고 빌드하셔도 됩니다.
+            <ol>
+              <li>경고 창에서 <b>추가 정보</b>를 클릭합니다.</li>
+              <li>아래에 나타나는 <b>실행</b> 버튼을 누릅니다.</li>
+            </ol>
+          </span>
+          <span data-lang-en>
+            This app is not code-signed yet, so SmartScreen shows a warning. It does not mean the app is
+            malicious &mdash; the notice appears for programs that have not yet built up download reputation.
+            The full source is public on GitHub, so you are welcome to review and build it yourself.
+            <ol>
+              <li>Click <b>More info</b> in the warning dialog.</li>
+              <li>Then click <b>Run anyway</b>.</li>
+            </ol>
+          </span>
+        </div>
+      </details>
+    </div>
+
+    <figure class="shot hero-shot" data-placeholder="스크린샷 준비 중 · Screenshot coming soon">
+      <img src="/assets/img/hero.png" alt="바탕화면에 여러 색상의 스티커 메모가 붙어 있는 모습">
+    </figure>
+  </div>
+</section>
+
+<!-- ---------------- 메모 종류 ---------------- -->
+<section id="kinds" class="alt">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>
+        <span data-lang-ko>메모 하나로 부족할 때, 여섯 가지 종류</span>
+        <span data-lang-en>Six kinds of notes</span>
+      </h2>
+      <p>
+        <span data-lang-ko>텍스트만 적는 메모가 아닙니다. 필요한 형태를 골라 바탕화면에 붙이세요.</span>
+        <span data-lang-en>Not just text. Pick the format you need and stick it on your desktop.</span>
+      </p>
+    </div>
+
+    <div class="kinds">
+      <article class="kind" style="background: var(--sticky-yellow)">
+        <span class="k-icon">📝</span>
+        <h3><span data-lang-ko>일반 메모</span><span data-lang-en>Rich note</span></h3>
+        <p>
+          <span data-lang-ko>굵게·목록·체크리스트 같은 서식과 이미지·동영상·YouTube 임베드를 지원합니다.
+            YouTube 주소를 붙여넣으면 바로 재생됩니다.</span>
+          <span data-lang-en>Bold, lists and checklists, plus images, video and YouTube embeds.
+            Paste a YouTube URL and it plays right away.</span>
+        </p>
+      </article>
+
+      <article class="kind" style="background: var(--sticky-blue)">
+        <span class="k-icon">↓</span>
+        <h3><span data-lang-ko>마크다운 메모</span><span data-lang-en>Markdown note</span></h3>
+        <p>
+          <span data-lang-ko>편집과 보기를 오가며 GFM으로 작성합니다. 미리보기의 체크박스를 클릭하면
+            원본 소스가 함께 갱신됩니다.</span>
+          <span data-lang-en>Write in GFM and toggle between edit and preview. Ticking a checkbox in the
+            preview updates the source too.</span>
+        </p>
+      </article>
+
+      <article class="kind" style="background: var(--sticky-mint)">
+        <span class="k-icon">📁</span>
+        <h3><span data-lang-ko>파일 메모</span><span data-lang-en>File note</span></h3>
+        <p>
+          <span data-lang-ko>탐색기에서 파일·폴더를 끌어다 놓으면 목록이나 썸네일로 보관됩니다.
+            더블클릭으로 실행하고, 복사해 탐색기에 붙여넣을 수 있습니다.</span>
+          <span data-lang-en>Drop files and folders from Explorer to keep them as a list or thumbnails.
+            Double-click to open, or copy and paste them back into Explorer.</span>
+        </p>
+      </article>
+
+      <article class="kind" style="background: var(--sticky-violet)">
+        <span class="k-icon">🌐</span>
+        <h3><span data-lang-ko>웹 메모</span><span data-lang-en>Web note</span></h3>
+        <p>
+          <span data-lang-ko>주소를 등록하면 스티커 안에서 웹사이트를 그대로 띄우고 클릭 탐색까지 됩니다.
+            마지막으로 본 페이지는 자동으로 복원됩니다.</span>
+          <span data-lang-en>Register a URL and browse the site inside the sticker itself.
+            The last page you viewed is restored automatically.</span>
+        </p>
+      </article>
+
+      <article class="kind" style="background: var(--sticky-pink)">
+        <span class="k-icon">📄</span>
+        <h3><span data-lang-ko>PDF 메모</span><span data-lang-en>PDF note</span></h3>
+        <p>
+          <span data-lang-ko>PDF를 끌어다 놓으면 내장 뷰어로 바로 열립니다. 자주 보는 문서를
+            바탕화면에 펼쳐 두세요.</span>
+          <span data-lang-en>Drop in a PDF and it opens in the built-in viewer &mdash; keep the documents
+            you reference most right on your desktop.</span>
+        </p>
+      </article>
+
+      <article class="kind" style="background: var(--sticky-lime)">
+        <span class="k-icon">▦</span>
+        <h3><span data-lang-ko>그룹</span><span data-lang-en>Group</span></h3>
+        <p>
+          <span data-lang-ko>흩어진 메모를 하나의 보드로 묶습니다. 창을 그룹 위로 끌어다 놓기만 하면
+            바로 정리됩니다.</span>
+          <span data-lang-en>Collect scattered notes into a single board &mdash; just drag a window onto
+            the group and drop it.</span>
+        </p>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------- 그룹 ---------------- -->
+<section id="group">
+  <div class="wrap split">
+    <div class="split-text">
+      <h2>
+        <span data-lang-ko>끌어다 놓으면 정리됩니다</span>
+        <span data-lang-en>Organize by dragging</span>
+      </h2>
+      <p>
+        <span data-lang-ko>메모 창을 그룹 위로 끌면 그룹에 들어가고, 카드를 밖으로 끌어내면
+          그 자리에 다시 개별 스티커가 됩니다. 폴더를 만들고 이름을 붙이는 과정이 없습니다.</span>
+        <span data-lang-en>Drag a note window onto a group to file it away, or drag a card back out to
+          turn it into a standalone sticker again. No folders to create, no names to type.</span>
+      </p>
+      <ul>
+        <li><b data-lang-ko>세 가지 정렬</b><b data-lang-en>Three layouts</b>
+          <span data-lang-ko> — 균일 그리드, 내용 길이별 혼합(masonry), 제목만 보는 목록</span>
+          <span data-lang-en> &mdash; uniform grid, masonry by content length, or a title-only list</span></li>
+        <li><b data-lang-ko>카드 크기 조절</b><b data-lang-en>Resizable cards</b>
+          <span data-lang-ko> — 전체를 S/M/L로 바꾸거나, 혼합 모드에서 메모마다 높이를 따로 조절</span>
+          <span data-lang-en> &mdash; switch all cards to S/M/L, or set each note&rsquo;s height in masonry mode</span></li>
+        <li><b data-lang-ko>배경 투명도</b><b data-lang-en>Adjustable transparency</b>
+          <span data-lang-ko> — 0~100%로 조절하면 뒤의 바탕화면이 비쳐 보이고, 카드는 선명하게 유지됩니다</span>
+          <span data-lang-en> &mdash; from 0 to 100%; the desktop shows through while cards stay crisp</span></li>
+        <li><b data-lang-ko>안전한 삭제</b><b data-lang-en>Safe deletion</b>
+          <span data-lang-ko> — 그룹을 지워도 안에 있던 메모는 개별 스티커로 남습니다</span>
+          <span data-lang-en> &mdash; deleting a group leaves its notes behind as individual stickers</span></li>
+      </ul>
+    </div>
+    <figure class="shot" data-placeholder="그룹 창 스크린샷 · Group window screenshot">
+      <img src="/assets/img/group.png" alt="여러 메모 카드가 담긴 그룹 창">
+    </figure>
+  </div>
+</section>
+
+<!-- ---------------- 마크다운 ---------------- -->
+<section class="alt">
+  <div class="wrap split reverse">
+    <div class="split-text">
+      <h2>
+        <span data-lang-ko>마크다운으로 빠르게</span>
+        <span data-lang-en>Write in Markdown</span>
+      </h2>
+      <p>
+        <span data-lang-ko>편집 화면에서 <code>&lt;</code>를 입력하면 마크다운 태그 목록이 설명과 함께
+          나타나 골라 넣을 수 있습니다. 체크리스트·표·코드 블록을 포함한 GFM을 지원하고,
+          YouTube 링크는 임베드로 렌더링됩니다.</span>
+        <span data-lang-en>Type <code>&lt;</code> while editing to get an annotated list of Markdown tags to
+          insert. Full GFM support including checklists, tables and code blocks &mdash; and YouTube links
+          render as embeds.</span>
+      </p>
+      <ul>
+        <li><span data-lang-ko>편집 ↔ 미리보기 즉시 전환</span><span data-lang-en>Instant edit / preview toggle</span></li>
+        <li><span data-lang-ko>미리보기의 체크박스가 소스와 양방향 동기화</span><span data-lang-en>Preview checkboxes sync back to the source</span></li>
+        <li><span data-lang-ko>메모마다 태그를 붙여 분류</span><span data-lang-en>Tag notes to keep them sorted</span></li>
+      </ul>
+    </div>
+    <figure class="shot" data-placeholder="마크다운 메모 스크린샷 · Markdown note screenshot">
+      <img src="/assets/img/markdown.png" alt="마크다운 메모의 편집 화면과 미리보기">
+    </figure>
+  </div>
+</section>
+
+<!-- ---------------- 로컬 AI ---------------- -->
+<section id="ai">
+  <div class="wrap split">
+    <div class="split-text">
+      <p class="privacy-badge">
+        <span data-lang-ko>🔒 전부 내 PC에서 처리 — 외부 전송 없음</span>
+        <span data-lang-en>🔒 Runs entirely on your PC &mdash; nothing is uploaded</span>
+      </p>
+      <h2>
+        <span data-lang-ko>로컬 AI가 읽고, 요약하고, 번역합니다</span>
+        <span data-lang-en>Local AI reads, summarizes and translates</span>
+      </h2>
+      <p>
+        <span data-lang-ko><b>Ollama</b>와 연동해 메모 요약, 문장 다듬기, 한↔영 번역, 자유 질문을
+          지원합니다. 모델이 내 컴퓨터에서 돌기 때문에 메모 내용이 서버로 전송되지 않습니다.
+          API 키도, 구독료도 필요 없습니다.</span>
+        <span data-lang-en>Connect <b>Ollama</b> to summarize notes, polish sentences, translate between
+          Korean and English, or just ask questions. The model runs on your machine, so note contents are
+          never sent to a server. No API key, no subscription.</span>
+      </p>
+      <ul>
+        <li><b>AI Review</b>
+          <span data-lang-ko> — 버튼 한 번으로 요약·제목 생성·키워드 태그 추가·한영 번역을 한꺼번에</span>
+          <span data-lang-en> &mdash; one click summarizes, titles, tags keywords and translates</span></li>
+        <li><b data-lang-ko>설치까지 앱 안에서</b><b data-lang-en>Guided setup</b>
+          <span data-lang-ko> — 설정 화면에서 Ollama와 추천 모델을 진행률을 보며 바로 내려받습니다</span>
+          <span data-lang-en> &mdash; download Ollama and a recommended model from the settings screen,
+            with progress shown</span></li>
+        <li><b data-lang-ko>스트리밍 출력</b><b data-lang-en>Streaming output</b>
+          <span data-lang-ko> — 결과가 실시간으로 표시되고 언제든 중단할 수 있습니다</span>
+          <span data-lang-en> &mdash; results appear as they generate and can be stopped anytime</span></li>
+      </ul>
+    </div>
+    <figure class="shot" data-placeholder="AI 패널 스크린샷 · AI panel screenshot">
+      <img src="/assets/img/ai.png" alt="메모의 AI 요약 및 번역 패널">
+    </figure>
+  </div>
+</section>
+
+<!-- ---------------- 기능 그리드 ---------------- -->
+<section class="alt">
+  <div class="wrap">
+    <div class="section-head">
+      <h2>
+        <span data-lang-ko>그 밖의 기능</span>
+        <span data-lang-en>Everything else</span>
+      </h2>
+    </div>
+    <div class="features">
+      <div class="feature">
+        <h3><span data-lang-ko>3D 모델 임베드</span><span data-lang-en>3D model embeds</span></h3>
+        <p><span data-lang-ko>GLB·GLTF·OBJ·STL을 메모 안에서 회전·확대해 봅니다. 원본 파일을 복사하지 않고
+          직접 참조하며, 와이어프레임·솔리드·PBR 렌더링을 지원합니다.</span>
+          <span data-lang-en>Orbit and zoom GLB, GLTF, OBJ and STL models inside a note. Files are
+          referenced in place, with wireframe, solid and PBR rendering.</span></p>
+      </div>
+      <div class="feature">
+        <h3><span data-lang-ko>휴지통</span><span data-lang-en>Recycle bin</span></h3>
+        <p><span data-lang-ko>삭제한 메모는 휴지통에 보관됩니다. 미리보기로 확인하고 되살리거나,
+          보관 기간이 지나면 자동으로 정리됩니다.</span>
+          <span data-lang-en>Deleted notes go to a bin where you can preview and restore them.
+          Items past the retention period clean themselves up.</span></p>
+      </div>
+      <div class="feature">
+        <h3><span data-lang-ko>테마와 UI 배율</span><span data-lang-en>Theme &amp; UI scale</span></h3>
+        <p><span data-lang-ko>라이트·다크·시스템 연동 테마를 지원하고, 모든 창을 30%~200%로 한 번에
+          확대·축소할 수 있습니다.</span>
+          <span data-lang-en>Light, dark or follow-the-system themes, plus a 30&ndash;200% scale that
+          resizes every window at once.</span></p>
+      </div>
+      <div class="feature">
+        <h3><span data-lang-ko>한국어 · English</span><span data-lang-en>Korean &amp; English</span></h3>
+        <p><span data-lang-ko>실행 중에 전환할 수 있고, 처음 실행할 때는 OS 언어를 자동으로 감지합니다.</span>
+          <span data-lang-en>Switch languages while running; on first launch the OS language is detected
+          automatically.</span></p>
+      </div>
+      <div class="feature">
+        <h3><span data-lang-ko>데이터 관리</span><span data-lang-en>Data management</span></h3>
+        <p><span data-lang-ko>저장 폴더를 원하는 위치로 옮기고, 전체 데이터를 ZIP으로 백업할 수 있습니다.</span>
+          <span data-lang-en>Move the storage folder wherever you like, and back up everything to a ZIP.</span></p>
+      </div>
+      <div class="feature">
+        <h3><span data-lang-ko>안전한 자동 저장</span><span data-lang-en>Safe autosave</span></h3>
+        <p><span data-lang-ko>입력이 멈추면 0.8초 뒤 자동 저장되며, 원자적 쓰기와 백업 파일로
+          데이터를 보호합니다.</span>
+          <span data-lang-en>Saves 0.8 seconds after you stop typing, using atomic writes and backup
+          files to protect your data.</span></p>
+      </div>
+      <div class="feature">
+        <h3><span data-lang-ko>트레이 상주 · 자동 시작</span><span data-lang-en>Tray &amp; autostart</span></h3>
+        <p><span data-lang-ko>창을 닫아도 트레이에 남고, Windows 시작 시 자동 실행할 수 있습니다.
+          모든 스티커를 한 번에 숨기거나 보이게 할 수도 있습니다.</span>
+          <span data-lang-en>Closing a window keeps the app in the tray, and it can start with Windows.
+          Hide or show every sticker at once.</span></p>
+      </div>
+      <div class="feature">
+        <h3><span data-lang-ko>UI 자동 숨김</span><span data-lang-en>Auto-hiding chrome</span></h3>
+        <p><span data-lang-ko>마우스가 벗어나고 3초가 지나면 헤더와 툴바가 사라지고 내용만 남습니다.</span>
+          <span data-lang-en>Three seconds after the pointer leaves, the header and toolbar fade away
+          and only your content remains.</span></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------- 요구 사항 & 다운로드 ---------------- -->
+<section id="download">
+  <div class="wrap">
+    <div class="download-card">
+      <h2>
+        <span data-lang-ko>지금 바로 시작하세요</span>
+        <span data-lang-en>Get started now</span>
+      </h2>
+      <p>
+        <span data-lang-ko>설치는 사용자 계정 단위로 진행되어 관리자 권한이 필요 없습니다.
+          제거하더라도 메모 데이터는 그대로 보존됩니다.</span>
+        <span data-lang-en>Installs per user, so no administrator rights are needed &mdash; and
+          uninstalling keeps your notes intact.</span>
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="/download">
+          <span data-lang-ko>설치 프로그램 내려받기</span>
+          <span data-lang-en>Download installer</span>
+          <span>(<span data-rel-setup-size>7.0 MB</span>)</span>
+        </a>
+        <a class="btn btn-ghost" href="/download/portable">
+          <span data-lang-ko>포터블 ZIP</span>
+          <span data-lang-en>Portable ZIP</span>
+          <span>(<span data-rel-portable-size>4.2 MB</span>)</span>
+        </a>
+      </div>
+      <p class="meta-line">
+        <b data-rel-version>v1.1.0</b>
+        <span data-lang-ko>공개일</span><span data-lang-en>released</span>
+        <span data-rel-date>2026-08-27</span> ·
+        <a href="https://github.com/80dots/SuperStickers/releases">
+          <span data-lang-ko>모든 버전 보기</span><span data-lang-en>All releases</span>
+        </a>
+      </p>
+    </div>
+
+    <dl class="reqs">
+      <div class="req">
+        <dt><span data-lang-ko>운영체제</span><span data-lang-en>OS</span></dt>
+        <dd>Windows 10 / 11 <small>64-bit (x64)</small></dd>
+      </div>
+      <div class="req">
+        <dt><span data-lang-ko>필수 구성 요소</span><span data-lang-en>Runtime</span></dt>
+        <dd>Microsoft Edge WebView2
+          <small><span data-lang-ko>Windows 11에는 기본 포함. 없으면 설치 프로그램이 자동으로 설치합니다.</span>
+            <span data-lang-en>Bundled with Windows 11; the installer adds it automatically if missing.</span></small>
+        </dd>
+      </div>
+      <div class="req">
+        <dt><span data-lang-ko>AI 기능 (선택)</span><span data-lang-en>AI features (optional)</span></dt>
+        <dd>Ollama
+          <small><span data-lang-ko>앱의 설정 화면에서 바로 설치할 수 있습니다.</span>
+            <span data-lang-en>Installable directly from the app&rsquo;s settings screen.</span></small>
+        </dd>
+      </div>
+      <div class="req">
+        <dt><span data-lang-ko>라이선스</span><span data-lang-en>License</span></dt>
+        <dd>MIT
+          <small><span data-lang-ko>무료이며 소스가 공개되어 있습니다.</span>
+            <span data-lang-en>Free and open source.</span></small>
+        </dd>
+      </div>
+    </dl>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>&copy; 2026 minkyu</span>
+    <a href="https://github.com/80dots/SuperStickers">GitHub</a>
+    <a href="https://github.com/80dots/SuperStickers/releases">
+      <span data-lang-ko>릴리스</span><span data-lang-en>Releases</span>
+    </a>
+    <a href="https://github.com/80dots/SuperStickers/issues">
+      <span data-lang-ko>버그 신고</span><span data-lang-en>Report a bug</span>
+    </a>
+    <a href="/privacy">
+      <span data-lang-ko>개인정보처리방침</span><span data-lang-en>Privacy</span>
+    </a>
+    <span class="spacer">MIT License</span>
+  </div>
+</footer>
+
+<script src="/assets/app.js"></script>
+</body>
+</html>

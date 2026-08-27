@@ -74,6 +74,10 @@ public:
     void SaveMemberContent(const nlohmann::json& p);  // 그룹 카드 인라인 편집 저장
     StickerData* FindStickerData(const std::string& id);  // 창 유무 무관 데이터 조회
 
+    // 자석 정렬: 드래그 중인 메모창을 다른 메모창의 간격·가장자리에 맞춰 붙인다.
+    // rect는 WM_MOVING이 준 제안 위치이며, 붙을 자리가 있으면 그 자리로 보정한다.
+    void SnapStickerRect(StickerWindow* self, RECT* rect);
+
     // 플로팅 스티커 드래그 → 그룹 드롭 감지
     void HandleStickerMoveEnd(StickerWindow* w);
     void UpdateDragHover(StickerWindow* w);  // WM_MOVING 중 하이라이트

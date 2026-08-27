@@ -95,6 +95,37 @@
             <span data-i18n="settings.autoHideUi"></span>
           </label>
         </div>
+        <div class="row sub" id="revealClickRow">
+          <label class="check-label">
+            <input type="checkbox" id="revealClickCheck">
+            <span data-i18n="settings.uiRevealOnClick"></span>
+          </label>
+        </div>
+        <div class="row">
+          <label class="check-label">
+            <input type="checkbox" id="magnetCheck">
+            <span data-i18n="settings.magnet"></span>
+          </label>
+        </div>
+        <div class="row" id="magnetSensRow">
+          <label data-i18n="settings.magnetSensitivity"></label>
+          <div class="seg" id="magnetSensSeg">
+            <button data-value="high" data-i18n="settings.sensHigh"></button>
+            <button data-value="medium" data-i18n="settings.sensMedium"></button>
+            <button data-value="low" data-i18n="settings.sensLow"></button>
+          </div>
+        </div>
+        <div class="row" id="magnetGapRow">
+          <label for="magnetGapSelect" data-i18n="settings.magnetGap"></label>
+          <select id="magnetGapSelect">
+            <option value="0">0 px</option>
+            <option value="5">5 px</option>
+            <option value="10">10 px</option>
+            <option value="15">15 px</option>
+            <option value="20">20 px</option>
+            <option value="30">30 px</option>
+          </select>
+        </div>
     </section>
 
     <section>

@@ -141,6 +141,98 @@ const editorCore = (() => {
     return editor ? editor.innerText.trim() : '';
   }
 
+  // 리치 본문을 마크다운으로 직렬화한다.
+  // AI Review 번역은 이 결과를 원문으로 쓰고 결과도 마크다운으로 렌더하므로,
+  // 서식(제목·목록·강조·링크)이 번역 후에도 살아남는다. innerText를 쓰면 여기서 이미 서식이 사라진다.
+  function getMarkdown() {
+    if (!editor) return '';
+    const esc = (t) => t.replace(/([*_`~])/g, '\\$1');
+
+    // 인라인 노드 → 마크다운 조각
+    function inline(node) {
+      if (node.nodeType === Node.TEXT_NODE) return esc(node.nodeValue);
+      if (node.nodeType !== Node.ELEMENT_NODE) return '';
+      const tag = node.tagName.toLowerCase();
+      if (tag === 'br') return '\n';
+      if (tag === 'img') return `![](${node.getAttribute('src') || ''})`;
+      const inner = [...node.childNodes].map(inline).join('');
+      if (!inner.trim()) {
+        // 내용 없는 미디어/임베드는 그대로 두면 정보가 사라지므로 원본 태그를 유지
+        if (tag === 'video' || node.classList.contains('embed3d')) return node.outerHTML;
+        return inner;
+      }
+      if (tag === 'b' || tag === 'strong') return `**${inner}**`;
+      if (tag === 'i' || tag === 'em') return `*${inner}*`;
+      if (tag === 's' || tag === 'strike' || tag === 'del') return `~~${inner}~~`;
+      if (tag === 'u') return `<u>${inner}</u>`;  // 마크다운에 밑줄이 없어 HTML 유지
+      if (tag === 'code') return '`' + inner.replace(/\\([*_`~])/g, '$1') + '`';
+      if (tag === 'a') return `[${inner}](${node.getAttribute('href') || ''})`;
+      return inner;
+    }
+
+    // 블록 노드 → 마크다운 줄
+    function block(node, out, depth) {
+      if (node.nodeType === Node.TEXT_NODE) {
+        const t = esc(node.nodeValue).trim();
+        if (t) out.push(t);
+        return;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) return;
+      const tag = node.tagName.toLowerCase();
+      const pad = '  '.repeat(depth);
+      if (tag === 'ul' || tag === 'ol') {
+        let n = 1;
+        [...node.children].forEach((li) => {
+          if (li.tagName.toLowerCase() !== 'li') return;
+          const nested = [...li.children].filter((c) => /^(ul|ol)$/i.test(c.tagName));
+          const text = [...li.childNodes]
+            .filter((c) => !(c.nodeType === Node.ELEMENT_NODE && /^(ul|ol)$/i.test(c.tagName)))
+            .map(inline).join('').trim();
+          out.push(`${pad}${tag === 'ol' ? n++ + '.' : '-'} ${text}`);
+          nested.forEach((c) => block(c, out, depth + 1));
+        });
+        return;
+      }
+      if (node.classList && node.classList.contains('check-item')) {
+        const cb = node.querySelector('input[type="checkbox"]');
+        const text = [...(node.querySelector('.check-text')?.childNodes || [])]
+          .map(inline).join('').trim();
+        out.push(`${pad}- [${cb && cb.checked ? 'x' : ' '}] ${text}`);
+        return;
+      }
+      if (/^h[1-6]$/.test(tag)) {
+        out.push('#'.repeat(Number(tag[1])) + ' ' + [...node.childNodes].map(inline).join('').trim());
+        return;
+      }
+      if (tag === 'blockquote') {
+        const sub = [];
+        [...node.childNodes].forEach((c) => block(c, sub, depth));
+        sub.forEach((l) => out.push('> ' + l));
+        return;
+      }
+      if (tag === 'pre') {
+        out.push('```', node.textContent.replace(/\n$/, ''), '```');
+        return;
+      }
+      if (tag === 'hr') { out.push('---'); return; }
+      // 일반 블록(div/p) — 자식에 블록이 섞여 있으면 재귀
+      const hasBlock = [...node.childNodes].some(
+        (c) => c.nodeType === Node.ELEMENT_NODE &&
+               (/^(div|p|ul|ol|h[1-6]|pre|blockquote|hr)$/i.test(c.tagName) ||
+                (c.classList && c.classList.contains('check-item'))));
+      if (hasBlock) {
+        [...node.childNodes].forEach((c) => block(c, out, depth));
+        return;
+      }
+      const line = [...node.childNodes].map(inline).join('').trim();
+      out.push(line);  // 빈 줄도 그대로 (문단 구분)
+    }
+
+    const out = [];
+    [...editor.childNodes].forEach((c) => block(c, out, 0));
+    return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
   function insertNodeAtCaret(node) {
     editor.focus();
     const sel = window.getSelection();
@@ -159,7 +251,8 @@ const editorCore = (() => {
   }
 
   return {
-    init, exec, insertChecklist, getHtml, getAttachments, getPlainText, insertNodeAtCaret,
+    init, exec, insertChecklist, getHtml, getAttachments, getPlainText, getMarkdown,
+    insertNodeAtCaret,
     notify,
     get el() { return editor; },
   };

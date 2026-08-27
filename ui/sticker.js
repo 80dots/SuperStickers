@@ -186,9 +186,10 @@
   // ==================================================================
   // 태그 / AI 제목 / AI 요약 / AI Review (rich·markdown)
   // ==================================================================
+  // AI Review 입력: 두 타입 모두 마크다운으로 넘겨 번역 후에도 문서 형식이 유지되게 한다
   const noteText = () =>
     type === 'markdown' ? mdSource.value.trim()
-    : type === 'rich' ? editorCore.getPlainText().trim() : '';
+    : type === 'rich' ? editorCore.getMarkdown().trim() : '';
 
   function saveMeta(patch) {
     bridge.call('sticker.setMeta', patch).catch(console.error);
@@ -414,6 +415,19 @@
   // ---------- AI Review ----------
   let reviewRequestId = null;
   let reviewBuf = '';
+  let reviewSrc = '';  // 이번 리뷰에 넘긴 원문 (코드 블록 복원용)
+
+  // 코드 블록은 번역 대상이 아니다. 모델이 내용을 바꾸거나 글자를 흘리는 경우가 있어
+  // 원문의 블록을 그대로 되돌려 넣는다. 블록 수가 다르면 짝을 확신할 수 없어 손대지 않는다.
+  function restoreCodeBlocks(src, translated) {
+    const re = /^```[^\n]*\n[\s\S]*?^```/gm;
+    const from = src.match(re);
+    if (!from) return translated;
+    const to = translated.match(re);
+    if (!to || to.length !== from.length) return translated;
+    let i = 0;
+    return translated.replace(re, () => from[i++]);
+  }
   function setReviewState() {
     if (!isText) return;
     const btn = $('#aiReviewBtn');
@@ -438,6 +452,7 @@
     const text = noteText();
     if (!text || reviewRequestId) return;
     reviewBuf = '';
+    reviewSrc = text;
     reviewRequestId = 'review-' + Date.now();
     setReviewState();
     clearSummaryErrorTimer();  // 새 리뷰 시작 — 이전 오류의 자동 소멸 예약 취소
@@ -449,14 +464,25 @@
         content:
           '당신은 스티커 메모 앱의 리뷰 도우미입니다. 주어진 메모 내용을 분석해 반드시 아래 JSON ' +
           '형식으로만 응답하세요. 다른 설명이나 코드 펜스는 출력하지 마세요.\n' +
+          '입력은 마크다운 문서입니다.\n' +
           '{"srcLang":"본문의 주 언어. ko 또는 en (그 외 언어면 en)",' +
           '"summary":"한국어 요약 1~3문장 (본문이 다른 언어면 번역해서 요약)",' +
           '"summaryEn":"영어 요약 1~3문장",' +
           '"title":"요약을 바탕으로 한 15자 이내의 한국어 제목",' +
           '"titleEn":"영어 제목 (5단어 이내)",' +
           '"tags":["중요 키워드 3~6개, 각각 1~3단어의 한국어"],' +
-          '"translation":"본문 전체를 반대 언어로 충실히 번역 (srcLang이 ko면 영어로, en이면 한국어로. ' +
-          '마크다운 서식과 줄바꿈 유지)"}',
+          '"translation":"본문 전체를 반대 언어로 충실히 번역 (srcLang이 ko면 영어로, en이면 한국어로)"}\n' +
+          '\n[translation 작성 규칙 - 반드시 지킬 것]\n' +
+          '1. 마크다운 기호를 원문 그대로 남긴다: 제목 #/##/###, 목록 -/*/1., ' +
+          '체크박스 - [ ] 와 - [x], 굵게 **, 기울임 *, 취소선 ~~, 인용 >, 표 |, 수평선 ---\n' +
+          '2. 코드 블록(```)과 인라인 코드(`)의 내용은 번역하지 않고 그대로 복사한다. ' +
+          '언어 표시(```js 등)도 유지한다.\n' +
+          '3. 링크와 이미지는 [텍스트](주소), ![대체텍스트](주소) 형태를 유지하고 ' +
+          '주소는 절대 바꾸지 않는다.\n' +
+          '4. HTML 태그(<u>, <br> 등), 파일 경로, 명령어, 변수와 함수 이름은 그대로 둔다.\n' +
+          '5. 줄바꿈과 빈 줄, 들여쓰기를 원문과 똑같이 유지한다. 줄 수가 달라지면 안 된다.\n' +
+          '6. 사람이 읽는 문장만 번역한다. 기호나 구조는 절대 지우거나 바꾸지 않는다.\n' +
+          '예) "## 설치\\n- `npm install` 실행" -> "## Install\\n- Run `npm install`"',
       },
       { role: 'user', content: text },
     ];
@@ -496,9 +522,10 @@
       if (typeof r.titleEn === 'string' && r.titleEn.trim()) data.titleEn = r.titleEn.trim();
       data.srcLang = r.srcLang === 'ko' ? 'ko' : 'en';
       if (typeof r.translation === 'string' && r.translation.trim()) {
-        // 원문의 반대 언어 번역본 저장
-        if (data.srcLang === 'ko') data.transEn = r.translation.trim();
-        else data.transKo = r.translation.trim();
+        // 원문의 반대 언어 번역본 저장 (코드 블록은 원문 그대로 되돌림)
+        const trans = restoreCodeBlocks(reviewSrc, r.translation.trim());
+        if (data.srcLang === 'ko') data.transEn = trans;
+        else data.transKo = trans;
       }
       if (!data.viewLang) data.viewLang = data.srcLang;  // 기본 표시는 원문 언어
       if (Array.isArray(r.tags)) {
@@ -1037,6 +1064,8 @@
     const root = document.documentElement;
     const FADE_MS = 180, RESIZE_MS = 200, HIDE_DELAY_MS = 3000, INITIAL_DELAY_MS = 3000;
     let enabled = init.autoHideUi !== false;
+    // true면 창을 클릭해야 UI가 나타난다 (마우스만 올리는 것으로는 나타나지 않음)
+    let clickOnly = init.uiRevealOnClick !== false;
     let state = 'expanded';  // 'expanded' | 'fading'(페이드 아웃 중) | 'collapsed'
     let timer = 0;
 
@@ -1056,7 +1085,19 @@
       const a = document.activeElement;
       return !!a && (a.isContentEditable || a.tagName === 'TEXTAREA' || a.tagName === 'INPUT');
     };
-    const canCollapse = () => !root.matches(':hover') && !isEditing() && !popoverOpen();
+    // 클릭해야 보이는 모드에서는 마우스를 올려둔 것만으로 UI를 붙잡아 두지 않는다
+    const canCollapse = () =>
+      (clickOnly || !root.matches(':hover')) && !isEditing() && !popoverOpen();
+
+    // 헤더·툴바 높이를 네이티브에 알린다. 자석 정렬이 "UI가 숨겨졌을 때"의 창 모양을
+    // 기준으로 삼기 위해 필요하며, 접힘 여부와 무관하게 항상 측정된다(페이드만 하므로).
+    function reportUiExtents() {
+      const els = parts();
+      bridge.call('window.setUiExtents', {
+        top: header.offsetHeight,
+        bottom: els.includes(toolbar) ? toolbar.offsetHeight : 0,
+      }).catch(() => {});
+    }
     const unfade = () =>
       document.querySelectorAll('.autofade').forEach((el) => el.classList.remove('autofade'));
 
@@ -1077,6 +1118,7 @@
       // 그 영역이 잘린다)
       const top = header.offsetHeight;
       const bottom = els.includes(toolbar) ? toolbar.offsetHeight : 0;
+      reportUiExtents();
       bridge.call('window.setCollapse', { top, bottom }).catch(() => {});
     }
 
@@ -1099,8 +1141,11 @@
       clearTimeout(timer);
       timer = setTimeout(collapse, HIDE_DELAY_MS);
     };
-    root.addEventListener('mouseenter', () => expand(true));
+    // 호버로 보이기 (클릭 전용 모드가 아닐 때만)
+    root.addEventListener('mouseenter', () => { if (!clickOnly) expand(true); });
     root.addEventListener('mouseleave', schedule);
+    // 클릭으로 보이기 — 창 안 어디를 눌러도 UI가 올라온다
+    document.addEventListener('mousedown', () => expand(true), true);
     // 입력을 마치고 포커스가 떠나거나 창이 비활성화되면 (마우스도 밖이면) 숨김 예약
     document.addEventListener('focusout', schedule);
     window.addEventListener('blur', schedule);
@@ -1113,7 +1158,15 @@
       else if (canCollapse()) collapse();
     });
 
-    // 최초 로드: 잠시 뒤 마우스가 창 위에 없고 입력 중도 아니면 접는다
+    // 표시 조건(호버 vs 클릭) 변경 — 클릭 전용으로 바뀌면 호버로 떠 있던 UI를 정리한다
+    bridge.on('ui.revealModeChanged', (d) => {
+      clickOnly = !!d.clickOnly;
+      if (enabled && clickOnly && canCollapse()) collapse();
+    });
+
+    // 최초 로드: 레이아웃이 잡힌 뒤 높이를 보고하고, 잠시 뒤 마우스가 창 위에 없고
+    // 입력 중도 아니면 접는다
+    requestAnimationFrame(() => requestAnimationFrame(reportUiExtents));
     setTimeout(() => { if (enabled && canCollapse()) collapse(); }, INITIAL_DELAY_MS);
   })();
 

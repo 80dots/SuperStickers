@@ -19,6 +19,13 @@ struct Settings {
     int trashRetentionDays = 30;   // 휴지통 보관 일수, 0 = 자동 삭제하지 않음
     double uiScale = 1.0;          // 전체 UI 배율 (0.3 ~ 2.0, 1.0 = 100%)
     bool autoHideUi = true;        // 메모창 전용: 마우스가 벗어나면 헤더·서식 툴바 자동 숨김
+    // 자동 숨김이 켜져 있을 때만 의미 있음. true면 창을 클릭해야 UI가 나타나고,
+    // false면 마우스를 올리기만 해도 나타난다.
+    bool uiRevealOnClick = true;
+    bool magnetEnabled = true;     // 메모창끼리 자석처럼 붙고 가장자리가 정렬됨
+    int magnetGap = 10;            // 자석으로 붙을 때 유지할 간격 (논리 px, UI 배율 적용)
+    // 자석이 당기기 시작하는 거리. "high"면 멀리서도 붙는다. "low" | "medium" | "high"
+    std::string magnetSensitivity = "medium";
 };
 
 struct StickerData {

@@ -296,6 +296,12 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
         return json::object();
     });
 
+    // 페이지가 측정한 헤더/툴바 높이 보고 (자석 정렬 기준 계산에 쓰인다)
+    b.Register("window.setUiExtents", [self](const json& p) {
+        self->SetUiExtents(p.value("top", 0), p.value("bottom", 0));
+        return json::object();
+    });
+
     // UI 자동 숨김: 페이지가 측정한 헤더/툴바 높이(CSS px)만큼 창을 접거나 편다
     b.Register("window.setCollapse", [self](const json& p) {
         int top = p.value("top", 0), bottom = p.value("bottom", 0);
@@ -445,6 +451,31 @@ void StickerWindow::StepCollapseAnim() {
     SetWindowPos(hwnd_, nullptr, animBase_.left, top, animBase_.right - animBase_.left, h,
                  SWP_NOZORDER | SWP_NOACTIVATE);
     if (p >= 1.0) KillTimer(hwnd_, kCollapseTimerId);
+}
+
+int StickerWindow::CssPx(int cssPx) const {
+    return (int)llround(cssPx * App::I().settings.uiScale * dpi_ / 96.0);
+}
+
+void StickerWindow::SetUiExtents(int topCss, int bottomCss) {
+    uiExtentTopCss_ = topCss;
+    uiExtentBottomCss_ = bottomCss;
+}
+
+RECT StickerWindow::AlignBasis(const RECT& actual) const {
+    RECT r = actual;
+    if (!App::I().settings.autoHideUi) return r;  // 숨김을 안 쓰면 지금 모양이 곧 기준
+    // 아직 접히지 않은 만큼만 덜어낸다: 이미 접힌 창은 그대로, 펼친 창은 접혔을 때의 모양으로.
+    r.top += CssPx(uiExtentTopCss_ - collapseTopCss_);
+    r.bottom -= CssPx(uiExtentBottomCss_ - collapseBottomCss_);
+    if (r.bottom < r.top) r.bottom = r.top;
+    return r;
+}
+
+RECT StickerWindow::AlignRectNow() const {
+    RECT r{};
+    GetWindowRect(hwnd_, &r);
+    return AlignBasis(r);
 }
 
 void StickerWindow::StoreGeometryFromWindow() {
@@ -851,8 +882,9 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
 
         case WM_MOVING:
-            App::I().UpdateDragHover(this);  // 그룹 위 드래그 하이라이트
-            break;
+            App::I().SnapStickerRect(this, (RECT*)lp);  // 다른 메모창에 자석처럼 붙이기
+            App::I().UpdateDragHover(this);             // 그룹 위 드래그 하이라이트
+            return TRUE;  // 보정한 사각형을 적용
 
         case WM_EXITSIZEMOVE: {
             RECT r{};

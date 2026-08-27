@@ -31,6 +31,10 @@ constexpr UINT_PTR kQuitTimerId = 1;
 constexpr UINT_PTR kTrashTimerId = 2;
 constexpr UINT_PTR kTrayClickTimerId = 3;  // 트레이 단일/더블클릭 구분용
 constexpr UINT kTrashPurgeIntervalMs = 60 * 60 * 1000;  // 1시간마다 만료 항목 정리
+// 자석이 당기기 시작하는 거리 (논리 px). 민감도가 높을수록 멀리서도 붙는다.
+constexpr int kSnapThresholdLowDip = 6;
+constexpr int kSnapThresholdMediumDip = 12;
+constexpr int kSnapThresholdHighDip = 26;
 
 // "YYYY-MM-DDTHH:MM:SS(.mmm)Z" → FILETIME 100ns 단위. 실패 시 false.
 bool IsoToFiletime64(const std::string& iso, ULONGLONG& out) {
@@ -867,6 +871,50 @@ void App::ClampAllWindowsToScreen() {
     }
 }
 
+void App::SnapStickerRect(StickerWindow* self, RECT* rect) {
+    if (!settings.magnetEnabled || !rect) return;
+    // 정렬 기준(UI 숨김 상태) 좌표로 바꿔 계산하고, 구한 이동량을 실제 사각형에 그대로 적용한다
+    RECT me = self->AlignBasis(*rect);
+    const int w = me.right - me.left, h = me.bottom - me.top;
+    const int gap = self->CssPx(settings.magnetGap);
+    const int thrDip = settings.magnetSensitivity == "high"  ? kSnapThresholdHighDip
+                       : settings.magnetSensitivity == "low" ? kSnapThresholdLowDip
+                                                             : kSnapThresholdMediumDip;
+    const int thr = self->CssPx(thrDip);  // 자석이 당기기 시작하는 거리
+
+    int bestDx = 0, bestDy = 0;
+    int bestX = thr + 1, bestY = thr + 1;  // 현재까지 가장 가까운 후보와의 거리
+    auto tryX = [&](int target) {
+        int d = target - me.left;
+        if (abs(d) <= thr && abs(d) < bestX) { bestX = abs(d); bestDx = d; }
+    };
+    auto tryY = [&](int target) {
+        int d = target - me.top;
+        if (abs(d) <= thr && abs(d) < bestY) { bestY = abs(d); bestDy = d; }
+    };
+
+    for (auto* other : stickers_) {
+        if (other == self || !other->VisibleNow()) continue;
+        RECT o = other->AlignRectNow();
+        // 세로로 겹치거나 가까울 때만 좌우로 붙인다 (엉뚱하게 멀리 있는 창에 끌리지 않도록)
+        if (me.top <= o.bottom + gap + thr && me.bottom >= o.top - gap - thr) {
+            tryX(o.right + gap);          // 오른쪽에 간격 두고 붙이기
+            tryX(o.left - gap - w);       // 왼쪽에 간격 두고 붙이기
+            tryX(o.left);                 // 왼쪽 가장자리 정렬
+            tryX(o.right - w);            // 오른쪽 가장자리 정렬
+        }
+        // 가로로 겹치거나 가까울 때만 위아래로 붙인다
+        if (me.left <= o.right + gap + thr && me.right >= o.left - gap - thr) {
+            tryY(o.bottom + gap);         // 아래에 간격 두고 붙이기
+            tryY(o.top - gap - h);        // 위에 간격 두고 붙이기
+            tryY(o.top);                  // 위쪽 가장자리 정렬
+            tryY(o.bottom - h);           // 아래쪽 가장자리 정렬
+        }
+    }
+    if (bestDx == 0 && bestDy == 0) return;
+    OffsetRect(rect, bestDx, bestDy);
+}
+
 void App::UpdateDragHover(StickerWindow*) {
     GroupWindow* g = GroupUnderCursor();
     std::string id = g ? g->data.id : "";
@@ -965,6 +1013,27 @@ void App::ApplySettingsPatch(const json& patch) {
             BroadcastEvent("ui.autoHideChanged", {{"on", v}});
         }
     }
+    if (patch.contains("uiRevealOnClick") && patch["uiRevealOnClick"].is_boolean()) {
+        bool v = patch["uiRevealOnClick"];
+        if (v != settings.uiRevealOnClick) {
+            settings.uiRevealOnClick = v;
+            // 각 스티커 페이지가 표시 조건(호버 vs 클릭)을 즉시 바꾼다
+            BroadcastEvent("ui.revealModeChanged", {{"clickOnly", v}});
+        }
+    }
+    if (patch.contains("magnet") && patch["magnet"].is_object()) {
+        auto& m = patch["magnet"];
+        if (m.contains("enabled") && m["enabled"].is_boolean())
+            settings.magnetEnabled = m["enabled"];
+        if (m.contains("gap") && m["gap"].is_number()) {
+            int v = m["gap"];
+            settings.magnetGap = v < 0 ? 0 : (v > 200 ? 200 : v);
+        }
+        if (m.contains("sensitivity") && m["sensitivity"].is_string()) {
+            std::string v = m["sensitivity"];
+            if (v == "low" || v == "medium" || v == "high") settings.magnetSensitivity = v;
+        }
+    }
     if (patch.contains("trash") && patch["trash"].is_object()) {
         auto& t = patch["trash"];
         if (t.contains("enabled") && t["enabled"].is_boolean())
@@ -1002,7 +1071,8 @@ json App::MakeInitJson(const std::string& page, const std::string& stickerId) {
                 {"stickerId", stickerId},
                 {"theme", EffectiveTheme()},
                 {"lang", i18n.Lang()},
-                {"autoHideUi", settings.autoHideUi}};
+                {"autoHideUi", settings.autoHideUi},
+                {"uiRevealOnClick", settings.uiRevealOnClick}};
 }
 
 void App::SetupCommonBridge(WebViewHost& host) {
@@ -1020,7 +1090,12 @@ void App::SetupCommonBridge(WebViewHost& host) {
                        {{"enabled", settings.trashEnabled},
                         {"retentionDays", settings.trashRetentionDays}}},
                       {"uiScale", settings.uiScale},
-                      {"autoHideUi", settings.autoHideUi}}},
+                      {"autoHideUi", settings.autoHideUi},
+                      {"uiRevealOnClick", settings.uiRevealOnClick},
+                      {"magnet",
+                       {{"enabled", settings.magnetEnabled},
+                        {"gap", settings.magnetGap},
+                        {"sensitivity", settings.magnetSensitivity}}}}},
                     {"effectiveTheme", EffectiveTheme()},
                     {"lang", i18n.Lang()}};
     });

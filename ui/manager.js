@@ -356,6 +356,24 @@
       opts.reduce((a, b) => (Math.abs(b - scale) < Math.abs(a - scale) ? b : a)));
     $('#autostartCheck').checked = !!s.autostart;
     $('#autoHideCheck').checked = s.autoHideUi !== false;  // 기본값 On
+    // 클릭할 때만 보이기: 자동 숨김이 켜져 있을 때만 조작할 수 있다
+    $('#revealClickCheck').checked = s.uiRevealOnClick !== false;  // 기본값 On
+    $('#revealClickCheck').disabled = !$('#autoHideCheck').checked;
+    $('#revealClickRow').classList.toggle('disabled', !$('#autoHideCheck').checked);
+    const mg = s.magnet || {};
+    $('#magnetCheck').checked = mg.enabled !== false;      // 기본값 On
+    $('#magnetGapSelect').value = String(mg.gap == null ? 10 : mg.gap);
+    // 자석이 꺼져 있으면 민감도·간격 설정은 조작할 수 없다
+    const magnetOn = $('#magnetCheck').checked;
+    const sens = mg.sensitivity || 'medium';
+    document.querySelectorAll('#magnetSensSeg button').forEach((b) => {
+      b.classList.toggle('on', b.dataset.value === sens);
+      b.disabled = !magnetOn;
+    });
+    $('#magnetSensSeg').classList.toggle('disabled', !magnetOn);
+    $('#magnetSensRow').classList.toggle('disabled', !magnetOn);
+    $('#magnetGapSelect').disabled = !magnetOn;
+    $('#magnetGapRow').classList.toggle('disabled', !magnetOn);
     $('#endpointInput').value = s.ollama.endpoint;
     setModelOptions(s.ollama.model ? [s.ollama.model] : [], s.ollama.model);
 
@@ -423,10 +441,40 @@
     bridge.call('settings.set', { autostart: e.target.checked });
   });
 
-  // 자동 숨김: 저장 + 모든 메모창·그룹창에 즉시 반영 (네이티브가 ui.autoHideChanged 방송)
+  // 자동 숨김: 저장 + 모든 메모창에 즉시 반영 (네이티브가 ui.autoHideChanged 방송)
   $('#autoHideCheck').addEventListener('change', (e) => {
     state.settings.autoHideUi = e.target.checked;
+    applySettingsUi();  // 하위 옵션 활성/비활성 갱신
     bridge.call('settings.set', { autoHideUi: e.target.checked }).catch(console.error);
+  });
+
+  $('#revealClickCheck').addEventListener('change', (e) => {
+    state.settings.uiRevealOnClick = e.target.checked;
+    bridge.call('settings.set', { uiRevealOnClick: e.target.checked }).catch(console.error);
+  });
+
+  // 자석 정렬: 켜져 있을 때만 간격 설정을 쓸 수 있다
+  $('#magnetCheck').addEventListener('change', (e) => {
+    if (!state.settings.magnet) state.settings.magnet = {};
+    state.settings.magnet.enabled = e.target.checked;
+    applySettingsUi();
+    bridge.call('settings.set', { magnet: { enabled: e.target.checked } }).catch(console.error);
+  });
+
+  document.querySelectorAll('#magnetSensSeg button').forEach((b) =>
+    b.addEventListener('click', () => {
+      if (!state.settings.magnet) state.settings.magnet = {};
+      state.settings.magnet.sensitivity = b.dataset.value;
+      applySettingsUi();
+      bridge.call('settings.set', { magnet: { sensitivity: b.dataset.value } })
+        .catch(console.error);
+    }));
+
+  $('#magnetGapSelect').addEventListener('change', (e) => {
+    const gap = Number(e.target.value);
+    if (!state.settings.magnet) state.settings.magnet = {};
+    state.settings.magnet.gap = gap;
+    bridge.call('settings.set', { magnet: { gap } }).catch(console.error);
   });
 
   // ---------- 휴지통 설정 ----------

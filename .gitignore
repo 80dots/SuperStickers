@@ -5,3 +5,5 @@ installer/Output/
 installer/redist/*.exe
 *.user
 .vs/
+.wrangler/
+node_modules/

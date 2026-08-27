@@ -82,6 +82,16 @@ Settings Store::LoadSettings() {
         if (s.uiScale < 0.3) s.uiScale = 0.3;
         if (s.uiScale > 2.0) s.uiScale = 2.0;
         s.autoHideUi = j.value("autoHideUi", s.autoHideUi);
+        s.uiRevealOnClick = j.value("uiRevealOnClick", s.uiRevealOnClick);
+        if (j.contains("magnet") && j["magnet"].is_object()) {
+            s.magnetEnabled = j["magnet"].value("enabled", s.magnetEnabled);
+            s.magnetGap = j["magnet"].value("gap", s.magnetGap);
+            if (s.magnetGap < 0) s.magnetGap = 0;
+            if (s.magnetGap > 200) s.magnetGap = 200;
+            s.magnetSensitivity = j["magnet"].value("sensitivity", s.magnetSensitivity);
+            if (s.magnetSensitivity != "low" && s.magnetSensitivity != "high")
+                s.magnetSensitivity = "medium";
+        }
     }
     return s;
 }
@@ -96,6 +106,11 @@ void Store::SaveSettings(const Settings& s) {
         {"trash", {{"enabled", s.trashEnabled}, {"retentionDays", s.trashRetentionDays}}},
         {"uiScale", s.uiScale},
         {"autoHideUi", s.autoHideUi},
+        {"uiRevealOnClick", s.uiRevealOnClick},
+        {"magnet",
+         {{"enabled", s.magnetEnabled},
+          {"gap", s.magnetGap},
+          {"sensitivity", s.magnetSensitivity}}},
     };
     WriteFileAtomic(AppDir() + L"\\settings.json", j.dump(2));
 }

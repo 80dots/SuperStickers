@@ -240,12 +240,14 @@ const viewer3d = (() => {
 
       const camera = new THREE.PerspectiveCamera(50, 1, 0.01, 1000);
       const controls = new THREE.OrbitControls(camera, renderer.domElement);
-      // 좌드래그 = Orbit, 휠 = 줌, 가운데 버튼 = Pan
+      // 좌드래그 = Orbit, 가운데 버튼 = Pan, 우드래그 = 줌.
+      // 휠은 OrbitControls가 잡지 않게 두어(enableZoom=false) 메모 본문이 스크롤되게 한다.
       controls.mouseButtons = {
         LEFT: THREE.MOUSE.ROTATE,
         MIDDLE: THREE.MOUSE.PAN,
-        RIGHT: THREE.MOUSE.PAN,
+        RIGHT: null,  // 우클릭은 아래에서 직접 줌으로 처리
       };
+      controls.enableZoom = false;
       controls.enableDamping = true;
 
       const model = await loadModel(el);
@@ -327,6 +329,42 @@ const viewer3d = (() => {
       camera.near = size / 500;
       camera.far = size * 20;
       camera.updateProjectionMatrix();
+
+      // ---------- 우클릭 드래그 = 줌 ----------
+      // 위로 끌면 확대, 아래로 끌면 축소. 카메라를 target 방향으로 당기고 미는 방식이라
+      // OrbitControls의 회전·팬과 그대로 어울린다.
+      (() => {
+        const cv = renderer.domElement;
+        let zooming = false, lastY = 0;
+        const minD = size * 0.05, maxD = size * 8;  // 모델을 뚫고 들어가거나 잃어버리지 않게
+        cv.addEventListener('contextmenu', (e) => e.preventDefault());
+        cv.addEventListener('pointerdown', (e) => {
+          if (e.button !== 2) return;
+          zooming = true;
+          lastY = e.clientY;
+          cv.setPointerCapture(e.pointerId);
+          e.preventDefault();
+          e.stopPropagation();
+        });
+        cv.addEventListener('pointermove', (e) => {
+          if (!zooming) return;
+          const dy = e.clientY - lastY;
+          lastY = e.clientY;
+          const offset = camera.position.clone().sub(controls.target);
+          const d = offset.length();
+          const next = Math.min(maxD, Math.max(minD, d * Math.pow(1.01, dy)));
+          camera.position.copy(controls.target).add(offset.setLength(next));
+          e.preventDefault();
+        });
+        const end = (e) => {
+          if (!zooming) return;
+          zooming = false;
+          if (cv.hasPointerCapture(e.pointerId)) cv.releasePointerCapture(e.pointerId);
+          scheduleThumb(1500);  // 조작이 끝났으니 썸네일 갱신 (controls 'end'와 동일)
+        };
+        cv.addEventListener('pointerup', end);
+        cv.addEventListener('pointercancel', end);
+      })();
 
       function resize() {
         const w = wrap.clientWidth, h = wrap.clientHeight;

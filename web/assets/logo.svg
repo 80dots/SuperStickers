@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Super Sticker">
+  <!-- 뒤쪽 스티커 (민트) -->
+  <rect x="2.5" y="6.5" width="20" height="20" rx="3" fill="#C8F0DC" transform="rotate(-8 12.5 16.5)"/>
+  <!-- 앞쪽 스티커 (노랑) + 접힌 모서리 -->
+  <path d="M9 5.5h17.5A2.5 2.5 0 0 1 29 8v11.5L20.5 28H11.5A2.5 2.5 0 0 1 9 25.5z" fill="#FFF4B8"/>
+  <path d="M29 19.5 20.5 28v-6a2.5 2.5 0 0 1 2.5-2.5z" fill="#EBD277"/>
+  <!-- 글줄 -->
+  <g fill="#1F2328" opacity=".55">
+    <rect x="12.5" y="10.5" width="13" height="1.7" rx=".85"/>
+    <rect x="12.5" y="14.6" width="13" height="1.7" rx=".85"/>
+    <rect x="12.5" y="18.7" width="7.5" height="1.7" rx=".85"/>
+  </g>
+</svg>

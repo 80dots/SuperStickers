@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>개인정보처리방침 — Super Sticker</title>
+<meta name="description" content="Super Sticker는 사용자 데이터를 수집하지 않습니다. 모든 메모는 사용자 PC에만 저장됩니다.">
+<meta name="robots" content="index, follow">
+<link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/assets/style.css">
+<script>
+(function () {
+  try {
+    var t = localStorage.getItem('ss-theme');
+    if (t) document.documentElement.setAttribute('data-theme', t);
+    var l = localStorage.getItem('ss-lang');
+    document.documentElement.lang = l ||
+      ((navigator.language || '').toLowerCase().indexOf('ko') === 0 ? 'ko' : 'en');
+  } catch (e) {}
+})();
+</script>
+</head>
+<body>
+
+<header class="site-header">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <img src="/assets/logo.svg" alt="">
+      <span>Super Sticker</span>
+    </a>
+    <div class="header-actions" style="margin-left:auto">
+      <button class="icon-btn" id="lang-toggle" type="button">EN</button>
+      <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme">☾</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap doc">
+
+<h1><span data-lang-ko>개인정보처리방침</span><span data-lang-en>Privacy Policy</span></h1>
+<p class="updated">
+  <span data-lang-ko>최종 수정: 2026년 8월 27일</span>
+  <span data-lang-en>Last updated: 27 August 2026</span>
+</p>
+
+<p>
+  <span data-lang-ko><b>Super Sticker는 사용자의 어떤 정보도 수집하거나 전송하지 않습니다.</b>
+    앱에는 분석 도구나 사용 통계 기능이 들어 있지 않으며, 개발자가 운영하는 서버도 없습니다.</span>
+  <span data-lang-en><b>Super Sticker does not collect or transmit any of your information.</b>
+    The app contains no analytics or usage-tracking code, and there is no server operated by the
+    developer.</span>
+</p>
+
+<h2><span data-lang-ko>메모 데이터는 어디에 저장되나요</span><span data-lang-en>Where your notes are stored</span></h2>
+<p>
+  <span data-lang-ko>작성한 메모, 그룹, 첨부한 이미지·동영상, 설정값은 모두 사용자 PC의
+    <code>%APPDATA%\SuperSticker</code> 폴더에만 저장됩니다. 저장 위치는 앱의 설정에서
+    원하는 폴더로 변경할 수 있습니다. 클라우드 동기화 기능은 제공하지 않습니다.</span>
+  <span data-lang-en>Your notes, groups, attached images and video, and settings are stored only in
+    <code>%APPDATA%\SuperSticker</code> on your own PC. You can move this location in the app&rsquo;s
+    settings. There is no cloud sync.</span>
+</p>
+<p>
+  <span data-lang-ko>앱을 제거해도 이 데이터는 삭제되지 않고 보존됩니다.
+    제거 과정에서 데이터 삭제 여부를 직접 선택할 수 있습니다.</span>
+  <span data-lang-en>Uninstalling the app leaves this data in place; the uninstaller asks whether you
+    want it removed.</span>
+</p>
+
+<h2><span data-lang-ko>AI 기능</span><span data-lang-en>AI features</span></h2>
+<p>
+  <span data-lang-ko>요약, 문장 다듬기, 번역, AI Review 등 모든 AI 기능은 사용자 PC에 설치된
+    <b>Ollama</b>에 <code>http://localhost:11434</code>로 요청을 보내 처리됩니다.
+    메모 내용이 인터넷으로 나가지 않으며, OpenAI를 비롯한 외부 AI 서비스를 사용하지 않습니다.</span>
+  <span data-lang-en>Summarization, rewriting, translation and AI Review all run through
+    <b>Ollama</b> installed on your own PC, via a request to <code>http://localhost:11434</code>.
+    Note contents never leave your machine, and no third-party AI service such as OpenAI is used.</span>
+</p>
+
+<h2><span data-lang-ko>앱이 인터넷에 접속하는 경우</span><span data-lang-en>When the app connects to the internet</span></h2>
+<p>
+  <span data-lang-ko>다음은 모두 사용자가 직접 실행했을 때만 발생합니다.</span>
+  <span data-lang-en>Each of the following happens only when you initiate it.</span>
+</p>
+<ul>
+  <li>
+    <span data-lang-ko><b>웹 메모</b> — 사용자가 입력한 주소의 웹사이트에 직접 접속합니다.
+      이때 해당 웹사이트는 일반적인 브라우저 방문과 동일하게 사용자의 IP 주소와 쿠키를
+      처리할 수 있습니다.</span>
+    <span data-lang-en><b>Web notes</b> connect directly to the URL you enter. That site can see your
+      IP address and set cookies exactly as it would in a normal browser visit.</span>
+  </li>
+  <li>
+    <span data-lang-ko><b>YouTube 임베드</b> — <code>youtube-nocookie.com</code>의 개인정보 보호
+      강화 모드를 사용합니다.</span>
+    <span data-lang-en><b>YouTube embeds</b> use the privacy-enhanced <code>youtube-nocookie.com</code>
+      domain.</span>
+  </li>
+  <li>
+    <span data-lang-ko><b>Ollama 및 모델 다운로드</b> — 설정에서 다운로드를 누르면
+      Ollama 공식 서버(<code>ollama.com</code>)에 접속합니다.</span>
+    <span data-lang-en><b>Ollama and model downloads</b> contact the official Ollama servers
+      (<code>ollama.com</code>) when you start a download from the settings screen.</span>
+  </li>
+</ul>
+<p>
+  <span data-lang-ko>앱은 자동 업데이트 확인을 수행하지 않습니다. 새 버전은 이 웹사이트나
+    GitHub 릴리스 페이지에서 직접 확인해 주세요.</span>
+  <span data-lang-en>The app does not check for updates automatically. Please check this site or the
+    GitHub releases page for new versions.</span>
+</p>
+
+<h2><span data-lang-ko>이 웹사이트</span><span data-lang-en>This website</span></h2>
+<p>
+  <span data-lang-ko>이 사이트는 Cloudflare Pages에서 제공되며, 방문자 분석 도구나 광고를
+    사용하지 않고 추적 쿠키도 설정하지 않습니다. 언어와 테마 선택은 브라우저의
+    로컬 저장소에만 보관되며 외부로 전송되지 않습니다.</span>
+  <span data-lang-en>This site is served from Cloudflare Pages. It uses no visitor analytics or
+    advertising and sets no tracking cookies. Your language and theme preferences are kept in your
+    browser&rsquo;s local storage and are never transmitted.</span>
+</p>
+<p>
+  <span data-lang-ko>다운로드 버튼을 누르면 GitHub 릴리스에 보관된 파일로 이동합니다.
+    이 시점부터는 GitHub의 개인정보처리방침이 적용됩니다. 서비스 제공 과정에서
+    Cloudflare가 접속 로그를 처리할 수 있습니다.</span>
+  <span data-lang-en>Download buttons redirect to files hosted on GitHub Releases, at which point
+    GitHub&rsquo;s privacy policy applies. Cloudflare may process access logs as part of serving
+    this site.</span>
+</p>
+
+<h2><span data-lang-ko>문의</span><span data-lang-en>Contact</span></h2>
+<p>
+  <span data-lang-ko>질문이 있으시면 <a href="https://github.com/80dots/SuperStickers/issues">GitHub
+    이슈</a>로 남겨 주세요.</span>
+  <span data-lang-en>Please open a <a href="https://github.com/80dots/SuperStickers/issues">GitHub
+    issue</a> with any questions.</span>
+</p>
+
+<p style="margin-top:40px">
+  <a href="/">&larr; <span data-lang-ko>홈으로</span><span data-lang-en>Back to home</span></a>
+</p>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <span>&copy; 2026 minkyu</span>
+    <a href="https://github.com/80dots/SuperStickers">GitHub</a>
+    <span class="spacer">MIT License</span>
+  </div>
+</footer>
+
+<script src="/assets/app.js"></script>
+</body>
+</html>
