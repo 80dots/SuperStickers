@@ -18,6 +18,7 @@ public:
     static GroupWindow* Create(HINSTANCE hinst, const GroupData& g, bool show, bool activate);
 
     HWND hwnd() const { return hwnd_; }  // backdrop (위치·크기·드롭 판정 기준)
+    HWND contentHwnd() const { return contentHwnd_; }
     WebViewHost& host() { return host_; }
 
     GroupData data;
@@ -27,6 +28,9 @@ public:
     void OnThemeChanged();
     void ApplyAppearance();        // 배경 브러시 + 알파 갱신
     void SetDropHover(bool on);    // 스티커 드래그 중 하이라이트 테두리
+    void SetTopmost(bool on);      // 항상 위 고정 (backdrop + content)
+    // 현재 창 rect를 data.x/y/w/h에 기록 (UI 자동 숨김은 메모창 전용이라 보정 없음)
+    void StoreGeometryFromWindow();
     void SaveData();
     void Destroy();
 

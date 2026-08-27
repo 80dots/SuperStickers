@@ -6,8 +6,8 @@
   const mdSource = $('#mdSource');
   const mdPreview = $('#mdPreview');
 
-  let effectiveTheme = init.theme || 'light';
-  const isDark = () => effectiveTheme === 'dark';
+  // 메모창은 테마 불변 — 항상 라이트 기준으로 렌더링
+  const isDark = () => false;
 
   await i18n.load(init.lang);
   i18n.apply();
@@ -164,6 +164,10 @@
     });
   });
 
+  $('#managerBtn').addEventListener('click', () => {
+    bridge.call('app.openManager', { tab: 'list' }).catch(console.error);
+  });
+
   $('#pinBtn').addEventListener('click', () => {
     const on = !$('#pinBtn').classList.contains('on');
     $('#pinBtn').classList.toggle('on', on);
@@ -197,9 +201,9 @@
   function renderTags() {
     const chips = $('#tagChips');
     chips.innerHTML = '';
-    (data.tags || []).forEach((t) => {
+    const mkChip = (t, isAi) => {
       const chip = document.createElement('span');
-      chip.className = 'tag-chip';
+      chip.className = 'tag-chip' + (isAi ? ' ai' : '');
       const label = document.createElement('span');
       label.textContent = '#' + t;
       const x = document.createElement('button');
@@ -207,14 +211,21 @@
       x.textContent = '✕';
       x.title = i18n.t('tags.remove');
       x.addEventListener('click', () => {
-        data.tags = data.tags.filter((v) => v !== t);
+        if (isAi) {
+          data.aiTags = (data.aiTags || []).filter((v) => v !== t);
+          saveMeta({ aiTags: data.aiTags });
+        } else {
+          data.tags = (data.tags || []).filter((v) => v !== t);
+          saveMeta({ tags: data.tags });
+        }
         renderTags();
-        saveMeta({ tags: data.tags });
       });
       chip.appendChild(label);
       chip.appendChild(x);
       chips.appendChild(chip);
-    });
+    };
+    (data.tags || []).forEach((t) => mkChip(t, false));   // 사용자 태그
+    (data.aiTags || []).forEach((t) => mkChip(t, true));  // AI 생성 태그 (다른 색)
   }
   function addTags(list) {
     const cur = new Set(data.tags || []);
@@ -224,8 +235,16 @@
     });
     if (changed) {
       data.tags = [...cur];
+      const patch = { tags: data.tags };
+      // 같은 이름의 AI 태그가 있으면 사용자 태그로 승격 (AI 목록에서 제거)
+      const lower = new Set(data.tags.map((t) => t.toLowerCase()));
+      const newAi = (data.aiTags || []).filter((t) => !lower.has(t.toLowerCase()));
+      if (newAi.length !== (data.aiTags || []).length) {
+        data.aiTags = newAi;
+        patch.aiTags = newAi;
+      }
       renderTags();
-      saveMeta({ tags: data.tags });
+      saveMeta(patch);
     }
   }
   if (isText) {
@@ -356,12 +375,32 @@
   renderStTitle();
 
   // ---------- AI 요약 (메모 상단) ----------
+  // AI Review 오류는 이 시간이 지나면 스스로 사라지고 원래 요약으로 돌아간다
+  const SUMMARY_ERROR_MS = 5000;
+  let summaryErrorTimer = 0;
+  function clearSummaryErrorTimer() {
+    clearTimeout(summaryErrorTimer);
+    summaryErrorTimer = 0;
+  }
+
   function renderSummary(errorMsg) {
     const box = $('#summaryBox');
+    clearSummaryErrorTimer();
     if (errorMsg) {
       box.classList.remove('hidden');
       box.classList.add('error');
       $('#summaryText').textContent = errorMsg;
+      // CSS 애니메이션과 JS 타이머가 같은 값을 쓰도록 지속 시간을 직접 넣는다
+      box.style.setProperty('--summary-timeout', SUMMARY_ERROR_MS + 'ms');
+      // 연속 오류에도 바가 처음부터 다시 흐르도록 애니메이션 재시작
+      const bar = $('#summaryTimerBar');
+      bar.style.animation = 'none';
+      void bar.offsetWidth;  // 리플로우 강제 (없으면 재시작되지 않음)
+      bar.style.animation = '';
+      summaryErrorTimer = setTimeout(() => {
+        summaryErrorTimer = 0;
+        renderSummary();  // 저장된 요약으로 복귀 (없으면 상자 숨김)
+      }, SUMMARY_ERROR_MS);
       return;
     }
     box.classList.remove('error');
@@ -380,9 +419,9 @@
     const btn = $('#aiReviewBtn');
     btn.classList.remove('hidden');
     const busy = !!reviewRequestId;
+    btn.disabled = busy;  // 항상 실행 가능 — 분석 진행 중에만 잠금(중복 방지)
     const need = !busy && !!data.needsReview && !!noteText();
-    btn.disabled = !need && !busy;
-    btn.classList.toggle('need', need);
+    btn.classList.toggle('need', need);  // 새 내용 입력 시에는 강조 표시 유지
     btn.classList.toggle('busy', busy);
   }
   function parseReviewJson(text) {
@@ -401,6 +440,7 @@
     reviewBuf = '';
     reviewRequestId = 'review-' + Date.now();
     setReviewState();
+    clearSummaryErrorTimer();  // 새 리뷰 시작 — 이전 오류의 자동 소멸 예약 취소
     $('#summaryBox').classList.remove('hidden', 'error');
     $('#summaryText').textContent = i18n.t('review.working');
     const messages = [
@@ -421,7 +461,8 @@
       { role: 'user', content: text },
     ];
     bridge.call('ollama.chat',
-                { requestId: reviewRequestId, ownerId: init.stickerId, messages })
+                { requestId: reviewRequestId, ownerId: init.stickerId, messages,
+                  format: 'json' })  // Ollama JSON 강제 — 형식 파싱 실패 방지
       .catch((e) => {
       reviewRequestId = null;
       renderSummary(/no model/.test(e.message) ? i18n.t('ai.noModel')
@@ -461,9 +502,11 @@
       }
       if (!data.viewLang) data.viewLang = data.srcLang;  // 기본 표시는 원문 언어
       if (Array.isArray(r.tags)) {
-        const cur = new Set(data.tags || []);
-        r.tags.map((t) => normalizeTag(String(t))).filter(Boolean).forEach((t) => cur.add(t));
-        data.tags = [...cur];
+        // AI 태그는 리뷰마다 새로 대체 — 사용자 태그는 보존, 중복되는 AI 태그는 제외
+        const userSet = new Set((data.tags || []).map((t) => t.toLowerCase()));
+        data.aiTags = [...new Set(
+          r.tags.map((t) => normalizeTag(String(t))).filter(Boolean))]
+          .filter((t) => !userSet.has(t.toLowerCase()));
       }
       data.needsReview = false;
       renderTags();
@@ -479,6 +522,7 @@
         srcLang: data.srcLang,
         viewLang: data.viewLang || '',
         tags: data.tags || [],
+        aiTags: data.aiTags || [],
         needsReview: false,
       });
     });
@@ -514,6 +558,19 @@
     editor.dataset.placeholder = i18n.t('editor.placeholder');
     editor.innerHTML = data.html || '';
     editorCore.init(editor, scheduleSave);
+    // 저장돼 있던 3D 임베드에 뷰어 마운트 (UI는 Shadow DOM — 저장 HTML 미오염)
+    editor.querySelectorAll('.embed3d').forEach((el) => viewer3d.mount(el, scheduleSave));
+    // 3D 파일 드롭은 미디어 드롭보다 먼저 가로챈다
+    editor.addEventListener('drop', (e) => {
+      const files = [...(e.dataTransfer?.files || [])];
+      const model = files.find((f) => /\.(glb|gltf|obj|stl)$/i.test(f.name));
+      if (!model) return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      bridge.callWithFiles('model.importPath', {}, [model])
+        .then((r) => window.__insertModel3d(r.path))
+        .catch(console.error);
+    });
     editor.addEventListener('paste', mediaTools.handlePaste);
     editor.addEventListener('drop', mediaTools.handleDrop);
     editor.addEventListener('dragover', (e) => e.preventDefault());
@@ -560,6 +617,22 @@
     });
     $('#imageBtn').addEventListener('click', () => mediaTools.pickImageFile());
     $('#videoBtn').addEventListener('click', () => mediaTools.pickVideo());
+
+    // 3D 모델 삽입 (rich 전용 — 원본 파일 경로 참조, 복사하지 않음)
+    function insertModel3d(path) {
+      const el = viewer3d.createElement(path);
+      editorCore.insertNodeAtCaret(el);
+      viewer3d.mount(el, scheduleSave);
+      scheduleSave();
+    }
+    window.__insertModel3d = insertModel3d;
+    $('#model3dBtn').addEventListener('click', () => {
+      if (type !== 'rich') return;
+      bridge.call('model.pick')
+        .then((r) => { if (!r.cancelled) insertModel3d(r.path); })
+        .catch(console.error);
+    });
+    if (type !== 'rich') $('#model3dBtn').classList.add('hidden');
 
     window.__insertMedia = {
       isMarkdown: () => type === 'markdown',
@@ -953,13 +1026,99 @@
     });
   }
 
+  // ---------- UI 자동 숨김 (헤더 + 서식 툴바) ----------
+  // 마우스가 창을 벗어나고 3초 뒤: 헤더/서식 툴바를 페이드 아웃한 다음 네이티브가
+  // 창 가장자리만 200ms 동안 부드럽게 줄인다. 페이지 레이아웃은 절대 바꾸지 않으며,
+  // 네이티브가 WebView 자식 창을 화면에 고정(핀)하므로 본문은 1px도 움직이지 않는다
+  // — 잘려나가는 부분은 이미 투명해진 헤더/툴바 영역뿐이다. 펼칠 때는 역순.
+  (() => {
+    const header = $('#titlebar');
+    const toolbar = $('#toolbar');
+    const root = document.documentElement;
+    const FADE_MS = 180, RESIZE_MS = 200, HIDE_DELAY_MS = 3000, INITIAL_DELAY_MS = 3000;
+    let enabled = init.autoHideUi !== false;
+    let state = 'expanded';  // 'expanded' | 'fading'(페이드 아웃 중) | 'collapsed'
+    let timer = 0;
+
+    // 접기 대상: 헤더는 항상, 서식 툴바는 표시 중일 때만 (file/web/pdf 메모는 툴바 없음)
+    const parts = () => {
+      const els = [header];
+      if (toolbar && !toolbar.classList.contains('hidden')) els.push(toolbar);
+      return els;
+    };
+    // 팝오버가 열려 있으면 접지 않는다
+    const popoverOpen = () =>
+      !$('#newMenu').classList.contains('hidden') ||
+      !$('#colorPopover').classList.contains('hidden');
+    // 텍스트 입력 중(에디터·마크다운·태그·타이틀·URL 입력에 캐럿이 있음)에는 숨기지 않는다
+    const isEditing = () => {
+      if (!document.hasFocus()) return false;
+      const a = document.activeElement;
+      return !!a && (a.isContentEditable || a.tagName === 'TEXTAREA' || a.tagName === 'INPUT');
+    };
+    const canCollapse = () => !root.matches(':hover') && !isEditing() && !popoverOpen();
+    const unfade = () =>
+      document.querySelectorAll('.autofade').forEach((el) => el.classList.remove('autofade'));
+
+    async function collapse() {
+      if (!enabled || state !== 'expanded' || !canCollapse()) return;
+      const els = parts();
+      state = 'fading';
+      els.forEach((el) => el.classList.add('autofade'));
+      await new Promise((r) => setTimeout(r, FADE_MS + 40));
+      if (state !== 'fading') return;  // 도중에 expand()가 취소함
+      if (!enabled || !canCollapse()) {
+        state = 'expanded';
+        unfade();
+        return;
+      }
+      state = 'collapsed';
+      // 창 축소량 = 요소가 레이아웃에서 차지하는 높이 (레이아웃은 그대로, 창만 줄어
+      // 그 영역이 잘린다)
+      const top = header.offsetHeight;
+      const bottom = els.includes(toolbar) ? toolbar.offsetHeight : 0;
+      bridge.call('window.setCollapse', { top, bottom }).catch(() => {});
+    }
+
+    function expand(withFade) {
+      clearTimeout(timer);
+      if (state === 'fading') {
+        state = 'expanded';
+        unfade();
+        return;
+      }
+      if (state !== 'collapsed') return;
+      state = 'expanded';
+      bridge.call('window.setCollapse', { top: 0, bottom: 0 }).catch(() => {});
+      if (withFade === false) unfade();
+      else setTimeout(unfade, RESIZE_MS + 30);  // 창이 다 커진 뒤 페이드 인
+    }
+
+    const schedule = () => {
+      if (!enabled) return;
+      clearTimeout(timer);
+      timer = setTimeout(collapse, HIDE_DELAY_MS);
+    };
+    root.addEventListener('mouseenter', () => expand(true));
+    root.addEventListener('mouseleave', schedule);
+    // 입력을 마치고 포커스가 떠나거나 창이 비활성화되면 (마우스도 밖이면) 숨김 예약
+    document.addEventListener('focusout', schedule);
+    window.addEventListener('blur', schedule);
+    // 키보드 포커스로 입력이 재개되면 (Alt+Tab 복귀 등) 접힌 UI를 되살린다
+    window.addEventListener('focus', () => { if (isEditing()) expand(true); });
+
+    bridge.on('ui.autoHideChanged', (d) => {
+      enabled = !!d.on;
+      if (!enabled) expand(false);
+      else if (canCollapse()) collapse();
+    });
+
+    // 최초 로드: 잠시 뒤 마우스가 창 위에 없고 입력 중도 아니면 접는다
+    setTimeout(() => { if (enabled && canCollapse()) collapse(); }, INITIAL_DELAY_MS);
+  })();
+
   // ---------- 네이티브 이벤트 ----------
-  bridge.on('theme.changed', (d) => {
-    effectiveTheme = d.effective;
-    document.documentElement.dataset.theme = d.effective;
-    colorUtil.apply(data.color, isDark());
-    updateColorDot();
-  });
+  // (테마 변경은 메모창에 영향 없음 — theme.changed 무시)
   bridge.on('locale.changed', async (d) => {
     await i18n.load(d.lang);
     i18n.apply();

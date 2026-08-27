@@ -25,6 +25,7 @@ body {
   gap: 6px;
   height: 30px;  /* 아이콘(26px 버튼)은 유지하고 상하 여백만 축소 */
   padding: 0 6px;
+  border-radius: 8px;  /* region 라운드와 일치 (모서리 안티앨리어싱) */
   background: var(--panel-bg);
   border-bottom: 1px solid var(--border);
   flex: none;
@@ -120,7 +121,7 @@ body.tinted #emptyHint { color: inherit; opacity: 0.55; }
 #gcolorPopover {
   position: absolute;
   top: 31px;
-  right: 60px;
+  left: 6px;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -215,7 +216,10 @@ body.tinted #emptyHint { color: inherit; opacity: 0.55; }
 #cards.grid .gcard-body { overflow-y: auto; min-height: 0; }
 
 /* 혼합(masonry): 내용 길이에 따라 카드 높이가 달라짐 (개별 높이 지정 시 고정) */
-#cards.masonry {
+/* 다단은 내부 래퍼(.mwrap)에 적용 — 래퍼 높이는 auto라 열이 폭 기준으로만 결정되고,
+   넘치는 내용은 #cards가 세로 스크롤한다 (창을 좁혀도 카드가 옆으로 잘리지 않음) */
+#cards.masonry { display: block; }
+#cards.masonry .mwrap {
   columns: 190px;
   column-gap: 10px;
 }
@@ -224,6 +228,9 @@ body.tinted #emptyHint { color: inherit; opacity: 0.55; }
   margin-bottom: 10px;
 }
 #cards.masonry .gcard-body { max-height: 480px; overflow-y: auto; min-height: 0; }
+/* 개별 높이를 지정한 카드: 본문 상한을 풀어 flex가 카드 전체를 채우게 —
+   핸들이 항상 카드 아래 끝에 붙어서 함께 움직인다 */
+#cards.masonry .gcard.fixed-h .gcard-body { max-height: none; }
 
 /* 목록: 한 열 전체 폭, 각 행 높이 개별 조정 가능 */
 #cards.list {
@@ -343,6 +350,14 @@ body.tinted #emptyHint { color: inherit; opacity: 0.55; }
   border-radius: 5px;
   padding: 6px 8px;
   overflow-x: auto;
+}
+/* 그룹 카드 안의 3D 임베드: 썸네일 이미지 크기 (스티커 창보다 작게) */
+.gcard-body .embed3d {
+  display: block;
+  width: 100%;
+  height: 130px;
+  margin: 4px 0;
+  user-select: none;
 }
 .gcard-body blockquote { border-left: 3px solid currentColor; padding-left: 8px; opacity: 0.8; }
 .gcard-body input[type="checkbox"] { accent-color: var(--accent); margin-right: 5px; }

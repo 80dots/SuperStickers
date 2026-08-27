@@ -62,12 +62,9 @@ const colorUtil = (() => {
     return [hue2rgb(p, q, h + 1 / 3) * 255, hue2rgb(p, q, h) * 255, hue2rgb(p, q, h - 1 / 3) * 255];
   }
 
-  // 유효 배경색: 라이트 = 그대로, 다크 = 어둡고 채도 낮은 변형 (Theme.cpp와 동일)
+  // 유효 배경색: 테마와 무관하게 사용자가 고른 색 그대로 (Theme.cpp StickerColor와 동일)
   function effectiveBg(color, dark) {
-    const hex = normalize(color);
-    if (!dark) return hex;
-    const [h, s, l] = rgbToHsl(hexToRgb(hex));
-    return rgbToHex(hslToRgb([h, s * 0.40, 0.18 + 0.12 * l]));
+    return normalize(color);
   }
 
   // 배경 대비에 따른 글자색

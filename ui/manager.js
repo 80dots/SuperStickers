@@ -25,9 +25,11 @@
     $('#groupsTab').classList.toggle('hidden', name !== 'groups');
     $('#trashTab').classList.toggle('hidden', name !== 'trash');
     $('#settingsTab').classList.toggle('hidden', name !== 'settings');
+    $('#dataTab').classList.toggle('hidden', name !== 'data');
     if (name === 'list') refreshList();
     if (name === 'groups') refreshGroups();
     if (name === 'trash') refreshTrash();
+    if (name === 'data') refreshDataPath();
     if (name === 'settings') {
       refreshTrashCount();
       runConnectTest();  // Ollama 상태 자동 확인 (미설치면 설치 버튼 노출)
@@ -51,6 +53,33 @@
     return d.toLocaleString(i18n.lang === 'ko' ? 'ko-KR' : 'en-US', {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     });
+  }
+
+  // 카드 액션용 아이콘 버튼 (목록·그룹·휴지통 탭 공용)
+  const ICONS = {
+    open: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M13 9v4H3V3h4"/><path fill="currentColor" d="M9 2h5v5l-1.9-1.9-4 4L6.9 8l4-4z"/></svg>',
+    del: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M6 2h4l.5 1H14v1.5H2V3h3.5zM3 6h10l-.8 8.2c-.1.5-.5.8-1 .8H4.8c-.5 0-.9-.3-1-.8z"/></svg>',
+    export: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M2.6 10.2v2.6c0 .6.5 1.1 1.1 1.1h8.6c.6 0 1.1-.5 1.1-1.1v-2.6"/><path fill="currentColor" d="M8 1.6 11.4 5H9.1v5.1H6.9V5H4.6z"/></svg>',
+    restore: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M8 3a5.5 5.5 0 1 1-5.2 7.3l1.5-.5A4 4 0 1 0 8 4.5v2L4.5 3.8 8 1z"/></svg>',
+  };
+  // 표시/숨김 상태 아이콘 (뜬 눈 / 감은 눈)
+  function visibilityIcon(hidden) {
+    const el = document.createElement('span');
+    el.className = 'eye' + (hidden ? ' off' : '');
+    el.title = i18n.t(hidden ? 'manager.hiddenBadge' : 'manager.visibleBadge');
+    el.innerHTML = hidden
+      ? '<svg viewBox="0 0 16 16" width="14" height="14"><g fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"><path d="M2 6.4c1.6 2.1 3.6 3.2 6 3.2s4.4-1.1 6-3.2"/><path d="M3.2 8.6 2 10.4M6.2 9.9 5.6 12M9.8 9.9l.6 2.1M12.8 8.6 14 10.4"/></g></svg>'
+      : '<svg viewBox="0 0 16 16" width="14" height="14"><g fill="none" stroke="currentColor" stroke-width="1.3"><path d="M1.6 8S4 4.2 8 4.2 14.4 8 14.4 8 12 11.8 8 11.8 1.6 8 1.6 8z"/><circle cx="8" cy="8" r="1.9"/></g></svg>';
+    return el;
+  }
+
+  function iconBtn(icon, titleKey, onClick, danger) {
+    const b = document.createElement('button');
+    b.className = 'icon-btn' + (danger ? ' del' : '');
+    b.innerHTML = ICONS[icon];
+    b.title = i18n.t(titleKey);
+    b.onclick = onClick;
+    return b;
   }
 
   // 스티커 데이터 → 카드 미리보기 요소 (목록·휴지통 탭 공용)
@@ -99,29 +128,23 @@
         const date = document.createElement('span');
         date.textContent = fmtDate(s.updatedAt);
         meta.appendChild(date);
-        if (s.hidden) {
-          const badge = document.createElement('span');
-          badge.className = 'badge';
-          badge.textContent = i18n.t('manager.hiddenBadge');
-          meta.appendChild(badge);
-        }
+        meta.appendChild(visibilityIcon(!!s.hidden));
         const spacer = document.createElement('span');
         spacer.className = 'spacer';
         meta.appendChild(spacer);
 
         const actions = document.createElement('span');
         actions.className = 'actions';
-        const openBtn = document.createElement('button');
-        openBtn.textContent = i18n.t('manager.open');
-        openBtn.onclick = () => bridge.call('stickers.show', { id: s.id });
-        const delBtn = document.createElement('button');
-        delBtn.className = 'del';
-        delBtn.textContent = i18n.t('manager.delete');
-        delBtn.onclick = async () => {
+        const openBtn = iconBtn('open', 'manager.open',
+          () => bridge.call('stickers.show', { id: s.id }));
+        const exportBtn = iconBtn('export', 'manager.export',
+          () => bridge.call('sticker.export', { id: s.id }).catch(console.error));
+        const delBtn = iconBtn('del', 'manager.delete', async () => {
           const r = await bridge.call('stickers.delete', { id: s.id });
           if (r && r.deleted) setTimeout(refreshList, 200);
-        };
+        }, true);
         actions.appendChild(openBtn);
+        actions.appendChild(exportBtn);
         actions.appendChild(delBtn);
         meta.appendChild(actions);
         card.appendChild(meta);
@@ -132,6 +155,76 @@
   $('#newStickerBtn').addEventListener('click', () => {
     bridge.call('stickers.new');
     setTimeout(refreshList, 300);
+  });
+
+  // ---------- .ssticker 내보내기 / 가져오기 ----------
+  let hintTimer = 0;
+  function showListStatus(msg, ok) {
+    const el = $('#importHint');
+    el.textContent = msg;
+    el.className = 'hint status ' + (ok ? 'ok' : 'err');
+    clearTimeout(hintTimer);
+    hintTimer = setTimeout(() => {
+      el.className = 'hint';
+      el.textContent = i18n.t('manager.importHint');
+    }, 5000);
+  }
+
+  bridge.on('sticker.exportDone', (d) => {
+    showListStatus(d.ok ? i18n.t('manager.exportDone') : i18n.t('manager.exportFailed'), d.ok);
+  });
+
+  $('#importStickerBtn').addEventListener('click', async () => {
+    try {
+      const r = await bridge.call('stickers.import');
+      if (r && r.count) {
+        setTimeout(refreshList, 300);
+        showListStatus(i18n.t('manager.importDone').replace('{n}', r.count), true);
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  });
+
+  bridge.on('stickers.changed', () => {
+    if (!$('#listTab').classList.contains('hidden')) refreshList();
+  });
+
+  // .ssticker 드래그앤드롭 — 파일 경로는 네이티브가 File 객체에서 뽑아
+  // stickers.importPaths의 params.paths로 합쳐 받는다 (bridge.callWithFiles)
+  const listTab = $('#listTab');
+  let dragDepth = 0;  // 자식 요소 진입/이탈로 dragleave가 여러 번 오는 것 보정
+  const isSticker = (f) => /\.ssticker$/i.test(f.name || '');
+  listTab.addEventListener('dragenter', (e) => {
+    if (![...(e.dataTransfer?.items || [])].some((it) => it.kind === 'file')) return;
+    e.preventDefault();
+    dragDepth += 1;
+    listTab.classList.add('dropping');
+  });
+  listTab.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+  });
+  listTab.addEventListener('dragleave', () => {
+    dragDepth = Math.max(0, dragDepth - 1);
+    if (!dragDepth) listTab.classList.remove('dropping');
+  });
+  listTab.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dragDepth = 0;
+    listTab.classList.remove('dropping');
+    const files = [...(e.dataTransfer?.files || [])].filter(isSticker);
+    if (!files.length) return;
+    bridge.callWithFiles('stickers.importPaths', {}, files)
+      .then((r) => {
+        if (r && r.count) {
+          setTimeout(refreshList, 300);
+          showListStatus(i18n.t('manager.importDone').replace('{n}', r.count), true);
+        } else {
+          showListStatus(i18n.t('manager.importFailed'), false);
+        }
+      })
+      .catch(console.error);
   });
   window.addEventListener('focus', () => {
     if (!$('#listTab').classList.contains('hidden')) refreshList();
@@ -175,29 +268,20 @@
         count.textContent =
           i18n.t('manager.memberCount').replace('{n}', (g.memberIds || []).length);
         meta.appendChild(count);
-        if (g.hidden) {
-          const badge = document.createElement('span');
-          badge.className = 'badge';
-          badge.textContent = i18n.t('manager.hiddenBadge');
-          meta.appendChild(badge);
-        }
+        meta.appendChild(visibilityIcon(!!g.hidden));
         const spacer = document.createElement('span');
         spacer.className = 'spacer';
         meta.appendChild(spacer);
 
         const actions = document.createElement('span');
         actions.className = 'actions';
-        const openBtn = document.createElement('button');
-        openBtn.textContent = i18n.t('manager.open');
-        openBtn.onclick = () => bridge.call('groups.show', { id: g.id });
-        const delBtn = document.createElement('button');
-        delBtn.className = 'del';
-        delBtn.textContent = i18n.t('manager.delete');
-        delBtn.onclick = async () => {
+        const openBtn = iconBtn('open', 'manager.open',
+          () => bridge.call('groups.show', { id: g.id }));
+        const delBtn = iconBtn('del', 'manager.delete', async () => {
           // 확인 팝업은 네이티브에서 수행 (그룹은 해체되고 메모는 개별 스티커로 분리)
           const r = await bridge.call('groups.delete', { id: g.id });
           if (r && r.deleted) setTimeout(refreshGroups, 300);
-        };
+        }, true);
         actions.appendChild(openBtn);
         actions.appendChild(delBtn);
         meta.appendChild(actions);
@@ -234,20 +318,15 @@
 
         const actions = document.createElement('span');
         actions.className = 'actions';
-        const restoreBtn = document.createElement('button');
-        restoreBtn.textContent = i18n.t('manager.restore');
-        restoreBtn.onclick = async () => {
+        const restoreBtn = iconBtn('restore', 'manager.restore', async () => {
           await bridge.call('trash.restore', { id: s.id });
           setTimeout(refreshTrash, 200);
-        };
-        const purgeBtn = document.createElement('button');
-        purgeBtn.className = 'del';
-        purgeBtn.textContent = i18n.t('manager.purge');
-        purgeBtn.onclick = async () => {
+        });
+        const purgeBtn = iconBtn('del', 'manager.purge', async () => {
           // 최종 확인은 네이티브 팝업에서 수행
           const r = await bridge.call('trash.purge', { id: s.id });
           if (r && r.purged) refreshTrash();
-        };
+        }, true);
         actions.appendChild(restoreBtn);
         actions.appendChild(purgeBtn);
         meta.appendChild(actions);
@@ -257,6 +336,14 @@
   }
 
   // ---------- 설정 ----------
+  // 보관 기간 버튼 라벨 (일수는 로케일 문구에 대입)
+  function buildTrashDaysLabels() {
+    document.querySelectorAll('#trashDaysSeg button').forEach((b) => {
+      const d = Number(b.dataset.days);
+      if (d > 0) b.textContent = i18n.t('settings.trashDays').replace('{n}', d);
+    });
+  }
+
   function applySettingsUi() {
     const s = state.settings;
     document.querySelectorAll('#themeSeg button').forEach((b) =>
@@ -268,16 +355,26 @@
     $('#uiScaleSelect').value = String(
       opts.reduce((a, b) => (Math.abs(b - scale) < Math.abs(a - scale) ? b : a)));
     $('#autostartCheck').checked = !!s.autostart;
+    $('#autoHideCheck').checked = s.autoHideUi !== false;  // 기본값 On
     $('#endpointInput').value = s.ollama.endpoint;
     setModelOptions(s.ollama.model ? [s.ollama.model] : [], s.ollama.model);
 
     const t = s.trash;
     $('#trashEnabledCheck').checked = !!t.enabled;
-    const noAuto = t.retentionDays === 0;
-    $('#trashNoAutoCheck').checked = noAuto;
-    $('#trashDaysInput').value = noAuto ? 30 : t.retentionDays;
-    $('#trashDaysInput').disabled = noAuto || !t.enabled;
-    $('#trashNoAutoCheck').disabled = !t.enabled;
+    buildTrashDaysLabels();
+    // 보관 기간: 테마 세그먼트와 동일한 UI. 저장값과 가장 가까운 옵션을 선택 표시
+    const btns = [...document.querySelectorAll('#trashDaysSeg button')];
+    const days = Number(t.retentionDays) || 0;
+    const dayOpts = btns.map((b) => Number(b.dataset.days));
+    const sel = dayOpts.includes(days)
+      ? days
+      : dayOpts.filter((v) => v > 0)
+               .reduce((a, b) => (Math.abs(b - days) < Math.abs(a - days) ? b : a));
+    btns.forEach((b) => {
+      b.classList.toggle('on', Number(b.dataset.days) === sel);
+      b.disabled = !t.enabled;
+    });
+    $('#trashDaysSeg').classList.toggle('disabled', !t.enabled);
   }
 
   async function refreshTrashCount() {
@@ -326,6 +423,12 @@
     bridge.call('settings.set', { autostart: e.target.checked });
   });
 
+  // 자동 숨김: 저장 + 모든 메모창·그룹창에 즉시 반영 (네이티브가 ui.autoHideChanged 방송)
+  $('#autoHideCheck').addEventListener('change', (e) => {
+    state.settings.autoHideUi = e.target.checked;
+    bridge.call('settings.set', { autoHideUi: e.target.checked }).catch(console.error);
+  });
+
   // ---------- 휴지통 설정 ----------
   $('#trashEnabledCheck').addEventListener('change', (e) => {
     state.settings.trash.enabled = e.target.checked;
@@ -333,22 +436,14 @@
     bridge.call('settings.set', { trash: { enabled: e.target.checked } });
   });
 
-  $('#trashDaysInput').addEventListener('change', (e) => {
-    let v = Math.round(Number(e.target.value));
-    if (!Number.isFinite(v) || v < 1) v = 1;
-    if (v > 36500) v = 36500;
-    e.target.value = v;
-    state.settings.trash.retentionDays = v;
-    bridge.call('settings.set', { trash: { retentionDays: v } });
-  });
-
-  $('#trashNoAutoCheck').addEventListener('change', (e) => {
-    const days = e.target.checked ? 0 : (Math.round(Number($('#trashDaysInput').value)) || 30);
-    state.settings.trash.retentionDays = days;
-    applySettingsUi();
-    bridge.call('settings.set', { trash: { retentionDays: days } });
-    refreshTrashCount();  // 기간 단축으로 즉시 정리됐을 수 있음
-  });
+  document.querySelectorAll('#trashDaysSeg button').forEach((b) =>
+    b.addEventListener('click', () => {
+      const days = Number(b.dataset.days);
+      state.settings.trash.retentionDays = days;
+      applySettingsUi();
+      bridge.call('settings.set', { trash: { retentionDays: days } });
+      refreshTrashCount();  // 기간 단축으로 즉시 정리됐을 수 있음
+    }));
 
   $('#emptyTrashBtn').addEventListener('click', async () => {
     // 최종 확인은 네이티브 팝업에서 수행
@@ -377,7 +472,7 @@
   let testRequestId = null;
   function runConnectTest() {
     const status = $('#ollamaStatus');
-    status.className = 'status';
+    status.className = 'status busy';  // 결과 도착 시 ok/err로 교체되며 스피너가 사라진다
     status.textContent = i18n.t('settings.testing');
     testRequestId = 'test-' + Date.now();
     bridge.call('ollama.listModels', {
@@ -391,7 +486,7 @@
     if (d.requestId !== testRequestId) return;
     const status = $('#ollamaStatus');
     if (d.ok) {
-      $('#installRow').classList.add('hidden');
+      // 결과 표시를 먼저 — 뒤따르는 DOM 작업이 실패해도 "확인 중…"에 멈추지 않는다
       if (d.models.length === 0) {
         status.className = 'status err';
         status.textContent = i18n.t('settings.noModels');
@@ -399,6 +494,8 @@
         status.className = 'status ok';
         status.textContent = `${i18n.t('settings.connected')} (${d.models.length})`;
       }
+      // 연결 성공 시 다운로드 섹션은 건드리지 않는다 (기본 접힘 상태이고,
+      // 사용자가 모델 내려받는 중일 수 있어 임의로 닫으면 안 됨)
       const cur = state.settings.ollama.model;
       setModelOptions(d.models, d.models.includes(cur) ? cur : '');
     } else {
@@ -574,6 +671,67 @@
       $('#pullStatus').textContent =
         d.error === 'aborted' ? i18n.t('ai.aborted')
                               : `${i18n.t('settings.pullFailed')}: ${d.error}`;
+    }
+  });
+
+  // ---------- 데이터 탭 ----------
+  async function refreshDataPath() {
+    try {
+      const r = await bridge.call('data.getPath');
+      $('#dataPathText').textContent = r.path;
+    } catch (e) { console.error(e); }
+  }
+
+  $('#openDataFolderBtn').addEventListener('click', () => {
+    bridge.call('data.openFolder').catch(console.error);
+  });
+
+  $('#changeDataDirBtn').addEventListener('click', () => {
+    // 폴더 선택·확인·복사·재시작은 모두 네이티브에서 진행
+    bridge.call('data.changeLocation').catch(console.error);
+  });
+
+  $('#backupBtn').addEventListener('click', async () => {
+    try {
+      const r = await bridge.call('data.backup');
+      if (r && r.started) {
+        $('#backupBtn').disabled = true;
+        $('#backupStatus').className = 'status';
+        $('#backupStatus').textContent = i18n.t('data.backingUp');
+      }
+    } catch (e) {
+      $('#backupStatus').className = 'status err';
+      $('#backupStatus').textContent = `${i18n.t('ai.error')}: ${e.message}`;
+    }
+  });
+
+  $('#deleteAllBtn').addEventListener('click', async () => {
+    // 확인 팝업(2단계)은 네이티브에서 수행 — 되돌릴 수 없는 작업
+    try {
+      const r = await bridge.call('data.deleteAll');
+      if (r && r.deleted) {
+        refreshList();
+        refreshTrashCount();
+      }
+    } catch (e) { console.error(e); }
+  });
+
+  // 전체 삭제 후 열려 있는 목록 갱신
+  bridge.on('data.cleared', () => {
+    refreshList();
+    refreshGroups();
+    refreshTrash();
+    refreshTrashCount();
+  });
+
+  bridge.on('data.backupDone', (d) => {
+    $('#backupBtn').disabled = false;
+    if (d.ok) {
+      $('#backupStatus').className = 'status ok';
+      $('#backupStatus').textContent = `${i18n.t('data.backupDone')}: ${d.path}`;
+    } else {
+      $('#backupStatus').className = 'status err';
+      $('#backupStatus').textContent = i18n.t('data.backupFailed');
     }
   });
 

@@ -104,14 +104,14 @@ void OllamaClient::ListModels(
 void OllamaClient::Chat(const std::string& requestId, const std::string& endpoint,
                         const std::string& model, const json& messages,
                         std::function<void(std::string)> onChunk,
-                        std::function<void(bool, std::string)> onDone) {
+                        std::function<void(bool, std::string)> onDone, bool jsonFormat) {
     Url u = ParseEndpoint(endpoint);
     auto aborted = std::make_shared<std::atomic<bool>>(false);
     {
         std::lock_guard<std::mutex> lock(mutex_);
         activeRequests_[requestId] = aborted;
     }
-    std::thread([this, requestId, u, model, messages, onChunk, onDone, aborted]() {
+    std::thread([this, requestId, u, model, messages, onChunk, onDone, aborted, jsonFormat]() {
         auto finish = [&](bool ok, const std::string& err) {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -125,7 +125,9 @@ void OllamaClient::Chat(const std::string& requestId, const std::string& endpoin
         OpenRequest(s, u, L"POST", L"/api/chat");
         if (!s.request) return finish(false, "connection failed");
 
-        std::string body = json{{"model", model}, {"messages", messages}, {"stream", true}}.dump();
+        json bodyJson = {{"model", model}, {"messages", messages}, {"stream", true}};
+        if (jsonFormat) bodyJson["format"] = "json";
+        std::string body = bodyJson.dump();
         bool sent = WinHttpSendRequest(s.request, L"Content-Type: application/json\r\n", (DWORD)-1,
                                        (LPVOID)body.data(), (DWORD)body.size(), (DWORD)body.size(),
                                        0) &&

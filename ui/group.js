@@ -4,8 +4,8 @@
   const $ = (sel) => document.querySelector(sel);
   const cardsEl = $('#cards');
 
-  let effectiveTheme = init.theme || 'light';
-  const isDark = () => effectiveTheme === 'dark';
+  // 그룹창은 테마 불변 — 항상 라이트 기준으로 렌더링
+  const isDark = () => false;
 
   await i18n.load(init.lang);
   i18n.apply();
@@ -21,6 +21,7 @@
     group = r.group;
     members = r.members;
     renderTitle();
+    $('#gpinBtn').classList.toggle('on', !!group.topmost);
     setLayoutUi(group.layout);
     applyAppearance();
     renderCards();
@@ -54,7 +55,7 @@
       $('#gcolorDot').style.background = baseHex;
     } else {
       document.body.classList.remove('tinted');
-      baseHex = isDark() ? '#1E1E22' : '#F7F7F8';  // theme.css의 --bg 기본값과 동일
+      baseHex = '#F7F7F8';  // 라이트 --bg 기본값 (테마 불변)
       $('#gcolorDot').style.background = '';
     }
     // 반투명 배경 자체는 네이티브 backdrop 창이 그린다.
@@ -88,7 +89,7 @@
         r: Math.round(rad * dpr),
       });
     };
-    add($('#ghead'), 0);
+    add($('#ghead'), 8);  // 헤더도 카드와 같은 라운드 모서리
     const cardsClip = $('#cards').getBoundingClientRect();
     document.querySelectorAll('.gcard').forEach((c) => add(c, 8, cardsClip));
     // 스크롤이 필요하면 오른쪽 스크롤바 영역도 region에 포함 (없으면 잘려서 안 보임)
@@ -138,8 +139,9 @@
     saveTimers.delete(m.id);
     const attachments = [
       ...new Set([
-        ...(m.html.match(/https:\/\/data\.sticker\/attachments\/([\w.\-]+)/g) || [])
-          .map((u) => decodeURIComponent(u.split('/').pop())),
+        ...(m.html.match(
+          /https:\/\/data\.sticker\/stickers\/[^/\s"')]+\/[\w.\-]+\/[\w.\-]+/g) || [])
+          .map((u) => decodeURIComponent(u.split('/').slice(-2).join('/'))),
         ...mdTools.getAttachments(m.markdown),
       ]),
     ];
@@ -157,7 +159,16 @@
   function renderCards() {
     cardsEl.innerHTML = '';
     $('#emptyHint').classList.toggle('hidden', members.length > 0);
-    members.forEach((m) => cardsEl.appendChild(buildCard(m)));
+    // masonry: 다단(columns) 컨테이너를 높이 제약이 없는 내부 래퍼로 분리.
+    // (#cards는 flex로 높이가 고정된 스크롤 박스라, 직접 다단을 걸면 창을 좁혀도
+    //  열이 가로로 증식해 화면 밖 카드가 잘려 보이지 않게 됨)
+    let target = cardsEl;
+    if (group.layout === 'masonry') {
+      target = document.createElement('div');
+      target.className = 'mwrap';
+      cardsEl.appendChild(target);
+    }
+    members.forEach((m) => target.appendChild(buildCard(m)));
     scheduleShape();
   }
 
@@ -224,7 +235,10 @@
     // 균일 그리드는 모든 카드가 같은 크기, 목록은 타이틀 한 줄 고정.
     if (group.layout === 'masonry') {
       const mh = (group.memberHeights || {})[m.id];
-      if (mh) card.style.height = mh + 'px';
+      if (mh) {
+        card.style.height = mh + 'px';
+        card.classList.add('fixed-h');  // 본문 max-height 해제 → 핸들이 카드 하단 고정
+      }
 
       // 하단 높이 조절 핸들 (드래그로 높이만 조정, 더블클릭 = 기본으로 복원)
       const rez = document.createElement('div');
@@ -234,6 +248,7 @@
         e.preventDefault();
         e.stopPropagation();
         try { rez.setPointerCapture(e.pointerId); } catch {}
+        card.classList.add('fixed-h');
         const startY = e.clientY;
         const startH = card.getBoundingClientRect().height;
         const onMove = (ev) => {
@@ -256,6 +271,7 @@
       rez.addEventListener('dblclick', () => {
         if (group.memberHeights) delete group.memberHeights[m.id];
         card.style.height = '';
+        card.classList.remove('fixed-h');
         bridge.call('group.setMemberHeight', { id: m.id, height: 0 });
         scheduleShape();
       });
@@ -290,11 +306,11 @@
     });
     card.addEventListener('dragover', (e) => {
       e.preventDefault();
-      const dragging = cardsEl.querySelector('.gcard.dragging');
+      const dragging = card.parentNode.querySelector('.gcard.dragging');
       if (!dragging || dragging === card) return;
       const rect = card.getBoundingClientRect();
       const before = (e.clientY - rect.top) < rect.height / 2;
-      cardsEl.insertBefore(dragging, before ? card : card.nextSibling);
+      card.parentNode.insertBefore(dragging, before ? card : card.nextSibling);
       scheduleShape();
     });
     card.addEventListener('drop', (e) => e.preventDefault());
@@ -326,6 +342,28 @@
     b.title = title;
     b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
     return b;
+  }
+
+  // 3D 임베드를 썸네일(또는 안내 박스)로 표시. 뷰어는 스티커 창에서만 동작한다.
+  function mountThumb3d(el) {
+    el.setAttribute('contenteditable', 'false');
+    const shadow = el.shadowRoot || el.attachShadow({ mode: 'open' });
+    const thumb = el.dataset.thumb || '';
+    shadow.innerHTML = `
+      <style>
+        :host { display: block; }
+        .box { width: 100%; height: 100%; border-radius: 6px; overflow: hidden;
+               background: #2a2d33; display: flex; align-items: center;
+               justify-content: center; }
+        img { width: 100%; height: 100%; object-fit: contain; display: block; }
+        .ph { color: #aab; font-size: 11px; display: flex; align-items: center; gap: 5px; }
+      </style>
+      <div class="box">${thumb
+        ? `<img src="${thumb}" alt="3D">`
+        : `<span class="ph">
+             <svg viewBox="0 0 16 16" width="14" height="14"><g fill="none"
+               stroke="currentColor" stroke-width="1.1"><path d="M8 1.8 14 5v6L8 14.2 2 11V5z"/>
+               <path d="M2 5l6 3.2L14 5M8 8.2v6"/></g></svg>3D</span>`}</div>`;
   }
 
   function renderCardBody(m, card, body) {
@@ -391,7 +429,7 @@
       body.appendChild(title);
       const frame = document.createElement('iframe');
       frame.className = 'gcard-pdf';
-      frame.src = 'https://data.sticker/attachments/' + m.pdfName + '#toolbar=0';
+      frame.src = 'https://data.sticker/stickers/' + m.id + '/' + m.pdfName + '#toolbar=0';
       body.appendChild(frame);
       return;
     }
@@ -428,6 +466,10 @@
     body.contentEditable = 'true';
     body.spellcheck = false;
     body.innerHTML = m.html || '';
+    // 3D 임베드는 그룹 안에서 렌더링하지 않고 캡처해 둔 썸네일 이미지로 표시.
+    // (Shadow DOM에 넣으므로 innerHTML 직렬화에 포함되지 않아 원본 임베드가 보존됨 —
+    //  그룹 밖으로 꺼내면 스티커 창에서 다시 실시간 렌더링된다)
+    body.querySelectorAll('.embed3d').forEach(mountThumb3d);
     body.dataset.placeholder = i18n.t('editor.placeholder');
     body.addEventListener('input', () => {
       m.html = body.innerHTML;
@@ -617,6 +659,17 @@
     gcolorPopover.classList.add('hidden');
   });
 
+  $('#gpinBtn').addEventListener('click', () => {
+    const on = !$('#gpinBtn').classList.contains('on');
+    $('#gpinBtn').classList.toggle('on', on);
+    group.topmost = on;
+    bridge.call('group.setTopmost', { topmost: on }).catch(console.error);
+  });
+
+  $('#gmanagerBtn').addEventListener('click', () => {
+    bridge.call('app.openManager', { tab: 'list' }).catch(console.error);
+  });
+
   $('#ghideBtn').addEventListener('click', () => {
     flushAll();
     bridge.call('group.hide');
@@ -636,12 +689,7 @@
       document.body.classList.toggle('drophover', !!d.active);
     }
   });
-  bridge.on('theme.changed', (d) => {
-    effectiveTheme = d.effective;
-    document.documentElement.dataset.theme = d.effective;
-    applyAppearance();
-    renderCards();
-  });
+  // (테마 변경은 그룹창에 영향 없음 — theme.changed 무시)
   bridge.on('locale.changed', async (d) => {
     await i18n.load(d.lang);
     i18n.apply();

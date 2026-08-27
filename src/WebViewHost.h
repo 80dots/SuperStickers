@@ -27,6 +27,9 @@ public:
     void Create(HWND hwnd, const std::wstring& url, const nlohmann::json& initJson,
                 std::function<void()> onReady, Options opts = {});
 
+    // 생성 실패·프로세스 크래시로 비어 버린 창 복구 (창을 표시할 때 확인)
+    void EnsureCreated();
+
     void SetBounds(const RECT& r);
     void SetVisible(bool visible);
     // UI Scale: 브라우저 줌으로 페이지 전체(CSS px)를 DPI 변경처럼 일괄 스케일
@@ -43,7 +46,17 @@ public:
     Bridge& bridge() { return bridge_; }
 
 private:
+    void CreateInternal();  // 실제 컨트롤러 생성 (재시도·재생성 공용)
+
     wil::com_ptr<ICoreWebView2Controller> controller_;
     wil::com_ptr<ICoreWebView2> webview_;
     Bridge bridge_;
+
+    // 재생성을 위해 보관하는 생성 파라미터
+    HWND hostHwnd_ = nullptr;
+    std::wstring url_;
+    nlohmann::json init_;
+    std::function<void()> onReady_;
+    Options opts_{};
+    int createAttempts_ = 0;
 };

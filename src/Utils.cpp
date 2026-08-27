@@ -68,6 +68,104 @@ bool EnsureDir(const std::wstring& path) {
     return GetLastError() == ERROR_ALREADY_EXISTS;
 }
 
+// 폴더 항목을 미리 모아 반환한다. FindNextFile 순회 도중 항목을 삭제하면
+// 다음 항목이 건너뛰어지는 문제가 있어, 변경 작업은 반드시 이 결과로 루프를 돈다.
+std::vector<std::pair<std::wstring, bool>> ListDirEntries(const std::wstring& dir) {
+    std::vector<std::pair<std::wstring, bool>> out;
+    WIN32_FIND_DATAW fd{};
+    HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return out;
+    do {
+        std::wstring name = fd.cFileName;
+        if (name == L"." || name == L"..") continue;
+        out.emplace_back(name, (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0);
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+    return out;
+}
+
+// 폴더를 내용물과 함께 삭제. 읽기 전용 파일도 속성을 풀어 지운다.
+bool RemoveDirRecursive(const std::wstring& dir) {
+    DWORD attr = GetFileAttributesW(dir.c_str());
+    if (attr == INVALID_FILE_ATTRIBUTES) return true;  // 이미 없음
+    if (!(attr & FILE_ATTRIBUTE_DIRECTORY)) return DeleteFileW(dir.c_str()) != 0;
+    for (auto& [name, isDir] : ListDirEntries(dir)) {
+        std::wstring child = dir + L"\\" + name;
+        if (isDir) {
+            RemoveDirRecursive(child);
+        } else {
+            SetFileAttributesW(child.c_str(), FILE_ATTRIBUTE_NORMAL);
+            DeleteFileW(child.c_str());
+        }
+    }
+    return RemoveDirectoryW(dir.c_str()) != 0;
+}
+
+bool CopyDirRecursive(const std::wstring& src, const std::wstring& dst) {
+    if (!EnsureDir(dst)) return false;
+    bool ok = true;
+    for (auto& [name, isDir] : ListDirEntries(src)) {
+        std::wstring s2 = src + L"\\" + name, d2 = dst + L"\\" + name;
+        if (isDir) {
+            if (!CopyDirRecursive(s2, d2)) ok = false;
+        } else if (!CopyFileW(s2.c_str(), d2.c_str(), FALSE)) {
+            ok = false;
+        }
+    }
+    return ok;
+}
+
+bool MoveDirTo(const std::wstring& src, const std::wstring& dst) {
+    // 같은 볼륨이면 rename 한 번으로 끝. 다른 볼륨이거나 잠긴 파일이 있으면
+    // MOVEFILE_COPY_ALLOWED로도 폴더는 이동되지 않으므로 복사 후 원본 삭제로 폴백.
+    if (MoveFileExW(src.c_str(), dst.c_str(), MOVEFILE_COPY_ALLOWED)) return true;
+    if (!CopyDirRecursive(src, dst)) return false;
+    RemoveDirRecursive(src);
+    return true;
+}
+
+bool RunProcessWait(const std::wstring& cmdLine, DWORD timeoutMs) {
+    STARTUPINFOW si{sizeof(si)};
+    PROCESS_INFORMATION pi{};
+    std::vector<wchar_t> buf(cmdLine.begin(), cmdLine.end());
+    buf.push_back(0);
+    if (!CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr,
+                        nullptr, &si, &pi))
+        return false;
+    DWORD wait = WaitForSingleObject(pi.hProcess, timeoutMs);
+    DWORD code = 1;
+    if (wait == WAIT_OBJECT_0) GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return code == 0;
+}
+
+std::wstring PsQuote(const std::wstring& s) {
+    std::wstring out;
+    for (wchar_t c : s) {
+        out.push_back(c);
+        if (c == L'\'') out.push_back(c);  // PowerShell 작은따옴표 문자열에서 '는 ''로 이스케이프
+    }
+    return out;
+}
+
+// 시스템 PowerShell로 zip 압축/해제. WinRT/서드파티 없이 zip을 다루는 가장 단순한 방법.
+// -NoProfile/-NonInteractive로 사용자 프로필 스크립트·프롬프트 개입을 차단한다.
+bool ZipDir(const std::wstring& srcDir, const std::wstring& zipPath) {
+    std::wstring cmd = L"powershell.exe -NoProfile -NonInteractive -Command \"Compress-Archive "
+                       L"-Path '" + PsQuote(srcDir) + L"\\*' -DestinationPath '" +
+                       PsQuote(zipPath) + L"' -Force\"";
+    return RunProcessWait(cmd, 10 * 60 * 1000) &&
+           GetFileAttributesW(zipPath.c_str()) != INVALID_FILE_ATTRIBUTES;
+}
+
+bool UnzipDir(const std::wstring& zipPath, const std::wstring& destDir) {
+    std::wstring cmd = L"powershell.exe -NoProfile -NonInteractive -Command \"Expand-Archive "
+                       L"-Path '" + PsQuote(zipPath) + L"' -DestinationPath '" +
+                       PsQuote(destDir) + L"' -Force\"";
+    return RunProcessWait(cmd, 10 * 60 * 1000);
+}
+
 bool WriteFileAtomic(const std::wstring& path, const std::string& data) {
     std::wstring tmp = path + L".tmp";
     {
@@ -123,6 +221,28 @@ std::vector<BYTE> Base64Decode(const std::string& b64) {
                               &len, nullptr, nullptr))
         return {};
     out.resize(len);
+    return out;
+}
+
+std::string UriDecode(const std::string& s) {
+    auto hex = [](char c) -> int {
+        if (c >= '0' && c <= '9') return c - '0';
+        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        return -1;
+    };
+    std::string out;
+    for (size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '%' && i + 2 < s.size()) {
+            int hi = hex(s[i + 1]), lo = hex(s[i + 2]);
+            if (hi >= 0 && lo >= 0) {
+                out.push_back((char)(hi * 16 + lo));
+                i += 2;
+                continue;
+            }
+        }
+        out.push_back(s[i]);
+    }
     return out;
 }
 

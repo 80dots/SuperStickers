@@ -59,6 +59,7 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - 창 공통 메서드(`App::SetupCommonBridge`): `app.getState`, `settings.set`, `stickers.*`, `ollama.*`
 - 스티커 전용: `sticker.load/saveContent/setColor/setTopmost/hide/delete`,
   `attachment.save/pickVideo`, `window.startDrag`
+- 목록 전용: `sticker.export`(.ssticker zip), `stickers.import`/`stickers.importPaths`
 - 창을 파괴하는 작업(삭제 등)은 WebMessageReceived 콜백 안에서 실행하지 않고
   `RunOnUi`로 지연시켜 재진입 문제를 피한다.
 - 이벤트(`theme.changed`, `locale.changed`, `ollama.chunk` 등)는 모든 창에 브로드캐스트하고
@@ -66,11 +67,21 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 
 ### 데이터 저장
 
-- JSON 파일 (스티커당 1파일). 쓰기는 임시 파일 → `MoveFileEx(REPLACE_EXISTING)` 원자 교체,
-  교체 전 직전 성공본을 `.bak`으로 보존. 읽기 실패 시 `.bak` 폴백.
-- 이미지/동영상은 base64 인라인이 아니라 `attachments\`에 파일로 저장하고 URL로 참조
-  (JSON 비대화 방지). 앱 시작 시 어느 스티커도 참조하지 않는 첨부를 GC
-  (스티커 파싱 실패가 하나라도 있으면 GC 건너뜀 — 안전장치).
+- **메모 1개 = 폴더 1개**: `stickers\<id>\memo.json` + 첨부 하위 폴더
+  (`Image`, `Video`, `PDF`, `3D`). 폴더명이 정본 id다(로드 시 폴더명으로 id를 덮어씀).
+  쓰기는 임시 파일 → `MoveFileEx(REPLACE_EXISTING)` 원자 교체, 교체 전 직전 성공본을
+  `.bak`으로 보존. 읽기 실패 시 `.bak` 폴백.
+- 이미지/동영상/PDF/3D 썸네일은 base64 인라인이 아니라 메모 폴더에 파일로 저장하고
+  `https://data.sticker/stickers/<id>/<Sub>/<file>` URL로 참조(JSON 비대화 방지).
+  앱 시작 시 메모별로 참조되지 않는 첨부를 GC — 판정은 `attachments` 목록 **및** 본문
+  문자열 검색을 함께 본다(목록이 누락돼도 살아 있는 파일이 지워지지 않도록).
+- **휴지통**은 메모 폴더를 `trash\<id>\`로 그대로 이동(복원은 반대 방향), 완전 삭제는
+  폴더 삭제. 3D 모델 원본만은 복사하지 않고 원본 경로를 참조한다.
+- **내보내기/가져오기**: `.ssticker`는 메모 폴더의 zip(PowerShell
+  `Compress-Archive`/`Expand-Archive`, `.bak` 제외). 가져오면 새 id를 부여하고 본문 안의
+  `stickers/<옛 id>/` URL을 새 id로 치환한다.
+- 폴더 열거 중 삭제하면 `FindNextFile`이 항목을 건너뛰므로, 삭제 루프는 반드시
+  `util::ListDirEntries`로 **먼저 모아서** 처리한다(구버전 정리에서 실제로 파일이 남았음).
 
 ### Ollama 연동
 
@@ -98,8 +109,8 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   iframe과 달리 X-Frame-Options에 막히지 않는다. `SourceChanged`로 `lastUrl` 저장,
   시작 시 lastUrl 우선 복원. 팝오버가 열리면 `web.suspendSite`로 사이트 뷰를 잠시 숨김
   (팝오버가 하위 컨트롤러에 가려지는 문제 회피).
-- **PDF 메모**: 파일을 attachments로 복사(`ImportAttachment`) 후
-  `https://data.sticker/attachments/…pdf`를 iframe으로 로드 — Chromium 내장 PDF 뷰어 사용.
+- **PDF 메모**: 파일을 메모 폴더의 `PDF\`로 복사(`ImportAttachment(id, path, "pdf")`) 후
+  `https://data.sticker/stickers/<id>/PDF/…pdf`를 iframe으로 로드 — Chromium 내장 PDF 뷰어 사용.
 - **마크다운 인텔리센스**: `<` 입력 시 `mdTools.attachIntellisense`가 캐럿 픽셀 위치(미러
   div 기법)에 태그 목록을 띄움. ↑↓/Enter/Tab/Esc, 타이핑 필터링 지원.
 
@@ -179,6 +190,22 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - 단일 인스턴스: `Local\SuperSticker.Instance` 뮤텍스. 중복 실행 시 기존 인스턴스에
   `WM_COPYDATA`를 보내 전체 표시 후 종료.
 - 자동 시작: HKCU `...\Run`에 `"<exe>" --hidden`. 설정 화면은 레지스트리 실제 상태와 동기화.
+- **메모창 UI 자동 숨김** (`settings.autoHideUi`, 기본 On, **스티커 창 전용**): 마우스가
+  창을 벗어나고 3초 뒤 헤더·서식 툴바가 페이드 아웃된 다음 창이 그만큼 줄어든다.
+  그룹창은 대상이 아니다 (반투명 backdrop + shape region 구조라 헤더를 접으면 얻는 것보다
+  깨질 위험이 크다). **텍스트 입력 중에는 숨기지 않는다** — `document.hasFocus()` +
+  activeElement가 편집 요소면 보류, focusout/창 blur 때 다시 예약.
+  **핵심 설계 — 페이지 레이아웃은 절대 바꾸지 않는다**: 창 크기를 페이지와 동기
+  애니메이션하는 방식은 WebView2의 비동기 래스터라이즈 때문에 본문이 덜컹거린다
+  (실측으로 폐기). 대신 네이티브가 부모 창 rect만 200ms 선형(10ms 타이머)으로
+  애니메이션하고, 매 프레임 WM_SIZE → `LayoutWebView`가 **WebView 자식 창을 "펼친 기준"
+  화면 위치·크기에 고정(핀)**한다 (자식 뷰 bounds를 `band − 접힘오프셋`, 음수 top 허용).
+  본문을 담은 창이 물리적으로 움직이지 않으므로 덜컹거림이 원천 차단되고, 부모 밖으로
+  벗어난 부분(투명해진 헤더/툴바)만 잘려나간다. 접힘 오프셋은 CSS px로 보관하고
+  위치·크기 저장은 `StoreGeometryFromWindow()`가 항상 "펼친 상태" 기준으로 보정
+  (WM_EXITSIZEMOVE·클램프·UI Scale 변경 공통). 드래그 시작 시엔 애니메이션을 즉시 목표
+  상태로 마무리해 충돌을 막는다. web 메모의 상단 스트립도 애니메이션 중간값을 따라간다.
+  토글은 `ui.autoHideChanged` 브로드캐스트로 즉시 반영.
 - 종료: `app.flush` 브로드캐스트로 웹 측 저장 디바운스를 플러시할 시간(350ms)을 준 뒤 창 파괴.
 - explorer 재시작 시 `TaskbarCreated` 메시지로 트레이 아이콘 복구.
 - **해상도/모니터 변경 대응**: `WM_DISPLAYCHANGE`·`WM_SETTINGCHANGE(SPI_SETWORKAREA)` 수신 시

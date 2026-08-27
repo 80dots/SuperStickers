@@ -56,6 +56,7 @@ public:
     bool AnyStickerVisible() const;
     void SetAllVisible(bool visible);
     void ToggleAllVisible();
+    void BringAllToFront();  // 보이는 모든 스티커·그룹 창을 맨 앞으로
     void OnStickerDestroyed(StickerWindow* w);
 
     // 그룹 관리
@@ -97,6 +98,14 @@ public:
     void EmptyTrashInteractive(HWND owner);   // 확인 팝업 → 휴지통 비우기
     void RestoreTrashSticker(const std::string& id);  // 개별 스티커로 복원·표시
 
+    // .ssticker 가져오기 (파일 선택/드래그앤드롭 공용). 가져온 개수 반환.
+    // errors에는 실패한 파일별 원인이 순서대로 쌓인다 (ext/copy/expand/parse/move).
+    int ImportStickerFiles(const std::vector<std::wstring>& paths,
+                           std::vector<std::string>* errors = nullptr);
+
+    // 데이터 탭: 모든 메모·그룹·휴지통 완전 삭제 (확인 팝업 포함, 설정은 보존)
+    void DeleteAllDataInteractive(HWND owner);
+
     // Manager(설정/목록) 창
     void OpenManager(const std::string& tab);
     void OnManagerDestroyed();
@@ -136,4 +145,5 @@ private:
     UINT_PTR nextTimerId_ = 100;
     UINT taskbarCreatedMsg_ = 0;
     bool quitting_ = false;
+    bool trayIgnoreNextUp_ = false;  // 트레이 더블클릭 뒤 따라오는 UP 무시
 };

@@ -1,5 +1,7 @@
 #include "StickerWindow.h"
 
+#include <cmath>
+
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shlwapi.h>
@@ -241,6 +243,11 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
             for (auto& t : p["tags"])
                 if (t.is_string()) self->data.tags.push_back(t.get<std::string>());
         }
+        if (p.contains("aiTags") && p["aiTags"].is_array()) {
+            self->data.aiTags.clear();
+            for (auto& t : p["aiTags"])
+                if (t.is_string()) self->data.aiTags.push_back(t.get<std::string>());
+        }
         auto setStr = [&](const char* key, std::string& dst) {
             if (p.contains(key) && p[key].is_string()) dst = p[key];
         };
@@ -289,13 +296,21 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
         return json::object();
     });
 
+    // UI 자동 숨김: 페이지가 측정한 헤더/툴바 높이(CSS px)만큼 창을 접거나 편다
+    b.Register("window.setCollapse", [self](const json& p) {
+        int top = p.value("top", 0), bottom = p.value("bottom", 0);
+        App::I().RunOnUi([self, top, bottom]() { self->ApplyCollapse(top, bottom); });
+        return json::object();
+    });
+
+    // kind: "image" | "video" | "3d"(썸네일) — 메모 폴더의 해당 하위 폴더에 저장
     b.Register("attachment.save", [self](const json& p) {
-        std::string name =
-            App::I().store.SaveAttachment(p.value("dataBase64", ""), p.value("ext", "bin"));
+        std::string name = App::I().store.SaveAttachment(
+            self->data.id, p.value("dataBase64", ""), p.value("ext", "bin"), p.value("kind", ""));
         if (name.empty()) throw std::runtime_error("attachment save failed");
         self->data.attachments.push_back(name);
         self->SaveData();
-        return json{{"name", name}, {"url", "https://data.sticker/attachments/" + name}};
+        return json{{"name", name}, {"url", AttachmentUrl(self->data.id, name)}};
     });
 
     b.Register("attachment.pickVideo", [self](const json&) {
@@ -311,11 +326,12 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
         wil::unique_cotaskmem_string path;
         if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
             throw std::runtime_error("path failed");
-        std::string name = App::I().store.ImportAttachment(path.get());
+        std::string name =
+            App::I().store.ImportAttachment(self->data.id, path.get(), "video");
         if (name.empty()) throw std::runtime_error("copy failed");
         self->data.attachments.push_back(name);
         self->SaveData();
-        return json{{"name", name}, {"url", "https://data.sticker/attachments/" + name}};
+        return json{{"name", name}, {"url", AttachmentUrl(self->data.id, name)}};
     });
 
     self->RegisterTypeBridges();
@@ -346,6 +362,11 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
 }
 
 void StickerWindow::ShowWin(bool show, bool activate) {
+    if (show) {
+        // 생성 실패·프로세스 크래시로 비어 있으면 표시 시점에 복구
+        host_.EnsureCreated();
+        if (data.type == "web") siteHost_.EnsureCreated();
+    }
     ShowWindow(hwnd_, show ? (activate ? SW_SHOW : SW_SHOWNA) : SW_HIDE);
     if (show && activate) host_.Focus();
 }
@@ -387,6 +408,55 @@ void StickerWindow::UpdateBandBrush() {
 
 int StickerWindow::BandPx() const { return MulDiv(kBandDip, dpi_, 96); }
 
+// 접기/펼치기: 부모 창 rect만 200ms 선형으로 애니메이션한다.
+// 매 프레임 WM_SIZE → LayoutWebView가 자식 뷰를 화면에 고정하므로 본문은 정지 상태.
+void StickerWindow::ApplyCollapse(int topCss, int bottomCss) {
+    collapseTopCss_ = topCss;
+    collapseBottomCss_ = bottomCss;
+    double k = App::I().settings.uiScale * dpi_ / 96.0;  // CSS px → 물리 px
+    double toTop = topCss * k, toBottom = bottomCss * k;
+    if (fabs(toTop - animCurTop_) < 0.5 && fabs(toBottom - animCurBottom_) < 0.5) return;
+    // 현재 rect에서 "펼친 기준" rect를 복원한다.
+    // 현재 적용값(animCur*)으로 되돌리므로 애니메이션 중간에 재요청돼도 이어서 자연스럽다.
+    RECT r{};
+    GetWindowRect(hwnd_, &r);
+    animBase_ = r;
+    animBase_.top -= (LONG)llround(animCurTop_);
+    animBase_.bottom += (LONG)llround(animCurBottom_);
+    animFromTop_ = animCurTop_;
+    animFromBottom_ = animCurBottom_;
+    animToTop_ = toTop;
+    animToBottom_ = toBottom;
+    animStartTick_ = GetTickCount();
+    SetTimer(hwnd_, kCollapseTimerId, 10, nullptr);
+    StepCollapseAnim();  // 첫 프레임 즉시 — 페이지 트랜지션과 시작 시점을 맞춘다
+}
+
+void StickerWindow::StepCollapseAnim() {
+    double p = (GetTickCount() - animStartTick_) / (double)kCollapseAnimMs;
+    if (p >= 1.0) p = 1.0;
+    // 선형 보간으로 부모 rect만 이동/축소 — SetWindowPos가 동기 발생시키는 WM_SIZE에서
+    // LayoutWebView가 같은 틱에 자식 뷰를 화면 고정 위치로 되돌린다 (본문 정지)
+    animCurTop_ = animFromTop_ + (animToTop_ - animFromTop_) * p;
+    animCurBottom_ = animFromBottom_ + (animToBottom_ - animFromBottom_) * p;
+    int top = animBase_.top + (int)llround(animCurTop_);
+    int h = (animBase_.bottom - animBase_.top) - (int)llround(animCurTop_) -
+            (int)llround(animCurBottom_);
+    SetWindowPos(hwnd_, nullptr, animBase_.left, top, animBase_.right - animBase_.left, h,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+    if (p >= 1.0) KillTimer(hwnd_, kCollapseTimerId);
+}
+
+void StickerWindow::StoreGeometryFromWindow() {
+    RECT r{};
+    GetWindowRect(hwnd_, &r);
+    // 애니메이션 중이어도 현재 적용값 기준으로 복원하므로 항상 "펼친 상태"가 저장된다
+    data.x = r.left;
+    data.y = r.top - (int)llround(animCurTop_);
+    data.w = r.right - r.left;
+    data.h = (r.bottom - r.top) + (int)llround(animCurTop_) + (int)llround(animCurBottom_);
+}
+
 void StickerWindow::ApplyUiScale() {
     double s = App::I().settings.uiScale;
     host_.SetZoomFactor(s);
@@ -398,18 +468,25 @@ void StickerWindow::LayoutWebView() {
     RECT rc{};
     GetClientRect(hwnd_, &rc);
     int band = BandPx();
+    // UI 자동 숨김: 페이지 레이아웃은 절대 바뀌지 않는다. 대신 WebView 자식 창을
+    // 항상 "펼친 기준" 위치·크기에 고정(핀)한다 — 부모 창이 위/아래로 줄어도
+    // 자식 뷰는 화면에 정지해 있으므로 본문이 1px도 움직일 수 없고,
+    // 부모 밖으로 벗어난 부분(페이드 아웃된 헤더/툴바 영역)만 잘려나간다.
+    int cTop = (int)llround(animCurTop_);
+    int cBottom = (int)llround(animCurBottom_);
+    int y0 = rc.top + band - cTop;              // 펼친 기준 상단 (접힘만큼 위로)
+    int innerBottom = rc.bottom + cBottom - band;  // 펼친 기준 하단 (접힘만큼 아래로)
     if (data.type == "web") {
-        // 상단 스트립(타이틀바 32 + URL바 32 CSS px) = 메인 페이지, 나머지 = 사이트 뷰
-        // UI Scale에 따라 CSS px가 차지하는 물리 크기가 커진다
+        // 상단 스트립(타이틀바 32 + URL바 32 CSS px) = 메인 페이지, 나머지 = 사이트 뷰.
+        // 레이아웃이 불변이므로 스트립도 항상 64 — 타이틀바는 부모 밖으로 잘린다.
         int strip = (int)(64.0 * App::I().settings.uiScale * dpi_ / 96.0 + 0.5);
-        RECT top{rc.left + band, rc.top + band, rc.right - band,
-                 min(rc.top + band + strip, rc.bottom - band)};
-        RECT bottom{rc.left + band, top.bottom, rc.right - band, rc.bottom - band};
+        RECT top{rc.left + band, y0, rc.right - band, min(y0 + strip, innerBottom)};
+        RECT bottom{rc.left + band, top.bottom, rc.right - band, innerBottom};
         host_.SetBounds(top);
         siteHost_.SetBounds(bottom);
         return;
     }
-    RECT bounds{rc.left + band, rc.top + band, rc.right - band, rc.bottom - band};
+    RECT bounds{rc.left + band, y0, rc.right - band, innerBottom};
     host_.SetBounds(bounds);
 }
 
@@ -562,26 +639,26 @@ void StickerWindow::RegisterTypeBridges() {
         json r = {{"title", self->data.pdfTitle}};
         r["url"] = self->data.pdfName.empty()
                        ? ""
-                       : "https://data.sticker/attachments/" + self->data.pdfName;
+                       : AttachmentUrl(self->data.id, self->data.pdfName);
         return r;
     });
 
     auto importPdf = [self](const std::wstring& path) -> json {
-        std::string name = App::I().store.ImportAttachment(path);
+        std::string name = App::I().store.ImportAttachment(self->data.id, path, "pdf");
         if (name.empty()) throw std::runtime_error("import failed");
         // 이전 PDF 첨부는 교체
         if (!self->data.pdfName.empty()) {
             auto& at = self->data.attachments;
             at.erase(std::remove(at.begin(), at.end(), self->data.pdfName), at.end());
-            DeleteFileW(
-                (App::I().store.AttachmentsDir() + L"\\" + util::Utf8ToWide(self->data.pdfName))
-                    .c_str());
+            DeleteFileW((App::I().store.StickerDir(self->data.id) + L"\\" +
+                         util::Utf8ToWide(self->data.pdfName))
+                            .c_str());
         }
         self->data.pdfName = name;
         self->data.pdfTitle = util::WideToUtf8(PathFindFileNameW(path.c_str()));
         self->data.attachments.push_back(name);
         self->SaveData();
-        return json{{"url", "https://data.sticker/attachments/" + name},
+        return json{{"url", AttachmentUrl(self->data.id, name)},
                     {"title", self->data.pdfTitle}};
     };
 
@@ -608,6 +685,80 @@ void StickerWindow::RegisterTypeBridges() {
             path = p["paths"][0].get<std::string>();  // 드래그앤드롭 경로
         if (path.empty()) throw std::runtime_error("no path");
         return importPdf(util::Utf8ToWide(path));
+    });
+
+    // ---------- 3D 모델 임베드 (rich 메모) ----------
+    // 파일을 복사하지 않고 원본 경로를 저장한다. 내용은 model.readFile로 읽어 렌더.
+    auto normalizeModelPath = [](std::wstring path) {
+        for (auto& c : path)
+            if (c == L'/') c = L'\\';
+        return path;
+    };
+
+    b.Register("model.pick", [self, normalizeModelPath](const json&) -> json {
+        wil::com_ptr<IFileOpenDialog> dlg;
+        if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                    IID_PPV_ARGS(&dlg))))
+            throw std::runtime_error("dialog failed");
+        COMDLG_FILTERSPEC filters[] = {{L"3D Model", L"*.glb;*.gltf;*.obj;*.stl"}};
+        dlg->SetFileTypes(1, filters);
+        if (FAILED(dlg->Show(self->hwnd_))) return json{{"cancelled", true}};
+        wil::com_ptr<IShellItem> item;
+        if (FAILED(dlg->GetResult(&item))) return json{{"cancelled", true}};
+        wil::unique_cotaskmem_string path;
+        if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
+            throw std::runtime_error("path failed");
+        return json{{"path", util::WideToUtf8(normalizeModelPath(path.get()))}};
+    });
+
+    b.Register("model.importPath", [normalizeModelPath](const json& p) -> json {
+        std::string path = p.value("path", "");
+        if (path.empty() && p.contains("paths") && p["paths"].is_array() &&
+            !p["paths"].empty() && p["paths"][0].is_string())
+            path = p["paths"][0].get<std::string>();  // 드래그앤드롭 경로
+        if (path.empty()) throw std::runtime_error("no path");
+        return json{{"path", util::WideToUtf8(normalizeModelPath(util::Utf8ToWide(path)))}};
+    });
+
+    // 원본 파일 내용을 base64로 읽어 반환 (뷰어가 three.js 로더에 직접 전달).
+    // relative가 오면 base 파일과 같은 폴더 기준으로 해석 — gltf의 .bin·텍스처 로드용.
+    b.Register("model.readFile", [normalizeModelPath](const json& p) -> json {
+        std::wstring path = normalizeModelPath(util::Utf8ToWide(p.value("path", "")));
+        std::string rel = p.value("relative", "");
+        if (!rel.empty()) {
+            // URI 디코드 후 상대 경로를 base 폴더에 결합 (상위 경로 이탈 방지)
+            std::wstring relW = util::Utf8ToWide(util::UriDecode(rel));
+            for (auto& c : relW)
+                if (c == L'/') c = L'\\';
+            if (relW.find(L"..") != std::wstring::npos || relW.find(L':') != std::wstring::npos)
+                throw std::runtime_error("invalid relative path");
+            size_t slash = path.find_last_of(L'\\');
+            std::wstring dir = (slash == std::wstring::npos) ? L"" : path.substr(0, slash);
+            path = dir.empty() ? relW : (dir + L"\\" + relW);
+        }
+        if (path.empty()) throw std::runtime_error("no path");
+        auto bytes = util::ReadFileBytes(path);
+        if (!bytes) throw std::runtime_error("file not found");
+        if (bytes->size() > 256ull * 1024 * 1024) throw std::runtime_error("file too large");
+        DWORD b64len = 0;
+        CryptBinaryToStringA((const BYTE*)bytes->data(), (DWORD)bytes->size(),
+                             CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, nullptr, &b64len);
+        std::string b64(b64len, 0);
+        if (!CryptBinaryToStringA((const BYTE*)bytes->data(), (DWORD)bytes->size(),
+                                  CRYPT_STRING_BASE64 | CRYPT_STRING_NOCRLF, b64.data(),
+                                  &b64len))
+            throw std::runtime_error("encode failed");
+        b64.resize(b64len);
+        return json{{"dataBase64", b64}};
+    });
+
+    // 원본 파일 위치를 탐색기에서 열고 파일 선택
+    b.Register("model.reveal", [normalizeModelPath](const json& p) {
+        std::wstring path = normalizeModelPath(util::Utf8ToWide(p.value("path", "")));
+        if (path.empty()) throw std::runtime_error("no path");
+        std::wstring args = L"/select,\"" + path + L"\"";
+        ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+        return json::object();
     });
 }
 
@@ -682,7 +833,20 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
 
+        case WM_TIMER:
+            if (wp == kCollapseTimerId) {
+                StepCollapseAnim();
+                return 0;
+            }
+            break;
+
         case WM_ENTERSIZEMOVE:
+            // 접기 애니메이션 중 드래그가 시작되면 즉시 목표 상태로 마무리
+            // (모달 이동 루프 중의 SetWindowPos가 드래그와 충돌하지 않도록)
+            if (animCurTop_ != animToTop_ || animCurBottom_ != animToBottom_) {
+                animStartTick_ = GetTickCount() - kCollapseAnimMs;
+                StepCollapseAnim();
+            }
             GetWindowRect(hwnd, &dragStartRect_);
             return 0;
 
@@ -693,10 +857,7 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_EXITSIZEMOVE: {
             RECT r{};
             GetWindowRect(hwnd, &r);
-            data.x = r.left;
-            data.y = r.top;
-            data.w = r.right - r.left;
-            data.h = r.bottom - r.top;
+            StoreGeometryFromWindow();  // 접힌 상태면 펼친 기준으로 보정해 저장
             SaveData();
             // 크기 변화 없이 위치만 바뀐 순수 이동이면 그룹 드롭 검사
             bool moved = (r.left != dragStartRect_.left || r.top != dragStartRect_.top);

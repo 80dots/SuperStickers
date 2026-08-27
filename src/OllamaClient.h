@@ -26,9 +26,10 @@ public:
                                        std::string error)> done);
 
     // POST /api/chat (stream=true). 델타마다 onChunk, 종료 시 onDone.
+    // jsonFormat=true면 Ollama가 유효한 JSON만 생성하도록 강제 (format:"json").
     void Chat(const std::string& requestId, const std::string& endpoint, const std::string& model,
               const nlohmann::json& messages, std::function<void(std::string delta)> onChunk,
-              std::function<void(bool ok, std::string error)> onDone);
+              std::function<void(bool ok, std::string error)> onDone, bool jsonFormat = false);
 
     // POST /api/pull (stream=true). 진행 라인마다 onProgress, 종료 시 onDone.
     // total/completed는 현재 레이어의 바이트 수 (없으면 0).

@@ -47,20 +47,13 @@ body {
   min-width: 80px;
 }
 
-/* AI Review 버튼(텍스트): 리뷰 필요 시 강조, 분석 중엔 점멸 */
-#aiReviewBtn { font-weight: 700; white-space: nowrap; }
+/* AI Review 버튼(텍스트): 짙은 남색 고정, 분석 중엔 점멸 */
+#aiReviewBtn { font-weight: 700; white-space: nowrap; color: #1F3864; }
 #aiReviewBtn:disabled { opacity: 0.28; cursor: default; }
 #aiReviewBtn:disabled:hover { background: transparent; }
-#aiReviewBtn.need {
-  opacity: 1;
-  color: var(--accent);
-  animation: reviewPulse 1.6s ease-in-out infinite;
-}
+/* 리뷰할 새 내용이 있을 때: 애니메이션 없이 기본 글자색 그대로 (선명하게만) */
+#aiReviewBtn.need { opacity: 1; }
 #aiReviewBtn.busy { opacity: 1; animation: reviewBlink 1s ease-in-out infinite; }
-@keyframes reviewPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.08); }
-}
 @keyframes reviewBlink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -114,6 +107,24 @@ body {
   line-height: 1.5;
 }
 #summaryBox.error { color: var(--danger); }
+/* 오류 자동 소멸 카운트다운: 요약 아래 얇은 바가 남은 시간만큼 줄어든다.
+   지속 시간은 sticker.js가 --summary-timeout으로 넣어 준다 (JS 타이머와 동일 값). */
+#summaryTimer {
+  display: none;
+  height: 2px;
+  margin-top: 6px;
+  border-radius: 1px;
+  background: var(--border);
+  overflow: hidden;
+}
+#summaryBox.error #summaryTimer { display: block; }
+#summaryTimerBar {
+  height: 100%;
+  background: var(--danger);
+  transform-origin: left center;
+  animation: summaryCountdown var(--summary-timeout, 5s) linear forwards;
+}
+@keyframes summaryCountdown { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 #summaryLabel {
   display: block;
   font-size: 10.5px;
@@ -123,6 +134,15 @@ body {
   letter-spacing: 0.4px;
 }
 #summaryText { white-space: pre-wrap; word-break: break-word; }
+
+/* ---------- 3D 모델 임베드 ---------- */
+.embed3d {
+  display: block;
+  width: 100%;
+  height: 260px;
+  margin: 6px 0;
+  user-select: none;
+}
 
 /* ---------- 태그바 (서식 툴바 바로 위) ---------- */
 #tagBar {
@@ -144,6 +164,12 @@ body {
   border-radius: 10px;
   background: var(--active);
   color: var(--note-fg, var(--fg));
+}
+/* AI 생성 태그: 파란 톤으로 사용자 태그와 구분 */
+.tag-chip.ai {
+  background: rgba(59, 130, 246, 0.20);
+  border: 1px solid rgba(59, 130, 246, 0.45);
+  padding: 1px 3px 1px 7px;
 }
 .tag-chip .tag-x {
   width: 14px;
@@ -651,3 +677,9 @@ body {
 #aiActions button:hover { background: var(--hover); }
 #aiActions button:disabled { opacity: 0.4; cursor: default; }
 .ai-danger { color: var(--danger); }
+
+/* ---------- UI 자동 숨김 (헤더/서식 툴바) ---------- */
+/* 페이드 아웃만 CSS가 담당한다. 레이아웃은 바뀌지 않고, 창 축소는 네이티브가
+   투명해진 영역을 잘라내는 방식이라 본문이 움직이지 않는다 (sticker.js autoHide) */
+#titlebar, #toolbar { transition: opacity 0.18s ease; }
+.autofade { opacity: 0 !important; pointer-events: none !important; }

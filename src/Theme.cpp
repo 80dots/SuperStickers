@@ -65,51 +65,14 @@ bool ParseHex(const std::string& hex, int& r, int& g, int& b) {
 
 }  // namespace
 
-// 다크 테마에서는 HSL로 변환해 어둡고 채도 낮은 변형을 자동 생성한다.
-// ui\common\color.js의 effectiveBg()와 반드시 동일한 알고리즘을 유지할 것.
-COLORREF StickerColor(const std::string& color, bool dark) {
+// 스티커 배경색은 테마와 무관하게 사용자가 고른 색 그대로 사용한다.
+// (과거의 다크 변형은 제거 — ui\common\color.js effectiveBg()와 동일하게 유지할 것)
+COLORREF StickerColor(const std::string& color, bool /*dark*/) {
     std::string hex = color;
     if (const char* mapped = LegacyNameToHex(color)) hex = mapped;
     int r = 0xFF, g = 0xF4, b = 0xB8;  // 기본 yellow
     ParseHex(hex, r, g, b);
-    if (!dark) return RGB(r, g, b);
-
-    // RGB → HSL
-    double rf = r / 255.0, gf = g / 255.0, bf = b / 255.0;
-    double mx = rf > gf ? (rf > bf ? rf : bf) : (gf > bf ? gf : bf);
-    double mn = rf < gf ? (rf < bf ? rf : bf) : (gf < bf ? gf : bf);
-    double l = (mx + mn) / 2.0, h = 0, s = 0;
-    if (mx != mn) {
-        double d = mx - mn;
-        s = l > 0.5 ? d / (2.0 - mx - mn) : d / (mx + mn);
-        if (mx == rf) h = (gf - bf) / d + (gf < bf ? 6 : 0);
-        else if (mx == gf) h = (bf - rf) / d + 2;
-        else h = (rf - gf) / d + 4;
-        h /= 6.0;
-    }
-    // 다크 변형: 밝기·채도 축소
-    l = 0.18 + 0.12 * l;
-    s = s * 0.40;
-    // HSL → RGB
-    auto hue2rgb = [](double p, double q, double t) {
-        if (t < 0) t += 1;
-        if (t > 1) t -= 1;
-        if (t < 1.0 / 6) return p + (q - p) * 6 * t;
-        if (t < 1.0 / 2) return q;
-        if (t < 2.0 / 3) return p + (q - p) * (2.0 / 3 - t) * 6;
-        return p;
-    };
-    double rr, gg, bb;
-    if (s == 0) {
-        rr = gg = bb = l;
-    } else {
-        double q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-        double p = 2 * l - q;
-        rr = hue2rgb(p, q, h + 1.0 / 3);
-        gg = hue2rgb(p, q, h);
-        bb = hue2rgb(p, q, h - 1.0 / 3);
-    }
-    return RGB((BYTE)(rr * 255 + 0.5), (BYTE)(gg * 255 + 0.5), (BYTE)(bb * 255 + 0.5));
+    return RGB(r, g, b);
 }
 
 }  // namespace theme

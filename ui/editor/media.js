@@ -56,7 +56,9 @@ const mediaTools = (() => {
       r.readAsDataURL(blob);
     });
     const base64 = String(dataUrl).split(',')[1];
-    const res = await bridge.call('attachment.save', { dataBase64: base64, ext });
+    // kind 'image' → 메모 폴더의 Image\ 하위에 저장
+    const res = await bridge.call('attachment.save',
+      { dataBase64: base64, ext, kind: 'image' });
     // 마크다운 모드면 마크다운 문법으로, 아니면 <img>로 삽입
     if (window.__insertMedia && window.__insertMedia.isMarkdown()) {
       window.__insertMedia.image(res.url);

@@ -116,13 +116,23 @@ const editorCore = (() => {
     return editor ? editor.innerHTML : '';
   }
 
+  // 메모 폴더 기준 상대 경로(예: "Image/xxx.png")만 추출한다
+  const ATTACH_RE = /^https:\/\/data\.sticker\/stickers\/[^/]+\/(.+)$/;
+
   function getAttachments() {
     const names = [];
     if (!editor) return names;
-    editor.querySelectorAll('img, video, source').forEach((el) => {
-      const src = el.getAttribute('src') || '';
-      const m = src.match(/^https:\/\/data\.sticker\/attachments\/(.+)$/);
+    const add = (src) => {
+      const m = (src || '').match(ATTACH_RE);
       if (m) names.push(decodeURIComponent(m[1]));
+    };
+    editor.querySelectorAll('img, video, source').forEach((el) => {
+      add(el.getAttribute('src'));
+    });
+    // 3D 임베드 첨부와 그룹 카드용 썸네일도 참조 목록에 포함 (GC 보호)
+    editor.querySelectorAll('.embed3d').forEach((el) => {
+      if (el.dataset.name) names.push(el.dataset.name);
+      add(el.dataset.thumb);
     });
     return names;
   }

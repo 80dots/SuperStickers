@@ -115,7 +115,8 @@ const mdTools = (() => {
 
   function getAttachments(mdText) {
     const names = [];
-    const re = /https:\/\/data\.sticker\/attachments\/([\w.\-]+)/g;
+    // https://data.sticker/stickers/<id>/<Sub>/<file> → "<Sub>/<file>"
+    const re = /https:\/\/data\.sticker\/stickers\/[^/\s"')]+\/([\w.\-]+\/[\w.\-]+)/g;
     let m;
     while ((m = re.exec(mdText || '')) !== null) names.push(decodeURIComponent(m[1]));
     return names;

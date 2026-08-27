@@ -2,7 +2,10 @@
 
 #include <commctrl.h>
 #include <shlobj.h>
+#include <shobjidl.h>
 #include <winhttp.h>
+
+#include <wil/com.h>
 
 #include <algorithm>
 #include <cctype>
@@ -26,6 +29,7 @@ namespace {
 const wchar_t* kAppClassName = L"SuperStickerApp";
 constexpr UINT_PTR kQuitTimerId = 1;
 constexpr UINT_PTR kTrashTimerId = 2;
+constexpr UINT_PTR kTrayClickTimerId = 3;  // 트레이 단일/더블클릭 구분용
 constexpr UINT kTrashPurgeIntervalMs = 60 * 60 * 1000;  // 1시간마다 만료 항목 정리
 
 // "YYYY-MM-DDTHH:MM:SS(.mmm)Z" → FILETIME 100ns 단위. 실패 시 false.
@@ -93,7 +97,7 @@ void App::OnEnvironmentReady(bool startHidden) {
     SetTimer(hwnd_, kTrashTimerId, kTrashPurgeIntervalMs, nullptr);
     bool hadErrors = false;
     auto all = store.LoadAllStickers(&hadErrors);
-    store.GarbageCollectAttachments(all, hadErrors);
+    for (auto& d : all) store.GarbageCollectMemoFiles(d);  // 메모 폴더의 미참조 첨부 정리
     auto allGroups = store.LoadAllGroups();
 
     for (auto& g : allGroups) {
@@ -241,8 +245,8 @@ void App::RestoreTrashSticker(const std::string& id) {
         d.deletedAt.clear();
         d.hidden = false;  // 복원 즉시 보이도록
         util::ClampRectToWorkArea(d.x, d.y, d.w, d.h);  // 삭제 후 해상도가 바뀌었을 수 있음
+        if (!store.RestoreTrashEntry(id)) return;  // 폴더를 stickers\로 되돌린 뒤 저장
         store.SaveSticker(d);
-        store.RemoveTrashEntry(id);
         CreateStickerWindow(d, true, true);
         return;
     }
@@ -261,6 +265,67 @@ void App::EmptyTrashInteractive(HWND owner) {
     if (!ConfirmYesNoText(owner, msg)) return;
     store.EmptyTrash();
     BroadcastEvent("trash.changed", {{"count", 0}});
+}
+
+// .ssticker 목록을 가져와 각각 새 메모로 만든다. 성공한 개수를 반환.
+int App::ImportStickerFiles(const std::vector<std::wstring>& paths,
+                            std::vector<std::string>* errors) {
+    int count = 0;
+    for (auto& path : paths) {
+        // 확장자 검사 (드래그앤드롭은 아무 파일이나 올 수 있음)
+        std::wstring lower = path;
+        for (auto& c : lower) c = (wchar_t)towlower(c);
+        if (lower.size() < 9 || lower.substr(lower.size() - 9) != L".ssticker") {
+            if (errors) errors->push_back("ext");
+            continue;
+        }
+        std::string err;
+        StickerData d = store.ImportSticker(path, &err);
+        if (d.id.empty()) {
+            if (errors) errors->push_back(err.empty() ? "unknown" : err);
+            continue;
+        }
+        ++count;
+        // 창 생성은 UI 스레드에서 (브리지 콜백 재진입 회피)
+        StickerData copy = d;
+        RunOnUi([this, copy]() {
+            StickerData d2 = copy;
+            util::ClampRectToWorkArea(d2.x, d2.y, d2.w, d2.h);  // 내보낸 머신과 해상도가 다를 수 있음
+            // 여러 개를 한꺼번에 가져와도 겹치지 않게 살짝 어긋난 위치에 배치
+            d2.x += 24 * (int)(stickers_.size() % 6);
+            d2.y += 24 * (int)(stickers_.size() % 6);
+            store.SaveSticker(d2);
+            CreateStickerWindow(d2, true, true);
+        });
+    }
+    if (count > 0) BroadcastEvent("stickers.changed", json::object());
+    return count;
+}
+
+void App::DeleteAllDataInteractive(HWND owner) {
+    int count = store.CountAllData();
+    if (count == 0) {
+        MessageBoxW(owner, i18n.T("data.deleteAllNone").c_str(), L"Super Sticker",
+                    MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+        return;
+    }
+    // 되돌릴 수 없는 작업이라 두 번 확인한다
+    std::wstring msg = i18n.T("confirm.deleteAllData");
+    size_t pos = msg.find(L"{n}");
+    if (pos != std::wstring::npos) msg.replace(pos, 3, std::to_wstring(count));
+    if (!ConfirmYesNoText(owner, msg)) return;
+    if (!ConfirmYesNo(owner, "confirm.deleteAllDataFinal")) return;
+
+    // 모든 창을 닫고 메모리 상태를 비운 뒤 파일 삭제 (설정은 보존)
+    while (!stickers_.empty()) stickers_.back()->Destroy();
+    while (!groups_.empty()) groups_.back()->Destroy();
+    groupedStickers_.clear();
+    store.DeleteAllData();
+
+    BroadcastEvent("data.cleared", json::object());
+    BroadcastEvent("trash.changed", {{"count", 0}});
+    MessageBoxW(owner, i18n.T("data.deleteAllDone").c_str(), L"Super Sticker",
+                MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
 }
 
 void App::ShowSticker(const std::string& id) {
@@ -304,6 +369,36 @@ void App::SetAllVisible(bool visible) {
 }
 
 void App::ToggleAllVisible() { SetAllVisible(!AnyStickerVisible()); }
+
+void App::BringAllToFront() {
+    // 전경이 아닌 프로세스의 HWND_TOP 요청은 무시되므로 먼저 전경으로 전환
+    // (트레이 클릭은 사용자 입력이라 SetForegroundWindow가 허용됨)
+    HWND first = nullptr;
+    for (auto* w : stickers_)
+        if (w->VisibleNow()) { first = w->hwnd(); break; }
+    if (!first)
+        for (auto* g : groups_)
+            if (g->VisibleNow()) { first = g->hwnd(); break; }
+    if (!first) return;
+    SetForegroundWindow(first);
+
+    // topmost 토글 트릭: 잠시 TOPMOST로 올렸다 해제하면 확실히 z 최상위로 온다
+    auto raise = [](HWND h, bool keepTopmost) {
+        SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        if (!keepTopmost)
+            SetWindowPos(h, HWND_NOTOPMOST, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    };
+    for (auto* w : stickers_) {
+        if (w->VisibleNow()) raise(w->hwnd(), w->data.topmost);
+    }
+    for (auto* g : groups_) {
+        if (!g->VisibleNow()) continue;
+        raise(g->hwnd(), g->data.topmost);
+        if (g->contentHwnd()) raise(g->contentHwnd(), g->data.topmost);
+    }
+}
 
 void App::OnStickerDestroyed(StickerWindow* w) {
     AbortOllamaByOwner(w->data.id);  // 진행 중인 AI 요청(리뷰·AI 패널) 취소
@@ -404,6 +499,23 @@ bool HttpGetToFile(const std::wstring& url, const std::wstring& filePath, std::s
     if (connect) WinHttpCloseHandle(connect);
     if (session) WinHttpCloseHandle(session);
     return ok;
+}
+
+// 폴더 선택 대화상자 (취소 시 빈 문자열)
+std::wstring PickFolder(HWND owner) {
+    wil::com_ptr<IFileOpenDialog> dlg;
+    if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                IID_PPV_ARGS(&dlg))))
+        return L"";
+    DWORD opts = 0;
+    dlg->GetOptions(&opts);
+    dlg->SetOptions(opts | FOS_PICKFOLDERS | FOS_FORCEFILESYSTEM);
+    if (FAILED(dlg->Show(owner))) return L"";
+    wil::com_ptr<IShellItem> item;
+    if (FAILED(dlg->GetResult(&item))) return L"";
+    wil::unique_cotaskmem_string path;
+    if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path))) return L"";
+    return path.get();
 }
 
 }  // namespace
@@ -743,23 +855,13 @@ void App::ClampAllWindowsToScreen() {
     };
     for (auto* w : stickers_) {
         if (clampWindow(w->hwnd())) {
-            RECT r{};
-            GetWindowRect(w->hwnd(), &r);
-            w->data.x = r.left;
-            w->data.y = r.top;
-            w->data.w = r.right - r.left;
-            w->data.h = r.bottom - r.top;
+            w->StoreGeometryFromWindow();  // 자동 숨김으로 접힌 상태면 펼친 기준으로 저장
             w->SaveData();
         }
     }
     for (auto* g : groups_) {
         if (clampWindow(g->hwnd())) {
-            RECT r{};
-            GetWindowRect(g->hwnd(), &r);
-            g->data.x = r.left;
-            g->data.y = r.top;
-            g->data.w = r.right - r.left;
-            g->data.h = r.bottom - r.top;
+            g->StoreGeometryFromWindow();  // 자동 숨김으로 접힌 상태면 펼친 기준으로 저장
             g->SaveData();
         }
     }
@@ -837,20 +939,30 @@ void App::ApplySettingsPatch(const json& patch) {
         for (auto* w : stickers_) {
             w->ApplyUiScale();
             if (resize) {
-                resizeWindow(w->hwnd(), &w->data.x, &w->data.y, &w->data.w, &w->data.h);
+                resizeWindow(w->hwnd(), nullptr, nullptr, nullptr, nullptr);
+                w->StoreGeometryFromWindow();  // 자동 숨김으로 접힌 상태면 펼친 기준으로 저장
                 w->SaveData();
             }
         }
         for (auto* g : groups_) {
             g->host().SetZoomFactor(v);
             if (resize) {
-                resizeWindow(g->hwnd(), &g->data.x, &g->data.y, &g->data.w, &g->data.h);
+                resizeWindow(g->hwnd(), nullptr, nullptr, nullptr, nullptr);
+                g->StoreGeometryFromWindow();
                 g->SaveData();
             }
         }
         if (manager_) {
             manager_->host().SetZoomFactor(v);
             if (resize) resizeWindow(manager_->hwnd(), nullptr, nullptr, nullptr, nullptr);
+        }
+    }
+    if (patch.contains("autoHideUi") && patch["autoHideUi"].is_boolean()) {
+        bool v = patch["autoHideUi"];
+        if (v != settings.autoHideUi) {
+            settings.autoHideUi = v;
+            // 각 스티커 페이지가 즉시 접기/펼치기를 갱신한다 (그룹창은 대상 아님)
+            BroadcastEvent("ui.autoHideChanged", {{"on", v}});
         }
     }
     if (patch.contains("trash") && patch["trash"].is_object()) {
@@ -889,7 +1001,8 @@ json App::MakeInitJson(const std::string& page, const std::string& stickerId) {
     return json{{"page", page},
                 {"stickerId", stickerId},
                 {"theme", EffectiveTheme()},
-                {"lang", i18n.Lang()}};
+                {"lang", i18n.Lang()},
+                {"autoHideUi", settings.autoHideUi}};
 }
 
 void App::SetupCommonBridge(WebViewHost& host) {
@@ -906,7 +1019,8 @@ void App::SetupCommonBridge(WebViewHost& host) {
                       {"trash",
                        {{"enabled", settings.trashEnabled},
                         {"retentionDays", settings.trashRetentionDays}}},
-                      {"uiScale", settings.uiScale}}},
+                      {"uiScale", settings.uiScale},
+                      {"autoHideUi", settings.autoHideUi}}},
                     {"effectiveTheme", EffectiveTheme()},
                     {"lang", i18n.Lang()}};
     });
@@ -1010,6 +1124,95 @@ void App::SetupCommonBridge(WebViewHost& host) {
         return json{{"deleted", true}};
     });
 
+    // 스티커 폴더를 .ssticker(zip)로 내보내기 — 저장 위치는 파일 대화상자로 지정
+    b.Register("sticker.export", [this](const json& p) {
+        std::string id = p.value("id", "");
+        StickerData* d = FindStickerData(id);
+        if (!d) return json{{"started", false}};
+        // 파일명 기본값: 제목(없으면 id) — 파일명 금지 문자는 '_'로 치환
+        std::wstring name = util::Utf8ToWide(!d->title.empty() ? d->title : d->id);
+        for (auto& c : name)
+            if (wcschr(L"\\/:*?\"<>|", c)) c = L'_';
+        if (name.size() > 60) name = name.substr(0, 60);
+        // params.dest가 오면 대화상자 생략 (테스트용)
+        std::wstring destOverride = p.contains("dest") && p["dest"].is_string()
+                                        ? util::Utf8ToWide(p["dest"].get<std::string>())
+                                        : L"";
+        HWND owner = manager_ ? manager_->hwnd() : nullptr;
+        wil::com_ptr<IFileSaveDialog> dlg;
+        if (destOverride.empty() &&
+            FAILED(CoCreateInstance(CLSID_FileSaveDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                    IID_PPV_ARGS(&dlg))))
+            return json{{"started", false}};
+        std::wstring dest = destOverride;
+        if (dest.empty()) {
+            COMDLG_FILTERSPEC filters[] = {{L"Super Sticker", L"*.ssticker"}};
+            dlg->SetFileTypes(1, filters);
+            dlg->SetDefaultExtension(L"ssticker");
+            dlg->SetFileName((name + L".ssticker").c_str());
+            if (FAILED(dlg->Show(owner))) return json{{"started", false}};
+            wil::com_ptr<IShellItem> item;
+            if (FAILED(dlg->GetResult(&item))) return json{{"started", false}};
+            wil::unique_cotaskmem_string path;
+            if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
+                return json{{"started", false}};
+            dest = path.get();
+        }
+        BroadcastEvent("app.flush", json::object());  // 편집 중 내용 먼저 저장
+        RunOnUiDelayed(600, [this, id, dest]() {
+            std::thread([this, id, dest]() {
+                bool ok = store.ExportSticker(id, dest);
+                std::string pathUtf8 = util::WideToUtf8(dest);
+                RunOnUi([this, ok, pathUtf8]() {
+                    BroadcastEvent("sticker.exportDone", {{"ok", ok}, {"path", pathUtf8}});
+                });
+            }).detach();
+        });
+        return json{{"started", true}};
+    });
+
+    // .ssticker 가져오기 — 파일 대화상자(다중 선택)
+    b.Register("stickers.import", [this](const json&) {
+        HWND owner = manager_ ? manager_->hwnd() : nullptr;
+        wil::com_ptr<IFileOpenDialog> dlg;
+        if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                    IID_PPV_ARGS(&dlg))))
+            return json{{"count", 0}};
+        DWORD opts = 0;
+        dlg->GetOptions(&opts);
+        dlg->SetOptions(opts | FOS_ALLOWMULTISELECT | FOS_FORCEFILESYSTEM);
+        COMDLG_FILTERSPEC filters[] = {{L"Super Sticker", L"*.ssticker"}};
+        dlg->SetFileTypes(1, filters);
+        if (FAILED(dlg->Show(owner))) return json{{"count", 0}};
+        wil::com_ptr<IShellItemArray> items;
+        if (FAILED(dlg->GetResults(&items))) return json{{"count", 0}};
+        DWORD n = 0;
+        items->GetCount(&n);
+        std::vector<std::wstring> paths;
+        for (DWORD i = 0; i < n; ++i) {
+            wil::com_ptr<IShellItem> item;
+            if (FAILED(items->GetItemAt(i, &item))) continue;
+            wil::unique_cotaskmem_string path;
+            if (SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
+                paths.push_back(path.get());
+        }
+        std::vector<std::string> errors;
+        int imported = ImportStickerFiles(paths, &errors);
+        return json{{"count", imported}, {"errors", errors}};
+    });
+
+    // .ssticker 드래그앤드롭 — 네이티브가 File 객체에서 뽑은 전체 경로 목록
+    b.Register("stickers.importPaths", [this](const json& p) {
+        std::vector<std::wstring> paths;
+        if (p.contains("paths") && p["paths"].is_array()) {
+            for (auto& v : p["paths"])
+                if (v.is_string()) paths.push_back(util::Utf8ToWide(v.get<std::string>()));
+        }
+        std::vector<std::string> errors;
+        int n = ImportStickerFiles(paths, &errors);
+        return json{{"count", n}, {"errors", errors}};
+    });
+
     b.Register("stickers.new", [this](const json& p) {
         std::string type = p.value("type", "rich");
         RunOnUi([this, type]() { NewSticker(type); });
@@ -1042,6 +1245,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
         // ownerId(스티커 id)가 오면 기록 — 창 파괴 시 AbortOllamaByOwner로 취소
         std::string ownerId = p.value("ownerId", "");
         if (!ownerId.empty()) ollamaOwners_[requestId] = ownerId;
+        bool jsonFormat = p.value("format", "") == "json";
         ollama.Chat(
             requestId, settings.ollama.endpoint, model, p["messages"],
             [this, requestId](std::string delta) {
@@ -1051,7 +1255,8 @@ void App::SetupCommonBridge(WebViewHost& host) {
                 ollamaOwners_.erase(requestId);  // UI 스레드 콜백 (SetUiPoster)
                 BroadcastEvent("ollama.done",
                                {{"requestId", requestId}, {"ok", ok}, {"error", err}});
-            });
+            },
+            jsonFormat);
         return json::object();
     });
 
@@ -1091,6 +1296,109 @@ void App::SetupCommonBridge(WebViewHost& host) {
         return json{{"installed", IsOllamaInstalled()}};
     });
 
+    // ---------- 데이터 탭 ----------
+    b.Register("data.getPath", [this](const json&) {
+        return json{{"path", util::WideToUtf8(store.AppDir())}};
+    });
+
+    b.Register("data.openFolder", [this](const json&) {
+        ShellExecuteW(nullptr, L"open", store.AppDir().c_str(), nullptr, nullptr,
+                      SW_SHOWNORMAL);
+        return json::object();
+    });
+
+    // 저장 경로 변경: 새 폴더에 데이터를 복사한 뒤 datadir.txt 포인터를 바꾸고 재시작.
+    // params.path가 오면 폴더 선택 대화상자를 생략한다 (테스트용).
+    b.Register("data.changeLocation", [this](const json& p) {
+        HWND owner = manager_ ? manager_->hwnd() : nullptr;
+        std::wstring dir = p.contains("path") && p["path"].is_string()
+                               ? util::Utf8ToWide(p["path"].get<std::string>())
+                               : PickFolder(owner);
+        if (dir.empty()) return json{{"changed", false}};
+        std::wstring cur = store.AppDir();
+        if (_wcsicmp(dir.c_str(), cur.c_str()) == 0) return json{{"changed", false}};
+        // 현재 데이터 폴더의 하위 폴더는 무한 복사가 되므로 거부
+        std::wstring curPrefix = cur + L"\\";
+        if (dir.size() > curPrefix.size() &&
+            _wcsnicmp(dir.c_str(), curPrefix.c_str(), curPrefix.size()) == 0) {
+            MessageBoxW(owner, i18n.T("data.changeFailed").c_str(), L"Super Sticker",
+                        MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+            return json{{"changed", false}};
+        }
+        if (!ConfirmYesNo(owner, "confirm.changeDataDir")) return json{{"changed", false}};
+
+        BroadcastEvent("app.flush", json::object());  // 편집 중 내용 저장
+        RunOnUiDelayed(600, [this, dir, cur, owner]() {
+            bool ok = util::CopyDirRecursive(cur, dir) && store.SetCustomDataDir(dir);
+            if (!ok) {
+                MessageBoxW(owner, i18n.T("data.changeFailed").c_str(), L"Super Sticker",
+                            MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
+                return;
+            }
+            MessageBoxW(owner, i18n.T("data.changeDone").c_str(), L"Super Sticker",
+                        MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+            // 단일 인스턴스 뮤텍스와 겹치지 않게 2초 지연 후 재시작
+            wchar_t exe[MAX_PATH]{};
+            GetModuleFileNameW(nullptr, exe, MAX_PATH);
+            std::wstring cmd = L"cmd.exe /c timeout /t 2 /nobreak >nul & start \"\" \"" +
+                               std::wstring(exe) + L"\"";
+            STARTUPINFOW si{sizeof(si)};
+            PROCESS_INFORMATION pi{};
+            std::vector<wchar_t> buf(cmd.begin(), cmd.end());
+            buf.push_back(0);
+            if (CreateProcessW(nullptr, buf.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+                               nullptr, nullptr, &si, &pi)) {
+                CloseHandle(pi.hThread);
+                CloseHandle(pi.hProcess);
+            }
+            Quit();
+        });
+        return json{{"changed", true}};
+    });
+
+    // 백업 ZIP 생성. params.dir이 오면 대화상자 생략 (테스트용).
+    b.Register("data.backup", [this](const json& p) {
+        HWND owner = manager_ ? manager_->hwnd() : nullptr;
+        std::wstring dir = p.contains("dir") && p["dir"].is_string()
+                               ? util::Utf8ToWide(p["dir"].get<std::string>())
+                               : PickFolder(owner);
+        if (dir.empty()) return json{{"started", false}};
+        SYSTEMTIME st{};
+        GetLocalTime(&st);
+        wchar_t name[64];
+        swprintf_s(name, L"SuperSticker-Backup-%04u%02u%02u-%02u%02u%02u.zip", st.wYear,
+                   st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
+        std::wstring zipPath = dir + L"\\" + name;
+        std::wstring dataDir = store.AppDir();
+        BroadcastEvent("app.flush", json::object());  // 편집 중 내용 저장
+        // 압축은 오래 걸릴 수 있어 워커 스레드에서 실행하고 완료 이벤트로 알린다
+        RunOnUiDelayed(600, [this, dataDir, zipPath]() {
+            std::thread([this, dataDir, zipPath]() {
+                bool ok = util::ZipDir(dataDir, zipPath);
+                std::string zipUtf8 = util::WideToUtf8(zipPath);
+                RunOnUi([this, ok, zipUtf8]() {
+                    BroadcastEvent("data.backupDone", {{"ok", ok}, {"path", zipUtf8}});
+                });
+            }).detach();
+        });
+        return json{{"started", true}};
+    });
+
+    // 모든 스티커 목록(관리자) 창 열기 — 스티커/그룹 타이틀바 버튼용
+    b.Register("app.openManager", [this](const json& p) {
+        std::string tab = p.value("tab", "list");
+        RunOnUi([this, tab]() { OpenManager(tab); });
+        return json::object();
+    });
+
+    b.Register("data.deleteAll", [this](const json&) {
+        HWND owner = manager_ ? manager_->hwnd() : nullptr;
+        int before = store.CountAllData();
+        DeleteAllDataInteractive(owner);
+        int after = store.CountAllData();
+        return json{{"deleted", before > 0 && after == 0}};
+    });
+
     b.Register("app.openExternal", [](const json& p) {
         std::string url = p.value("url", "");
         if (url.rfind("https://", 0) != 0) throw std::runtime_error("https only");
@@ -1114,8 +1422,8 @@ void App::ShowTrayMenu() {
     AppendMenuW(newMenu, MF_STRING, IDM_TRAY_NEW_PDF, i18n.T("menu.newPdf").c_str());
     AppendMenuW(menu, MF_POPUP, (UINT_PTR)newMenu, i18n.T("tray.newSticker").c_str());
     AppendMenuW(menu, MF_STRING, IDM_TRAY_NEW_GROUP, i18n.T("tray.newGroup").c_str());
-    AppendMenuW(menu, MF_STRING, IDM_TRAY_TOGGLE,
-                i18n.T(AnyStickerVisible() ? "tray.hideAll" : "tray.showAll").c_str());
+    AppendMenuW(menu, MF_STRING, IDM_TRAY_SHOW_ALL, i18n.T("tray.showAll").c_str());
+    AppendMenuW(menu, MF_STRING, IDM_TRAY_HIDE_ALL, i18n.T("tray.hideAll").c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, IDM_TRAY_LIST, i18n.T("tray.list").c_str());
     AppendMenuW(menu, MF_STRING, IDM_TRAY_SETTINGS, i18n.T("tray.settings").c_str());
@@ -1153,8 +1461,20 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 case WM_CONTEXTMENU:
                     ShowTrayMenu();
                     break;
+                case WM_LBUTTONUP:
+                    // 더블클릭은 UP → DBLCLK → UP 순으로 오므로, 더블클릭 뒤에 따라오는
+                    // UP은 무시해야 단일 클릭 동작이 함께 실행되지 않는다
+                    if (trayIgnoreNextUp_) {
+                        trayIgnoreNextUp_ = false;
+                        break;
+                    }
+                    // 더블클릭 여부를 기다렸다가(더블클릭 대기 시간) 단일 클릭 처리
+                    SetTimer(hwnd_, kTrayClickTimerId, GetDoubleClickTime(), nullptr);
+                    break;
                 case WM_LBUTTONDBLCLK:
-                    ToggleAllVisible();
+                    KillTimer(hwnd_, kTrayClickTimerId);  // 단일 클릭 동작 취소
+                    trayIgnoreNextUp_ = true;              // 뒤따르는 UP 무시
+                    OpenManager("list");                   // 더블클릭: 모든 스티커 목록
                     break;
             }
             return 0;
@@ -1180,8 +1500,11 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 case IDM_TRAY_NEW_GROUP:
                     NewGroup();
                     break;
-                case IDM_TRAY_TOGGLE:
-                    ToggleAllVisible();
+                case IDM_TRAY_SHOW_ALL:
+                    SetAllVisible(true);
+                    break;
+                case IDM_TRAY_HIDE_ALL:
+                    SetAllVisible(false);
                     break;
                 case IDM_TRAY_LIST:
                     OpenManager("list");
@@ -1238,6 +1561,9 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 DestroyWindow(hwnd_);
             } else if (wp == kTrashTimerId) {
                 PurgeExpiredTrash();
+            } else if (wp == kTrayClickTimerId) {
+                KillTimer(hwnd, kTrayClickTimerId);
+                BringAllToFront();  // 트레이 단일 클릭: 보이는 스티커 모두 맨 앞으로
             } else if (auto it = delayedTasks_.find(wp); it != delayedTasks_.end()) {
                 KillTimer(hwnd, wp);
                 auto fn = std::move(it->second);

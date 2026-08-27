@@ -18,12 +18,15 @@
     <button class="tab" data-tab="list" data-i18n="manager.tabList"></button>
     <button class="tab" data-tab="groups" data-i18n="manager.tabGroups"></button>
     <button class="tab" data-tab="trash" data-i18n="manager.tabTrash"></button>
+    <button class="tab" data-tab="data" data-i18n="manager.tabData"></button>
     <button class="tab" data-tab="settings" data-i18n="manager.tabSettings"></button>
   </header>
 
   <main id="listTab" class="tabpage">
     <div class="list-toolbar">
       <button id="newStickerBtn" class="primary" data-i18n="manager.newSticker"></button>
+      <button id="importStickerBtn" data-i18n="manager.importSticker"></button>
+      <span id="importHint" class="hint" data-i18n="manager.importHint"></span>
     </div>
     <div id="cards"></div>
     <div id="listEmpty" class="empty hidden" data-i18n="manager.empty"></div>
@@ -86,6 +89,12 @@
           <span data-i18n="settings.autostart"></span>
         </label>
       </div>
+        <div class="row">
+          <label class="check-label">
+            <input type="checkbox" id="autoHideCheck">
+            <span data-i18n="settings.autoHideUi"></span>
+          </label>
+        </div>
     </section>
 
     <section>
@@ -99,11 +108,14 @@
       </div>
       <div class="row">
         <label data-i18n="settings.trashRetention"></label>
-        <input type="number" id="trashDaysInput" min="1" max="36500" step="1" style="width:90px">
-        <label class="check-label">
-          <input type="checkbox" id="trashNoAutoCheck">
-          <span data-i18n="settings.trashNoAutoDelete"></span>
-        </label>
+        <div class="seg" id="trashDaysSeg">
+          <button data-days="0" data-i18n="settings.trashNoAutoDelete"></button>
+          <button data-days="7"></button>
+          <button data-days="30"></button>
+          <button data-days="60"></button>
+          <button data-days="100"></button>
+          <button data-days="365"></button>
+        </div>
       </div>
       <div class="row">
         <button id="emptyTrashBtn" class="danger" data-i18n="settings.trashEmptyBtn"></button>
@@ -153,6 +165,36 @@
         <div class="row">
           <span id="pullStatus" class="status"></span>
         </div>
+      </div>
+    </section>
+  </main>
+
+  <main id="dataTab" class="tabpage hidden">
+    <section>
+      <h2 data-i18n="data.locationTitle"></h2>
+      <p class="desc" data-i18n="data.locationDesc"></p>
+      <div class="row">
+        <label data-i18n="data.currentPath"></label>
+        <span id="dataPathText" class="status"></span>
+      </div>
+      <div class="row">
+        <button id="openDataFolderBtn" data-i18n="data.openFolder"></button>
+        <button id="changeDataDirBtn" data-i18n="data.changeLocation"></button>
+      </div>
+    </section>
+    <section>
+      <h2 data-i18n="data.backupTitle"></h2>
+      <p class="desc" data-i18n="data.backupDesc"></p>
+      <div class="row">
+        <button id="backupBtn" data-i18n="data.makeBackup"></button>
+        <span id="backupStatus" class="status"></span>
+      </div>
+    </section>
+    <section>
+      <h2 data-i18n="data.dangerTitle"></h2>
+      <p class="desc" data-i18n="data.deleteAllDesc"></p>
+      <div class="row">
+        <button id="deleteAllBtn" class="danger" data-i18n="data.deleteAll"></button>
       </div>
     </section>
   </main>

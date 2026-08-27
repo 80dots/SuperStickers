@@ -1,5 +1,7 @@
 #include "GroupWindow.h"
 
+#include <cmath>
+
 #include <shellapi.h>
 #include <windowsx.h>
 
@@ -22,10 +24,10 @@ constexpr int kBandDip = 6;
 constexpr int kMinWDip = 280;
 constexpr int kMinHDip = 220;
 
-COLORREF GroupBaseColor(const GroupData& d, bool dark) {
-    if (!d.color.empty()) return theme::StickerColor(d.color, dark);
-    // group 기본 배경 (ui 테마 --bg 값과 동일)
-    return dark ? RGB(0x1E, 0x1E, 0x22) : RGB(0xF7, 0xF7, 0xF8);
+COLORREF GroupBaseColor(const GroupData& d, bool /*dark*/) {
+    if (!d.color.empty()) return theme::StickerColor(d.color, false);
+    // group 기본 배경 — 앱 테마와 무관하게 라이트 --bg 값으로 고정
+    return RGB(0xF7, 0xF7, 0xF8);
 }
 }  // namespace
 
@@ -127,6 +129,11 @@ GroupWindow* GroupWindow::Create(HINSTANCE hinst, const GroupData& g, bool show,
         return json::object();
     });
 
+    b.Register("group.setTopmost", [self](const json& p) {
+        self->SetTopmost(p.value("topmost", false));
+        return json::object();
+    });
+
     b.Register("group.hide", [self](const json&) {
         self->data.hidden = true;
         self->SaveData();
@@ -210,13 +217,23 @@ GroupWindow* GroupWindow::Create(HINSTANCE hinst, const GroupData& g, bool show,
                            self->LayoutWebView();
                        });
 
+    if (g.topmost) self->SetTopmost(true);
     if (show) self->ShowWin(true, activate);
     return self;
 }
 
 void GroupWindow::ShowWin(bool show, bool activate) {
+    if (show) host_.EnsureCreated();  // 비어 버린 창 복구
     ShowWindow(hwnd_, show ? (activate ? SW_SHOWNA : SW_SHOWNA) : SW_HIDE);
     if (contentHwnd_) ShowWindow(contentHwnd_, show ? SW_SHOWNA : SW_HIDE);
+    if (show && data.topmost) {
+        // 숨김 상태에서 설정한 항상 위가 표시 과정에서 풀리는 경우 방어
+        SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        if (contentHwnd_)
+            SetWindowPos(contentHwnd_, HWND_TOPMOST, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
     if (show && activate && contentHwnd_) SetForegroundWindow(contentHwnd_);
 }
 
@@ -247,6 +264,15 @@ void GroupWindow::SetDropHover(bool on) {
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
+void GroupWindow::SetTopmost(bool on) {
+    data.topmost = on;
+    HWND ins = on ? HWND_TOPMOST : HWND_NOTOPMOST;
+    SetWindowPos(hwnd_, ins, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    if (contentHwnd_)
+        SetWindowPos(contentHwnd_, ins, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    SaveData();
+}
+
 void GroupWindow::SaveData() {
     data.updatedAt = util::WideToUtf8(util::NowIso8601());
     App::I().store.SaveGroup(data);
@@ -255,6 +281,15 @@ void GroupWindow::SaveData() {
 void GroupWindow::Destroy() { DestroyWindow(hwnd_); }
 
 int GroupWindow::BandPx() const { return MulDiv(kBandDip, dpi_, 96); }
+
+void GroupWindow::StoreGeometryFromWindow() {
+    RECT r{};
+    GetWindowRect(hwnd_, &r);
+    data.x = r.left;
+    data.y = r.top;
+    data.w = r.right - r.left;
+    data.h = r.bottom - r.top;
+}
 
 void GroupWindow::SyncContent() {
     if (!contentHwnd_) return;
@@ -396,12 +431,7 @@ LRESULT GroupWindow::BackProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         }
 
         case WM_EXITSIZEMOVE: {
-            RECT r{};
-            GetWindowRect(hwnd, &r);
-            data.x = r.left;
-            data.y = r.top;
-            data.w = r.right - r.left;
-            data.h = r.bottom - r.top;
+            StoreGeometryFromWindow();
             SaveData();
             return 0;
         }

@@ -4,11 +4,9 @@
   <meta charset="utf-8">
   <title>Sticker</title>
   <script>
-    // 문서 생성 시 주입된 __init으로 첫 페인트 전에 테마를 적용해 깜빡임 방지
-    (function () {
-      var init = window.__init || {};
-      document.documentElement.dataset.theme = init.theme || 'light';
-    })();
+    // 메모창은 앱 테마와 무관하게 항상 라이트 스타일 고정
+    // (스티커 색이 유일한 배경 — 다크 전환 시 내부 요소가 어두워지지 않도록)
+    document.documentElement.dataset.theme = 'light';
   </script>
   <link rel="stylesheet" href="/common/base.css">
   <link rel="stylesheet" href="/common/theme.css">
@@ -32,6 +30,9 @@
     <input id="stTitleInput" type="text" spellcheck="false" class="hidden">
     <div id="dragArea"></div>
     <div class="tb-group">
+      <button id="managerBtn" class="tb-btn" data-i18n-title="tt.openManager">
+        <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M2.2 2.7h11.6v10.6H2.2z"/><path fill="currentColor" d="M4.5 5.2h7v1.4h-7zm0 2.7h7v1.4h-7zm0 2.7h4.5V12h-4.5z"/></svg>
+      </button>
       <button id="aiReviewBtn" class="tb-btn wide hidden" disabled data-i18n-title="tt.aiReview">AI Review</button>
       <button id="newBtn" class="tb-btn" data-i18n-title="tt.new">
         <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M7.25 2h1.5v5.25H14v1.5H8.75V14h-1.5V8.75H2v-1.5h5.25z"/></svg>
@@ -73,6 +74,8 @@
   <div id="summaryBox" class="hidden">
     <span id="summaryLabel" data-i18n="review.summaryLabel"></span>
     <div id="summaryText"></div>
+    <!-- 오류 메시지가 사라지기까지 남은 시간 (오류 상태에서만 보임) -->
+    <div id="summaryTimer"><div id="summaryTimerBar"></div></div>
   </div>
 
   <!-- 번역 뷰 (선택 언어가 원문과 다를 때 본문 대신 표시) -->
@@ -147,6 +150,9 @@
     <button class="tb-btn" id="videoBtn" data-i18n-title="tt.video">
       <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M2.2 3.7h8.6v8.6H2.2z"/><path fill="currentColor" d="M11.8 7 15 4.5v7L11.8 9z"/><path fill="currentColor" d="m5.5 6 3.5 2-3.5 2z"/></svg>
     </button>
+    <button class="tb-btn" id="model3dBtn" data-i18n-title="tt.model3d">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M8 1.8 14 5v6L8 14.2 2 11V5z"/><path fill="none" stroke="currentColor" stroke-width="1.1" d="M2 5l6 3.2L14 5M8 8.2v6"/></svg>
+    </button>
     <span class="tb-spacer"></span>
     <button class="tb-btn hidden" id="previewBtn"></button>
   </div>
@@ -202,6 +208,7 @@
   <script src="/common/prompts.js"></script>
   <script src="/editor/editor.js"></script>
   <script src="/editor/media.js"></script>
+  <script src="/editor/viewer3d.js"></script>
   <script src="/editor/markdown.js"></script>
   <script src="/sticker.js"></script>
 </body>

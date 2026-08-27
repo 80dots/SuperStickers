@@ -2,7 +2,7 @@
 ; 사용자 단위 설치(권한 상승 불필요) — 데이터/자동시작이 모두 HKCU·%APPDATA% 기반
 
 #define MyAppName "Super Sticker"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppExeName "SuperSticker.exe"
 
 [Setup]
@@ -34,6 +34,8 @@ Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"
 [CustomMessages]
 english.AutoStart=Start automatically with Windows
 korean.AutoStart=Windows 시작 시 자동 실행
+english.DeleteData=Do you also want to delete all memos, groups and settings?%n%nThis cannot be undone. (Choose No to keep your data for a future install.)
+korean.DeleteData=메모·그룹·설정 데이터도 함께 삭제할까요?%n%n이 작업은 되돌릴 수 없습니다. (아니요를 선택하면 데이터가 보존되어 다시 설치할 때 그대로 복원됩니다.)
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
@@ -84,9 +86,39 @@ begin
   end;
 end;
 
-// 언인스톨 시: 앱 안에서 켠 자동 시작 등록도 제거 (사용자 데이터 %APPDATA%는 보존)
+// 언인스톨 시: 데이터 삭제 여부를 묻고(기본 보존), 자동 시작 등록 제거.
+// 사일런트 제거에서는 묻지 않고 데이터를 보존한다.
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+var
+  DataDir, CustomDir: String;
+  Buf: AnsiString;
 begin
+  if (CurUninstallStep = usUninstall) and (not UninstallSilent) then
+  begin
+    if MsgBox(CustomMessage('DeleteData'), mbConfirmation,
+              MB_YESNO or MB_DEFBUTTON2) = IDYES then
+    begin
+      DataDir := ExpandConstant('{userappdata}\SuperSticker');
+      // 데이터 탭에서 저장 경로를 바꾼 경우: datadir.txt가 가리키는 폴더도 삭제
+      if LoadStringFromFile(DataDir + '\datadir.txt', Buf) then
+      begin
+        CustomDir := Trim(String(Buf));
+        if (CustomDir <> '') and DirExists(CustomDir) then
+        begin
+          if not DelTree(CustomDir, True, True, True) then
+          begin
+            Sleep(1200);  // 방금 종료된 앱이 잡고 있던 핸들 해제 대기 후 재시도
+            DelTree(CustomDir, True, True, True);
+          end;
+        end;
+      end;
+      if not DelTree(DataDir, True, True, True) then
+      begin
+        Sleep(1200);
+        DelTree(DataDir, True, True, True);
+      end;
+    end;
+  end;
   if CurUninstallStep = usPostUninstall then
     RegDeleteValue(HKCU, 'Software\Microsoft\Windows\CurrentVersion\Run', 'SuperSticker');
 end;
