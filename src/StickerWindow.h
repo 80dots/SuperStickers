@@ -2,6 +2,8 @@
 #include <windows.h>
 
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "Store.h"
 #include "WebViewHost.h"
@@ -24,6 +26,8 @@ public:
     void SetTopmost(bool on);
     void SetColor(const std::string& color);
     void OnThemeChanged();  // 밴드 색 갱신
+    // 다중 선택 표시 — 그룹창의 드롭 하이라이트와 같은 모양(GDI+ 안티앨리어싱 라운드 테두리)
+    void SetSelectedLook(bool on);
     void ApplyUiScale();    // 설정의 UI 배율을 WebView 줌으로 반영
     // UI 자동 숨김: 헤더/툴바가 차지하던 CSS px 만큼 창을 위/아래에서 접거나 편다.
     // 내부 컨텐츠의 화면 위치는 변하지 않는다 (위쪽은 y를 함께 이동).
@@ -51,6 +55,9 @@ private:
     static LRESULT CALLBACK SWndProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT WndProc(HWND, UINT, WPARAM, LPARAM);
     void LayoutWebView();
+    // 자동 숨김으로 접히면 WebView 자식이 위·아래 밴드를 덮어 선택 테두리를 가린다.
+    // 자식 창을 밴드 안쪽으로 잘라 밴드가 항상 보이게 한다.
+    void ClipChildrenToBand();
     void UpdateBandBrush();
     int BandPx() const;
 
@@ -61,7 +68,11 @@ private:
     WebViewHost siteHost_;  // type=="web" 전용 (그 외에는 미생성)
     UINT dpi_ = 96;
     HBRUSH bandBrush_ = nullptr;
-    RECT dragStartRect_{};  // 이동 vs 리사이즈 구분용 (그룹 드롭 감지)
+    bool selected_ = false;  // 다중 선택 표시 여부
+    RECT dragStartRect_{};    // 이동 vs 리사이즈 구분용 (그룹 드롭 감지)
+    POINT dragStartCursor_{};  // 드래그 시작 시 커서 — 자석과 무관한 "자유 위치" 계산 기준
+    // 다중 선택 드래그: 함께 움직일 창들의 시작 위치 (레이아웃 유지를 위해 같은 delta 적용)
+    std::vector<std::pair<StickerWindow*, POINT>> dragPeers_;
     void StepCollapseAnim();  // 접기/펼치기 애니메이션 한 프레임 진행 (WM_TIMER)
 
     // UI 자동 숨김으로 접힌 높이 (CSS px — DPI/배율 변경에도 안전하게 CSS 단위로 보관)

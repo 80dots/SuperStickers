@@ -181,7 +181,7 @@
     // 삭제 확인은 네이티브 대화상자에서 수행 (그룹창 region 클리핑 회피)
     bridge.call('sticker.delete');
   });
-  if (!isText) $('#aiBtn').classList.add('hidden');
+  // AI 패널 진입 버튼은 타이틀바에서 제거됨 (패널 자체는 다른 진입 방식을 위해 유지)
 
   // ==================================================================
   // 태그 / AI 제목 / AI 요약 / AI Review (rich·markdown)
@@ -898,7 +898,9 @@
       $('#aiCopyBtn').disabled = !hasResult;
       $('#aiReplaceBtn').disabled = !hasResult || !hasSelection();
     }
-    $('#aiBtn').addEventListener('click', () => aiPanel.classList.toggle('hidden'));
+    // 타이틀바의 AI 패널 버튼은 제거했다. 패널 기능은 그대로 남아 있고 진입점만 없는
+    // 상태라, 다른 방식(단축키/메뉴 등)에서 이 함수를 부르면 즉시 동작한다.
+    window.__toggleAiPanel = () => aiPanel.classList.toggle('hidden');
     $('#aiCloseBtn').addEventListener('click', () => {
       if (currentRequestId) bridge.call('ollama.abort', { requestId: currentRequestId });
       aiPanel.classList.add('hidden');
@@ -1168,6 +1170,46 @@
     // 입력 중도 아니면 접는다
     requestAnimationFrame(() => requestAnimationFrame(reportUiExtents));
     setTimeout(() => { if (enabled && canCollapse()) collapse(); }, INITIAL_DELAY_MS);
+  })();
+
+  // ---------- 다중 선택 (Shift+클릭으로 고르고, 함께 옮기거나 Delete로 숨김) ----------
+  (() => {
+    let selected = false;
+
+    // 클릭을 네이티브에 알린다. Shift면 토글, 아니면 (선택 밖 창일 때) 전체 해제.
+    // capture 단계에서 잡아 에디터·버튼보다 먼저 처리한다.
+    document.addEventListener('mousedown', (e) => {
+      if (e.shiftKey) {
+        // Shift+클릭은 창 선택 전용 — 본문 텍스트 선택 확장은 막는다
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      bridge.call('selection.click', { id: init.stickerId, shift: !!e.shiftKey })
+        .catch(() => {});
+    }, true);
+
+    bridge.on('selection.changed', (d) => {
+      const on = Array.isArray(d.ids) && d.ids.includes(init.stickerId);
+      if (on === selected) return;
+      selected = on;
+      // 선택 테두리는 네이티브가 그린다(그룹 드롭 하이라이트와 동일한 모양).
+      // 페이지는 Delete 처리를 위해 선택 여부만 알고 있으면 된다.
+      // 선택되면 캐럿을 빼서 Delete가 글자 지우기와 헷갈리지 않게 한다
+      if (on && document.activeElement && document.activeElement !== document.body) {
+        document.activeElement.blur();
+      }
+    });
+
+    // Delete: 선택된 창들을 숨긴다. 글을 쓰는 중이면 원래의 글자 삭제로 둔다.
+    document.addEventListener('keydown', (e) => {
+      if (e.key !== 'Delete' || !selected) return;
+      const a = document.activeElement;
+      const editing = a && (a.isContentEditable || a.tagName === 'TEXTAREA' ||
+                            a.tagName === 'INPUT');
+      if (editing) return;
+      e.preventDefault();
+      bridge.call('selection.hide').catch(() => {});
+    });
   })();
 
   // ---------- 네이티브 이벤트 ----------

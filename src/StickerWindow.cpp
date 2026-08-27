@@ -374,6 +374,11 @@ void StickerWindow::ShowWin(bool show, bool activate) {
         if (data.type == "web") siteHost_.EnsureCreated();
     }
     ShowWindow(hwnd_, show ? (activate ? SW_SHOW : SW_SHOWNA) : SW_HIDE);
+    // 컨트롤러 가시성 동기화 — 숨긴 창의 WebView 렌더링(rAF 포함)이 확실히 멈춘다.
+    // (표시 시 web 메모의 사이트 뷰도 복구되는데, 팝오버용 web.suspendSite와 겹치는
+    //  경우는 '팝오버를 연 채 창을 숨겼다 다시 표시'뿐이라 무시할 수 있는 엣지 케이스)
+    host_.SetVisible(show);
+    if (data.type == "web") siteHost_.SetVisible(show);
     if (show && activate) host_.Focus();
 }
 
@@ -410,6 +415,18 @@ void StickerWindow::UpdateBandBrush() {
     bandBrush_ = CreateSolidBrush(c);
     // DWM 보더를 배경색과 같게 — 아웃라인이 티 나지 않음 (색/테마 변경 시 함께 갱신)
     if (hwnd_) theme::SetWindowBorderColor(hwnd_, c);
+}
+
+void StickerWindow::SetSelectedLook(bool on) {
+    if (selected_ == on) return;
+    selected_ = on;
+    // 창 가장자리 1px(DWM 보더)까지 액센트/배경색으로 맞춰 일체감 유지 (그룹창과 동일)
+    if (on) {
+        theme::SetWindowBorderColor(hwnd_, RGB(0x63, 0x55, 0xE0));
+    } else {
+        UpdateBandBrush();  // 원래 메모 색으로 보더 복구
+    }
+    InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
 int StickerWindow::BandPx() const { return MulDiv(kBandDip, dpi_, 96); }
@@ -515,10 +532,40 @@ void StickerWindow::LayoutWebView() {
         RECT bottom{rc.left + band, top.bottom, rc.right - band, innerBottom};
         host_.SetBounds(top);
         siteHost_.SetBounds(bottom);
+        ClipChildrenToBand();
         return;
     }
     RECT bounds{rc.left + band, y0, rc.right - band, innerBottom};
     host_.SetBounds(bounds);
+    ClipChildrenToBand();
+}
+
+// 접힘 중에는 자식 뷰가 "펼친 기준" 위치에 고정돼 창의 위·아래 밴드를 덮는다.
+// 그 위에 그리는 선택 테두리가 가려져 위아래가 끊겨 보이므로, 자식을 밴드 안쪽으로 자른다.
+// (창 영역 밖으로 나간 부분은 어차피 보이지 않으므로 잘라도 화면은 그대로다)
+void StickerWindow::ClipChildrenToBand() {
+    RECT rc{};
+    GetClientRect(hwnd_, &rc);
+    int band = BandPx();
+    RECT inner{rc.left + band, rc.top + band, rc.right - band, rc.bottom - band};
+    bool collapsed = (collapseTopCss_ > 0 || collapseBottomCss_ > 0 || animCurTop_ > 0.5 ||
+                      animCurBottom_ > 0.5);
+    for (HWND c = GetWindow(hwnd_, GW_CHILD); c; c = GetWindow(c, GW_HWNDNEXT)) {
+        if (!collapsed) {
+            SetWindowRgn(c, nullptr, TRUE);  // 펼친 상태에선 자를 필요가 없다
+            continue;
+        }
+        RECT cr{};
+        GetWindowRect(c, &cr);
+        MapWindowPoints(nullptr, hwnd_, (POINT*)&cr, 2);  // 화면 → 부모 클라이언트 좌표
+        RECT vis{};
+        if (!IntersectRect(&vis, &cr, &inner)) {
+            SetWindowRgn(c, CreateRectRgn(0, 0, 0, 0), TRUE);
+            continue;
+        }
+        OffsetRect(&vis, -cr.left, -cr.top);  // 자식 좌표계로
+        SetWindowRgn(c, CreateRectRgn(vis.left, vis.top, vis.right, vis.bottom), TRUE);
+    }
 }
 
 // 타입별(file/web/pdf) 브리지 메서드
@@ -833,7 +880,26 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_ERASEBKGND: {
             RECT rc{};
             GetClientRect(hwnd, &rc);
-            FillRect((HDC)wp, &rc, bandBrush_);
+            HDC dc = (HDC)wp;
+            FillRect(dc, &rc, bandBrush_);
+            if (selected_) {
+                // 그룹창에 메모를 드롭할 때의 하이라이트와 동일 (색·두께·모서리 반지름)
+                Gdiplus::Graphics g(dc);
+                g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
+                float thick = (float)MulDiv(3, dpi_, 96);
+                Gdiplus::Pen pen(Gdiplus::Color(255, 0x63, 0x55, 0xE0), thick);
+                float in = thick / 2.0f;
+                float x = rc.left + in, y = rc.top + in;
+                float w = (rc.right - rc.left) - thick, h = (rc.bottom - rc.top) - thick;
+                float d = (float)MulDiv(16, dpi_, 96);  // 모서리 호 지름 (DWM 라운드와 유사)
+                Gdiplus::GraphicsPath path;
+                path.AddArc(x, y, d, d, 180.0f, 90.0f);
+                path.AddArc(x + w - d, y, d, d, 270.0f, 90.0f);
+                path.AddArc(x + w - d, y + h - d, d, d, 0.0f, 90.0f);
+                path.AddArc(x, y + h - d, d, d, 90.0f, 90.0f);
+                path.CloseFigure();
+                g.DrawPath(&pen, &path);
+            }
             return 1;
         }
 
@@ -846,6 +912,10 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_SIZE:
             LayoutWebView();
+            // 선택 테두리는 창 가장자리를 따라 그려지므로, 크기가 바뀌면 새로 드러난
+            // 부분만 다시 그려져 테두리가 점선처럼 끊긴다(자동 숨김으로 창이 늘 때 발생).
+            // 선택 중일 때는 클라이언트 전체를 다시 칠해 테두리를 이어 준다.
+            if (selected_) InvalidateRect(hwnd, nullptr, TRUE);
             return 0;
 
         case WM_GETMINMAXINFO: {
@@ -879,18 +949,62 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 StepCollapseAnim();
             }
             GetWindowRect(hwnd, &dragStartRect_);
+            GetCursorPos(&dragStartCursor_);
+            // 다중 선택 상태에서 선택된 창을 잡으면 나머지 선택 창도 같은 delta로 따라온다
+            dragPeers_.clear();
+            if (App::I().IsSelected(data.id) && App::I().HasMultiSelection()) {
+                for (auto& id : App::I().Selection()) {
+                    if (id == data.id) continue;
+                    auto* peer = App::I().FindSticker(id);
+                    if (!peer || !peer->VisibleNow()) continue;
+                    RECT pr{};
+                    GetWindowRect(peer->hwnd(), &pr);
+                    dragPeers_.push_back({peer, POINT{pr.left, pr.top}});
+                }
+            }
             return 0;
 
-        case WM_MOVING:
-            App::I().SnapStickerRect(this, (RECT*)lp);  // 다른 메모창에 자석처럼 붙이기
-            App::I().UpdateDragHover(this);             // 그룹 위 드래그 하이라이트
+        case WM_MOVING: {
+            RECT* pr = (RECT*)lp;
+            // 자석이 창을 옮기면 이동 루프의 기준 사각형도 그 위치로 바뀐다.
+            // 그대로 두면 다음 제안이 "붙은 위치 + 직전 메시지의 작은 이동량"이 되어
+            // 항상 임계값 안에 머물고, 아무리 멀리 끌어도 떨어지지 않는다(실측).
+            // 그래서 커서만 따라가는 자유 위치를 매번 새로 계산해 자석의 입력으로 준다.
+            POINT c{};
+            GetCursorPos(&c);
+            // 커서가 움직였으면 마우스 드래그, 그대로면 키보드 이동(Alt+Space → 이동)이라
+            // 제안 좌표를 그대로 존중한다.
+            if (c.x != dragStartCursor_.x || c.y != dragStartCursor_.y) {
+                int w = pr->right - pr->left, h = pr->bottom - pr->top;
+                pr->left = dragStartRect_.left + (c.x - dragStartCursor_.x);
+                pr->top = dragStartRect_.top + (c.y - dragStartCursor_.y);
+                pr->right = pr->left + w;
+                pr->bottom = pr->top + h;
+            }
+            App::I().SnapStickerRect(this, pr);  // 다른 메모창에 자석처럼 붙이기
+            // 선택된 다른 창들을 같은 이동량만큼 옮긴다 (상대 위치 = 레이아웃 유지)
+            if (!dragPeers_.empty()) {
+                int dx = pr->left - dragStartRect_.left;
+                int dy = pr->top - dragStartRect_.top;
+                for (auto& [peer, start] : dragPeers_) {
+                    SetWindowPos(peer->hwnd(), nullptr, start.x + dx, start.y + dy, 0, 0,
+                                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+                }
+            }
+            App::I().UpdateDragHover(this);      // 그룹 위 드래그 하이라이트
             return TRUE;  // 보정한 사각형을 적용
+        }
 
         case WM_EXITSIZEMOVE: {
             RECT r{};
             GetWindowRect(hwnd, &r);
             StoreGeometryFromWindow();  // 접힌 상태면 펼친 기준으로 보정해 저장
             SaveData();
+            for (auto& [peer, start] : dragPeers_) {  // 함께 움직인 창들도 저장
+                peer->StoreGeometryFromWindow();
+                peer->SaveData();
+            }
+            dragPeers_.clear();
             // 크기 변화 없이 위치만 바뀐 순수 이동이면 그룹 드롭 검사
             bool moved = (r.left != dragStartRect_.left || r.top != dragStartRect_.top);
             bool resized = (r.right - r.left != dragStartRect_.right - dragStartRect_.left) ||
@@ -898,6 +1012,11 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (moved && !resized) App::I().HandleStickerMoveEnd(this);
             return 0;
         }
+
+        case WM_ACTIVATEAPP:
+            // 다른 앱이나 바탕화면을 클릭해 우리 앱을 벗어나면 선택을 푼다
+            if (wp == FALSE) App::I().ClearSelection();
+            return 0;
 
         case WM_CLOSE:  // X = 종료가 아니라 숨김
             data.hidden = true;

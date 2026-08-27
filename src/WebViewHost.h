@@ -36,6 +36,9 @@ public:
     void SetZoomFactor(double zoom);
     void Navigate(const std::wstring& url);
     void PostEvent(const std::string& event, const nlohmann::json& data);
+    // 이미 직렬화한 {"event",...} JSON을 그대로 전송 — 브로드캐스트 시 창마다
+    // 다시 직렬화하지 않도록 App::BroadcastEvent가 사용한다
+    void PostEventRaw(const std::wstring& payload);
     void Focus();
     void Close();
     bool Ready() const { return webview_ != nullptr; }

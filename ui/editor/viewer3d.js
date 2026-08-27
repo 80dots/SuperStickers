@@ -250,6 +250,13 @@ const viewer3d = (() => {
       controls.enableZoom = false;
       controls.enableDamping = true;
 
+      // 항상 60fps로 그리면 3D가 있는 메모마다 GPU/CPU를 상시 소모한다.
+      // 화면이 실제로 바뀔 때만 그린다: 변화가 생기는 지점들이 invalidate()로 다음
+      // 프레임을 예약하고, 유휴 상태에서는 render 호출이 0이 된다.
+      let needsRender = true;
+      const invalidate = () => { needsRender = true; };
+      el.__renderCount = 0;  // 성능 검증용 카운터 (렌더가 드물어 부담 없음)
+
       const model = await loadModel(el);
       scene.add(model);
       msg.remove();
@@ -290,6 +297,7 @@ const viewer3d = (() => {
           scene.environment = null;
           scene.background = new THREE.Color(0x2a2d33);
         }
+        invalidate();  // 배경/환경맵이 바뀌었을 수 있음 (아래 재질 교체 포함)
         model.traverse((o) => {
           if (!o.isMesh) return;
           if (mode === 'wireframe') {
@@ -354,6 +362,7 @@ const viewer3d = (() => {
           const d = offset.length();
           const next = Math.min(maxD, Math.max(minD, d * Math.pow(1.01, dy)));
           camera.position.copy(controls.target).add(offset.setLength(next));
+          invalidate();
           e.preventDefault();
         });
         const end = (e) => {
@@ -372,6 +381,7 @@ const viewer3d = (() => {
         renderer.setSize(w, h, false);
         camera.aspect = w / h;
         camera.updateProjectionMatrix();
+        invalidate();
       }
       const ro = new ResizeObserver(resize);
       ro.observe(wrap);
@@ -380,7 +390,12 @@ const viewer3d = (() => {
       let raf = 0;
       function loop() {
         raf = requestAnimationFrame(loop);
-        controls.update();
+        if (document.hidden) return;  // 숨긴 창은 그리지 않음
+        // OrbitControls.update()는 카메라가 움직였을 때(댐핑 감쇠 중 포함) true를 반환
+        if (controls.update()) needsRender = true;
+        if (!needsRender) return;
+        needsRender = false;
+        el.__renderCount++;
         renderer.render(scene, camera);
       }
       loop();

@@ -23,8 +23,8 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  height: 30px;  /* 아이콘(26px 버튼)은 유지하고 상하 여백만 축소 */
-  padding: 0 6px;
+  height: 32px;  /* 아이콘(26px 버튼)은 유지하고 상하 여백만 축소 */
+  padding: 0 7px;
   border-radius: 8px;  /* region 라운드와 일치 (모서리 안티앨리어싱) */
   background: var(--panel-bg);
   border-bottom: 1px solid var(--border);

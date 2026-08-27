@@ -122,8 +122,13 @@
       sendShape();
     });
   }
-  // 안전망: 관찰이 놓친 레이아웃 변화를 주기적으로 반영
-  setInterval(sendShape, 500);
+  // 안전망: 관찰이 놓친 레이아웃 변화를 주기적으로 반영.
+  // 숨긴 창에서는 DOM 측정을 건너뛴다 (트레이 상주 중 불필요한 상시 부하 제거).
+  setInterval(() => { if (document.visibilityState === 'visible') sendShape(); }, 500);
+  // 다시 표시되면 즉시 한 번 갱신 (숨긴 동안의 변화 반영)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') scheduleShape();
+  });
   window.addEventListener('resize', scheduleShape);
   cardsEl.addEventListener('scroll', scheduleShape);
   const shapeObserver = new MutationObserver(scheduleShape);
@@ -678,6 +683,11 @@
     flushAll();
     await bridge.call('group.delete');
   });
+
+  // 메모창 밖(그룹창)을 Shift 없이 클릭하면 메모창 다중 선택을 해제한다
+  document.addEventListener('mousedown', (e) => {
+    if (!e.shiftKey) bridge.call('selection.clear').catch(() => {});
+  }, true);
 
   // ---------- 네이티브 이벤트 ----------
   bridge.on('group.membersChanged', () => {

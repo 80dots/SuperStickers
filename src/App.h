@@ -74,6 +74,19 @@ public:
     void SaveMemberContent(const nlohmann::json& p);  // 그룹 카드 인라인 편집 저장
     StickerData* FindStickerData(const std::string& id);  // 창 유무 무관 데이터 조회
 
+    // ---------- 메모창 다중 선택 ----------
+    // Shift+클릭으로 여러 창을 고르고, 함께 옮기거나(드래그) 한 번에 숨긴다(Delete).
+    // 세션 한정 상태 — 저장하지 않는다.
+    bool IsSelected(const std::string& id) const { return selected_.count(id) > 0; }
+    bool HasMultiSelection() const { return selected_.size() > 1; }
+    const std::set<std::string>& Selection() const { return selected_; }
+    // 페이지의 클릭 보고: shift면 토글, 아니면 (선택되지 않은 창일 때만) 전체 해제.
+    // 이미 선택된 창을 그냥 클릭하는 것은 함께 드래그하려는 동작이므로 선택을 지킨다.
+    void OnStickerClicked(const std::string& id, bool shift);
+    void ClearSelection();
+    void SyncSelectionLook();  // 선택 테두리 갱신 + selection.changed 방송
+    void HideSelectedStickers();  // Delete — 선택된 창을 모두 숨김 상태로
+
     // 자석 정렬: 드래그 중인 메모창을 다른 메모창의 간격·가장자리에 맞춰 붙인다.
     // rect는 WM_MOVING이 준 제안 위치이며, 붙을 자리가 있으면 그 자리로 보정한다.
     void SnapStickerRect(StickerWindow* self, RECT* rect);
@@ -117,6 +130,10 @@ public:
     // 설정 반영 + 웹 브로드캐스트
     void ApplySettingsPatch(const nlohmann::json& patch);
     void BroadcastEvent(const std::string& ev, const nlohmann::json& data);
+    // 구독 창이 정해진 이벤트의 타깃 전달 (창이 없으면 브로드캐스트 폴백)
+    void SendEventToSticker(const std::string& stickerId, const std::string& ev,
+                            const nlohmann::json& data);
+    void SendEventToManager(const std::string& ev, const nlohmann::json& data);
 
     // 브리지: 모든 창에 공통으로 등록되는 메서드 (settings/ollama/stickers/app)
     void SetupCommonBridge(WebViewHost& host);
@@ -142,6 +159,7 @@ private:
     ManagerWindow* manager_ = nullptr;
     std::string lastDragHoverGroup_;
     std::map<UINT_PTR, std::function<void()>> delayedTasks_;
+    std::set<std::string> selected_;  // 다중 선택된 스티커 id (세션 한정)
     std::map<std::string, std::string> ollamaOwners_;  // requestId → 스티커 id
     std::atomic<bool> installingOllama_{false};
     std::atomic<bool> installAbort_{false};       // 설치 다운로드 중단 플래그

@@ -1,35 +1,63 @@
-/* 라이트/다크 테마 변수. 스티커 배경 팔레트는 src/Theme.cpp와 동기화 유지할 것. */
+/* 디자인 토큰. 시안(Claude Design "Windows 바탕화면 스티커 메모", Fluent x Notion)에서 옮김.
+   스티커 배경 팔레트는 src/Theme.cpp / ui/common/color.js와 동기화 유지할 것.
+   강조색(--accent)은 네이티브의 선택 테두리·그룹 드롭 하이라이트와도 같은 값이어야 한다
+   (src/StickerWindow.cpp, src/GroupWindow.cpp의 0x63,0x55,0xE0). */
 :root {
-  --fg: #1f2328;
-  --muted: #6b7280;
-  --bg: #f7f7f8;
-  --panel-bg: #ffffff;
-  --border: #d9dbe0;
-  --accent: #2563eb;
-  --accent-fg: #ffffff;
-  --hover: rgba(0, 0, 0, 0.07);
-  --active: rgba(0, 0, 0, 0.12);
-  --scrollbar: rgba(0, 0, 0, 0.25);
-  --danger: #dc2626;
+  /* 중성색: 따뜻한 회색 계열 (Notion 계열의 부드러운 톤) */
+  --fg: #37352F;          /* 본문 */
+  --strong: #1F1E1B;      /* 제목 */
+  --muted: #787774;       /* 보조 */
+  --faint: #9B9A97;       /* 시간·부가 정보 */
+  --bg: #F7F7F5;          /* 창 바탕 */
+  --panel-bg: #FFFFFF;    /* 카드·패널 표면 */
+  --border: #E9E9E7;      /* 경계선 */
+  --border-strong: #DCDCD8;
+  --hover: rgba(55, 53, 47, 0.055);
+  --active: rgba(55, 53, 47, 0.11);
+  --scrollbar: rgba(55, 53, 47, 0.22);
+
+  --accent: #6355E0;      /* 선택·체크·포커스 */
+  --accent-soft: rgba(99, 85, 224, 0.13);
+  --accent-fg: #FFFFFF;
+  --danger: #E03E3E;
+
+  /* 모서리 반경 */
+  --r-sm: 6px;            /* 버튼·칩 */
+  --r-md: 10px;           /* 카드·창 */
+  --r-lg: 12px;           /* 팝오버 */
+
+  /* 그림자: 얇은 윤곽 + 부드러운 확산 */
+  --shadow-sm: 0 1px 2px rgba(15, 15, 15, 0.06), 0 0 0 1px rgba(15, 15, 15, 0.045);
+  --shadow-md: 0 4px 12px rgba(15, 15, 15, 0.1), 0 0 0 1px rgba(15, 15, 15, 0.05);
+  --shadow-lg: 0 10px 30px rgba(15, 15, 15, 0.14), 0 0 0 1px rgba(15, 15, 15, 0.06);
 
   /* 스티커 배경·글자색은 ui/common/color.js가 인라인 CSS 변수로 지정
      (--note-bg, --note-fg, --note-titlebar) — 아래는 폴백 기본값 */
   --note-bg: #FFF4B8;
-  --note-titlebar: rgba(0, 0, 0, 0.06);
+  --note-titlebar: rgba(55, 53, 47, 0.07);
 }
 
 :root[data-theme="dark"] {
-  --fg: #e6e6e9;
-  --muted: #9ca3af;
-  --bg: #1e1e22;
-  --panel-bg: #2a2a2e;
-  --border: #3f3f46;
-  --accent: #3b82f6;
-  --accent-fg: #ffffff;
-  --hover: rgba(255, 255, 255, 0.09);
-  --active: rgba(255, 255, 255, 0.16);
-  --scrollbar: rgba(255, 255, 255, 0.25);
-  --danger: #f87171;
+  --fg: #E4E3E0;
+  --strong: #F5F4F2;
+  --muted: #9B9A97;
+  --faint: #797875;
+  --bg: #1E1E1C;
+  --panel-bg: #292927;
+  --border: #3A3A37;
+  --border-strong: #4A4A46;
+  --hover: rgba(255, 255, 255, 0.07);
+  --active: rgba(255, 255, 255, 0.13);
+  --scrollbar: rgba(255, 255, 255, 0.22);
+
+  --accent: #8B7BF0;
+  --accent-soft: rgba(139, 123, 240, 0.20);
+  --accent-fg: #FFFFFF;
+  --danger: #F07474;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
 
   --note-bg: #4A4420;
   --note-titlebar: rgba(255, 255, 255, 0.08);

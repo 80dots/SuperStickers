@@ -175,10 +175,10 @@ void App::NewSticker(const std::string& type) {
     d.type = type;
     d.mode = (type == "markdown") ? "markdown" : "rich";  // 레거시 필드 동기화
     d.createdAt = d.updatedAt = util::WideToUtf8(util::NowIso8601());
-    // 타입별 기본 크기 (UI 배율 반영)
-    if (type == "file") { d.w = 380; d.h = 440; }
-    else if (type == "web") { d.w = 500; d.h = 460; }
-    else if (type == "pdf") { d.w = 500; d.h = 600; }
+    // 타입별 기본 크기 (UI 배율 반영). rich/markdown은 StickerData 기본값(510x450).
+    if (type == "file") { d.w = 570; d.h = 660; }
+    else if (type == "web") { d.w = 750; d.h = 690; }
+    else if (type == "pdf") { d.w = 750; d.h = 900; }
     d.w = (int)(d.w * settings.uiScale + 0.5);
     d.h = (int)(d.h * settings.uiScale + 0.5);
     int n = (int)stickers_.size();
@@ -546,14 +546,14 @@ void App::InstallOllama() {
     std::thread([this]() {
         auto progress = [this](const std::string& stage, uint64_t received, uint64_t total) {
             RunOnUi([this, stage, received, total]() {
-                BroadcastEvent("ollama.installProgress",
+                SendEventToManager("ollama.installProgress",
                                {{"stage", stage}, {"received", received}, {"total", total}});
             });
         };
         auto finish = [this](bool ok, const std::string& err, bool already, bool exposeSet) {
             RunOnUi([this, ok, err, already, exposeSet]() {
                 installingOllama_ = false;
-                BroadcastEvent("ollama.installDone", {{"ok", ok},
+                SendEventToManager("ollama.installDone", {{"ok", ok},
                                                       {"error", err},
                                                       {"already", already},
                                                       {"exposeSet", exposeSet}});
@@ -871,6 +871,50 @@ void App::ClampAllWindowsToScreen() {
     }
 }
 
+// ---------- 다중 선택 ----------
+
+// 선택 표시(네이티브 테두리)를 모든 창에 반영하고 페이지에도 알린다
+void App::SyncSelectionLook() {
+    for (auto* w : stickers_) w->SetSelectedLook(selected_.count(w->data.id) > 0);
+    json ids = json::array();
+    for (auto& id : selected_) ids.push_back(id);
+    BroadcastEvent("selection.changed", {{"ids", ids}});
+}
+
+void App::ClearSelection() {
+    if (selected_.empty()) return;
+    selected_.clear();
+    SyncSelectionLook();
+}
+
+void App::OnStickerClicked(const std::string& id, bool shift) {
+    if (shift) {
+        if (!selected_.insert(id).second) selected_.erase(id);  // 이미 있으면 해제
+    } else if (!selected_.count(id)) {
+        // 선택에 없는 창을 그냥 클릭 = 다른 작업으로 넘어감 → 전체 해제.
+        // (선택된 창을 그냥 클릭한 경우는 함께 드래그하려는 것이므로 그대로 둔다)
+        if (selected_.empty()) return;
+        selected_.clear();
+    } else {
+        return;  // 선택된 창의 평범한 클릭 — 상태 유지
+    }
+    SyncSelectionLook();
+}
+
+void App::HideSelectedStickers() {
+    if (selected_.empty()) return;
+    std::vector<std::string> ids(selected_.begin(), selected_.end());
+    selected_.clear();
+    SyncSelectionLook();
+    for (auto& id : ids) {
+        if (auto* w = FindSticker(id)) {
+            w->data.hidden = true;
+            w->SaveData();
+            w->ShowWin(false, false);
+        }
+    }
+}
+
 void App::SnapStickerRect(StickerWindow* self, RECT* rect) {
     if (!settings.magnetEnabled || !rect) return;
     // 정렬 기준(UI 숨김 상태) 좌표로 바꿔 계산하고, 구한 이동량을 실제 사각형에 그대로 적용한다
@@ -893,8 +937,11 @@ void App::SnapStickerRect(StickerWindow* self, RECT* rect) {
         if (abs(d) <= thr && abs(d) < bestY) { bestY = abs(d); bestDy = d; }
     };
 
+    const bool multi = IsSelected(self->data.id) && HasMultiSelection();
     for (auto* other : stickers_) {
         if (other == self || !other->VisibleNow()) continue;
+        // 함께 끌려오는 창에는 붙지 않는다 (서로 당겨 레이아웃이 무너진다)
+        if (multi && IsSelected(other->data.id)) continue;
         RECT o = other->AlignRectNow();
         // 세로로 겹치거나 가까울 때만 좌우로 붙인다 (엉뚱하게 멀리 있는 창에 끌리지 않도록)
         if (me.top <= o.bottom + gap + thr && me.bottom >= o.top - gap - thr) {
@@ -1059,9 +1106,30 @@ void App::ApplySettingsPatch(const json& patch) {
 }
 
 void App::BroadcastEvent(const std::string& ev, const json& data) {
-    for (auto* w : stickers_) w->host().PostEvent(ev, data);
-    for (auto* g : groups_) g->host().PostEvent(ev, data);
-    if (manager_) manager_->host().PostEvent(ev, data);
+    // 창마다 dump()를 반복하지 않도록 한 번만 직렬화해서 그대로 보낸다
+    std::wstring payload = util::Utf8ToWide(json{{"event", ev}, {"data", data}}.dump());
+    for (auto* w : stickers_) w->host().PostEventRaw(payload);
+    for (auto* g : groups_) g->host().PostEventRaw(payload);
+    if (manager_) manager_->host().PostEventRaw(payload);
+}
+
+// Ollama 스트리밍은 청크가 초당 수십 개씩 오므로 모든 창에 뿌리면
+// (창 수 x 청크 수)만큼 IPC·JS 콜백이 낭비된다. 구독자가 정해진 이벤트는 그 창에만 보낸다.
+void App::SendEventToSticker(const std::string& stickerId, const std::string& ev,
+                             const json& data) {
+    if (auto* w = FindSticker(stickerId)) {
+        w->host().PostEvent(ev, data);
+        return;
+    }
+    BroadcastEvent(ev, data);  // 창을 못 찾으면(직후 파괴 등) 기존 동작으로 폴백
+}
+
+void App::SendEventToManager(const std::string& ev, const json& data) {
+    if (manager_) {
+        manager_->host().PostEvent(ev, data);
+        return;
+    }
+    BroadcastEvent(ev, data);
 }
 
 // ---------- 공통 브리지 ----------
@@ -1186,6 +1254,24 @@ void App::SetupCommonBridge(WebViewHost& host) {
         return json{{"deleted", true}};
     });
 
+    // ---------- 다중 선택 (Shift+클릭 / Delete) ----------
+    b.Register("selection.click", [this](const json& p) {
+        std::string id = p.value("id", "");
+        bool shift = p.value("shift", false);
+        if (!id.empty()) OnStickerClicked(id, shift);
+        return json::object();
+    });
+
+    b.Register("selection.clear", [this](const json&) {
+        ClearSelection();
+        return json::object();
+    });
+
+    b.Register("selection.hide", [this](const json&) {
+        RunOnUi([this]() { HideSelectedStickers(); });  // 창 파괴/숨김은 UI 스레드에서
+        return json::object();
+    });
+
     b.Register("stickers.show", [this](const json& p) {
         std::string id = p.value("id", "");
         RunOnUi([this, id]() { ShowSticker(id); });
@@ -1304,7 +1390,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
         std::string endpoint = p.value("endpoint", settings.ollama.endpoint);
         ollama.ListModels(endpoint, [this, requestId](bool ok, std::vector<std::string> models,
                                                       std::string err) {
-            BroadcastEvent("ollama.models",
+            SendEventToManager("ollama.models",
                            {{"requestId", requestId}, {"ok", ok}, {"models", models},
                             {"error", err}});
         });
@@ -1323,13 +1409,14 @@ void App::SetupCommonBridge(WebViewHost& host) {
         bool jsonFormat = p.value("format", "") == "json";
         ollama.Chat(
             requestId, settings.ollama.endpoint, model, p["messages"],
-            [this, requestId](std::string delta) {
-                BroadcastEvent("ollama.chunk", {{"requestId", requestId}, {"delta", delta}});
+            [this, requestId, ownerId](std::string delta) {
+                SendEventToSticker(ownerId, "ollama.chunk",
+                                   {{"requestId", requestId}, {"delta", delta}});
             },
-            [this, requestId](bool ok, std::string err) {
+            [this, requestId, ownerId](bool ok, std::string err) {
                 ollamaOwners_.erase(requestId);  // UI 스레드 콜백 (SetUiPoster)
-                BroadcastEvent("ollama.done",
-                               {{"requestId", requestId}, {"ok", ok}, {"error", err}});
+                SendEventToSticker(ownerId, "ollama.done",
+                                   {{"requestId", requestId}, {"ok", ok}, {"error", err}});
             },
             jsonFormat);
         return json::object();
@@ -1348,7 +1435,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
         ollama.Pull(
             requestId, settings.ollama.endpoint, name,
             [this, requestId](std::string status, uint64_t total, uint64_t completed) {
-                BroadcastEvent("ollama.pullProgress",
+                SendEventToManager("ollama.pullProgress",
                                {{"requestId", requestId},
                                 {"status", status},
                                 {"total", total},
@@ -1356,7 +1443,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
             },
             [this, requestId](bool ok, std::string err) {
                 activePulls_.erase(requestId);  // UI 스레드 콜백
-                BroadcastEvent("ollama.pullDone",
+                SendEventToManager("ollama.pullDone",
                                {{"requestId", requestId}, {"ok", ok}, {"error", err}});
             });
         return json::object();

@@ -160,6 +160,10 @@ void WebViewHost::CreateInternal() {
                 }
                 createAttempts_ = 0;
                 controller_ = controller;
+                // 호스트 창이 숨김 상태로 생성됐다면(트레이 상주 중 hidden 메모/그룹)
+                // 컨트롤러도 숨김으로 — 표시 전까지 렌더링·rAF가 돌지 않는다.
+                // 이후 표시/숨김 전환은 ShowWin이 SetVisible로 유지한다.
+                controller_->put_IsVisible(IsWindowVisible(hostHwnd_) ? TRUE : FALSE);
                 controller_->get_CoreWebView2(&webview_);
                 if (!webview_) return S_OK;
 
@@ -381,6 +385,11 @@ void WebViewHost::PostEvent(const std::string& event, const json& data) {
     if (!webview_) return;
     json j = {{"event", event}, {"data", data}};
     webview_->PostWebMessageAsJson(util::Utf8ToWide(j.dump()).c_str());
+}
+
+void WebViewHost::PostEventRaw(const std::wstring& payload) {
+    if (!webview_) return;
+    webview_->PostWebMessageAsJson(payload.c_str());
 }
 
 void WebViewHost::Focus() {

@@ -1,10 +1,25 @@
+/* 본문 서체: Pretendard (OFL 1.1, ui/vendor/fonts/OFL.txt).
+   오프라인 동작이 필요해 CDN 대신 파일을 함께 배포한다.
+   가변 폰트 하나로 100~900 굵기를 모두 담고 있어 파일이 이것뿐이다.
+   한글·라틴을 같은 서체로 그려 예전처럼 라틴(Segoe)·한글(맑은 고딕)이 섞이지 않는다. */
+@font-face {
+  font-family: "Pretendard Variable";
+  src: url("/vendor/fonts/PretendardVariable.woff2") format("woff2-variations");
+  font-weight: 45 930;  /* 폰트의 실제 wght 축 범위와 일치 */
+  font-style: normal;
+  font-display: block;  /* 로컬 파일이라 즉시 로드 — 폴백 깜빡임 방지 */
+}
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 html, body {
   height: 100%;
-  font-family: "Segoe UI Variable", "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
+  /* Pretendard가 한글·라틴을 모두 담당. 없으면 시스템 서체로 폴백 */
+  font-family: "Pretendard Variable", "Segoe UI Variable", "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
   font-size: 14px;
+  line-height: 1.55;
   color: var(--fg);
+  -webkit-font-smoothing: antialiased;
   -webkit-user-select: none;
   user-select: none;
 }
@@ -21,4 +36,5 @@ input, select, textarea { font-family: inherit; color: inherit; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 ::-webkit-scrollbar-track { background: transparent; }

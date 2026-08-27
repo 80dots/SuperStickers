@@ -13,9 +13,14 @@ body {
   position: relative;
   display: flex;
   align-items: center;
-  height: 32px;
-  padding: 0 4px;
+  height: 34px;
+  padding: 0 5px;
   background: var(--note-titlebar);
+  /* 네 모서리 모두 창의 DWM 라운드(8px)와 같은 값으로 굴린다.
+     굴려서 드러나는 자리는 메모 배경색이라 창 모서리와 자연스럽게 이어진다.
+     (그룹창 헤더 #ghead와 같은 처리) */
+  border-radius: 8px;
+  border-bottom: 1px solid rgba(55, 53, 47, 0.06);
   flex: none;
 }
 #dragArea { flex: 1; height: 100%; min-width: 8px; }
@@ -47,13 +52,12 @@ body {
   min-width: 80px;
 }
 
-/* AI Review 버튼(텍스트): 짙은 남색 고정, 분석 중엔 점멸 */
-#aiReviewBtn { font-weight: 700; white-space: nowrap; color: #1F3864; }
-#aiReviewBtn:disabled { opacity: 0.28; cursor: default; }
+/* AI Review: 다른 타이틀바 아이콘과 같은 모양.
+   리뷰할 새 내용이 있으면 강조색으로 눈에 띄게, 분석 중에는 점멸한다. */
+#aiReviewBtn:disabled { cursor: default; }
 #aiReviewBtn:disabled:hover { background: transparent; }
-/* 리뷰할 새 내용이 있을 때: 애니메이션 없이 기본 글자색 그대로 (선명하게만) */
-#aiReviewBtn.need { opacity: 1; }
-#aiReviewBtn.busy { opacity: 1; animation: reviewBlink 1s ease-in-out infinite; }
+#aiReviewBtn.need { opacity: 1; color: var(--accent); }
+#aiReviewBtn.busy { opacity: 1; color: var(--accent); animation: reviewBlink 1s ease-in-out infinite; }
 @keyframes reviewBlink {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
@@ -98,13 +102,13 @@ body {
 /* ---------- AI 요약 박스 ---------- */
 #summaryBox {
   flex: none;
-  margin: 6px 8px 0;
-  padding: 7px 9px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--hover);
+  margin: 7px 9px 0;
+  padding: 8px 10px;
+  border: 1px solid rgba(55, 53, 47, 0.1);
+  border-radius: var(--r-md);
+  background: rgba(55, 53, 47, 0.045);
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.55;
 }
 #summaryBox.error { color: var(--danger); }
 /* 오류 자동 소멸 카운트다운: 요약 아래 얇은 바가 남은 시간만큼 줄어든다.
@@ -161,14 +165,15 @@ body {
   gap: 3px;
   font-size: 11.5px;
   padding: 2px 4px 2px 8px;
-  border-radius: 10px;
-  background: var(--active);
+  border-radius: 999px;
+  background: rgba(55, 53, 47, 0.09);
   color: var(--note-fg, var(--fg));
 }
 /* AI 생성 태그: 파란 톤으로 사용자 태그와 구분 */
 .tag-chip.ai {
-  background: rgba(59, 130, 246, 0.20);
-  border: 1px solid rgba(59, 130, 246, 0.45);
+  background: var(--accent-soft);
+  border: 1px solid rgba(99, 85, 224, 0.35);
+  color: #4C40B8;
   padding: 1px 3px 1px 7px;
 }
 .tag-chip .tag-x {
@@ -201,13 +206,14 @@ body {
   justify-content: center;
   width: 26px;
   height: 26px;
-  border-radius: 5px;
+  border-radius: var(--r-sm);
   color: var(--note-fg, var(--fg));
-  opacity: 0.72;
+  opacity: 0.68;
+  transition: background 0.12s ease, opacity 0.12s ease;
 }
-.tb-btn:hover { background: var(--hover); opacity: 1; }
-.tb-btn:active { background: var(--active); }
-.tb-btn.on { opacity: 1; background: var(--active); }
+.tb-btn:hover { background: rgba(55, 53, 47, 0.07); opacity: 1; }
+.tb-btn:active { background: rgba(55, 53, 47, 0.13); }
+.tb-btn.on { opacity: 1; background: rgba(55, 53, 47, 0.13); }
 
 .color-dot {
   width: 13px;
@@ -330,9 +336,34 @@ body {
   margin: 2px 0;
 }
 .check-item input[type="checkbox"] {
-  margin-top: 4px;
-  accent-color: var(--accent);
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  margin-top: 3px;
+  border: 1.5px solid rgba(55, 53, 47, 0.3);
+  border-radius: 4px;
+  background: transparent;
   flex: none;
+  cursor: pointer;
+  position: relative;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.check-item input[type="checkbox"]:hover { border-color: rgba(55, 53, 47, 0.5); }
+.check-item input[type="checkbox"]:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+/* 흰색 체크 표시 */
+.check-item input[type="checkbox"]:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1.5px;
+  width: 4px;
+  height: 8px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 .check-item .check-text { flex: 1; min-width: 0; }
 .check-item input:checked + .check-text {
@@ -344,10 +375,11 @@ body {
 #toolbar {
   display: flex;
   align-items: center;
-  gap: 1px;
-  height: 32px;
-  padding: 0 6px;
-  background: var(--note-titlebar);
+  gap: 2px;
+  height: 34px;
+  padding: 0 7px;
+  background: transparent;
+  border-top: 1px solid rgba(55, 53, 47, 0.08);
   flex: none;
 }
 .tb-sep {

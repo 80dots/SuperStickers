@@ -39,6 +39,11 @@
     t.addEventListener('click', () => showTab(t.dataset.tab)));
   bridge.on('manager.showTab', (d) => showTab(d.tab));
 
+  // 메모창 밖(설정·목록 창)을 Shift 없이 클릭하면 메모창 다중 선택을 해제한다
+  document.addEventListener('mousedown', (e) => {
+    if (!e.shiftKey) bridge.call('selection.clear').catch(() => {});
+  }, true);
+
   // ---------- 스티커 목록 ----------
   function stripHtml(html) {
     const div = document.createElement('div');

@@ -226,6 +226,9 @@ void GroupWindow::ShowWin(bool show, bool activate) {
     if (show) host_.EnsureCreated();  // 비어 버린 창 복구
     ShowWindow(hwnd_, show ? (activate ? SW_SHOWNA : SW_SHOWNA) : SW_HIDE);
     if (contentHwnd_) ShowWindow(contentHwnd_, show ? SW_SHOWNA : SW_HIDE);
+    // 컨트롤러 가시성을 창 상태와 일치시킨다. 숨긴 창의 WebView 렌더링이 멈추고,
+    // 페이지 visibilityState가 정확해져 shape 폴링 가드가 올바르게 동작한다
+    host_.SetVisible(show);
     if (show && data.topmost) {
         // 숨김 상태에서 설정한 항상 위가 표시 과정에서 풀리는 경우 방어
         SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0,
@@ -245,7 +248,7 @@ void GroupWindow::ApplyAppearance() {
     COLORREF base = GroupBaseColor(data, dark);
     bgBrush_ = CreateSolidBrush(base);
     // DWM 보더를 배경색과 같게 (드롭 호버 중에는 액센트 색 유지)
-    theme::SetWindowBorderColor(hwnd_, dropHover_ ? RGB(0x3B, 0x82, 0xF6) : base);
+    theme::SetWindowBorderColor(hwnd_, dropHover_ ? RGB(0x63, 0x55, 0xE0) : base);
     // 알파 0이면 클릭이 통과해 이동·리사이즈가 불가능해지므로 최소 1 유지
     int alpha = (int)(data.opacity * 255.0 + 0.5);
     if (alpha < 1) alpha = 1;
@@ -260,7 +263,7 @@ void GroupWindow::SetDropHover(bool on) {
     // 창 가장자리 1px(DWM 보더)까지 액센트/배경색으로 맞춰 일체감 유지
     bool dark = App::I().EffectiveTheme() == "dark";
     theme::SetWindowBorderColor(hwnd_,
-                                on ? RGB(0x3B, 0x82, 0xF6) : GroupBaseColor(data, dark));
+                                on ? RGB(0x63, 0x55, 0xE0) : GroupBaseColor(data, dark));
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
@@ -394,7 +397,7 @@ LRESULT GroupWindow::BackProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 Gdiplus::Graphics g(dc);
                 g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
                 float thick = (float)MulDiv(3, dpi_, 96);
-                Gdiplus::Pen pen(Gdiplus::Color(255, 0x3B, 0x82, 0xF6), thick);
+                Gdiplus::Pen pen(Gdiplus::Color(255, 0x63, 0x55, 0xE0), thick);
                 float in = thick / 2.0f;
                 float x = rc.left + in, y = rc.top + in;
                 float w = (rc.right - rc.left) - thick, h = (rc.bottom - rc.top) - thick;
