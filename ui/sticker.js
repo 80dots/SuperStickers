@@ -909,7 +909,15 @@
       savedRange = null;
       savedMdSel = null;
       if (type === 'markdown') {
-        if (mdView === 'edit') savedMdSel = [mdSource.selectionStart, mdSource.selectionEnd];
+        if (mdView === 'edit') {
+          savedMdSel = [mdSource.selectionStart, mdSource.selectionEnd];
+        } else {
+          // 보기 모드: 렌더된 미리보기(mdPreview)에서의 선택을 Range로 붙잡는다
+          const sel = window.getSelection();
+          if (sel.rangeCount && mdPreview.contains(sel.getRangeAt(0).startContainer)) {
+            savedRange = sel.getRangeAt(0).cloneRange();
+          }
+        }
         return;
       }
       const sel = window.getSelection();
@@ -921,6 +929,7 @@
       if (type === 'markdown') {
         if (savedMdSel && savedMdSel[0] !== savedMdSel[1])
           return mdSource.value.slice(savedMdSel[0], savedMdSel[1]).trim();
+        if (savedRange && !savedRange.collapsed) return savedRange.toString().trim();
         return mdSource.value.trim();
       }
       if (savedRange && !savedRange.collapsed) return savedRange.toString().trim();
@@ -1041,6 +1050,127 @@
       setActionsState();
       scheduleSave();
     });
+    // ---------- 텍스트 선택 메뉴 ----------
+    // 선택한 글에 대해 할 수 있는 동작을 선택 영역 위에 띄운다.
+    // 항목을 늘리려면 SEL_ACTIONS에 { id, label, icon, run } 하나만 추가하면 된다.
+    const SEL_ACTIONS = [
+      {
+        id: 'ask',
+        label: () => i18n.t('sel.askAi'),
+        icon: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" '
+            + 'd="M8 1l1.6 4.1L14 6.7l-4.4 1.6L8 12.4 6.4 8.3 2 6.7l4.4-1.6zM12.8 10.6l.8 2 2 .8'
+            + '-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>',
+        run() {
+          // 선택을 AI 패널이 쓰는 형태로 붙잡는다 — 실행 시 선택 전문이 문맥(NOTE)으로 들어간다
+          captureSelection();
+          const selText = selectedOrAllText();
+          aiPanel.classList.remove('hidden');
+          const askBtn = document.querySelector('.ai-task[data-task="ask"]');
+          document.querySelectorAll('.ai-task').forEach((b) => b.classList.remove('on'));
+          if (askBtn) askBtn.classList.add('on');
+          aiAskRow.classList.remove('hidden');
+          // 질문을 자동으로 채워 바로 실행한다. 인용이 길면 질문 문구에서는 줄이되,
+          // 선택 전문은 위에서 문맥으로 함께 전달되므로 정보가 잘리지 않는다.
+          // ("조사해서"는 웹 검색을 암시해 로컬 AI에 맞지 않아 "설명" 문구를 쓴다)
+          const quote = selText.length > 40 ? selText.slice(0, 40) + '…' : selText;
+          $('#aiQuestion').value = i18n.t('sel.askPrompt').replace('{text}', quote);
+          runTask('ask');
+        },
+      },
+    ];
+
+    const selMenu = $('#selMenu');
+    selMenu.innerHTML = '';
+    SEL_ACTIONS.forEach((a) => {
+      const b = document.createElement('button');
+      b.className = 'sel-item';
+      b.dataset.action = a.id;
+      b.innerHTML = a.icon + '<span></span>';
+      b.querySelector('span').textContent = a.label();
+      // mousedown 기본 동작을 막아야 클릭하는 순간 선택이 풀리지 않는다
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => { hideSelMenu(); a.run(); });
+      selMenu.appendChild(b);
+    });
+
+    function hideSelMenu() { selMenu.classList.add('hidden'); }
+
+    // 선택 영역의 화면 좌표. textarea(마크다운)는 Range API가 없어 미러 div로 잰다.
+    function selectionRect() {
+      if (type === 'markdown') {
+        if (mdView !== 'edit') {
+          // 보기 모드: 렌더된 DOM이므로 리치 메모와 같은 방식으로 잰다
+          const sel = window.getSelection();
+          if (!sel.rangeCount || sel.isCollapsed) return null;
+          const r = sel.getRangeAt(0);
+          if (!mdPreview.contains(r.commonAncestorContainer)) return null;
+          const box = r.getBoundingClientRect();
+          if (!box.width && !box.height) return null;
+          return { left: box.left, top: box.top, width: box.width };
+        }
+        const a = mdSource.selectionStart, b = mdSource.selectionEnd;
+        if (a === b) return null;
+        const cs = getComputedStyle(mdSource);
+        const mirror = document.createElement('div');
+        ['fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'padding',
+         'border', 'boxSizing', 'whiteSpace', 'wordBreak'].forEach((k) => {
+          mirror.style[k] = cs[k];
+        });
+        mirror.style.position = 'absolute';
+        mirror.style.visibility = 'hidden';
+        mirror.style.whiteSpace = 'pre-wrap';
+        mirror.style.width = mdSource.clientWidth + 'px';
+        mirror.textContent = mdSource.value.slice(0, a);
+        const mark = document.createElement('span');
+        mark.textContent = mdSource.value.slice(a, b) || ' ';
+        mirror.appendChild(mark);
+        document.body.appendChild(mirror);
+        const mr = mark.getBoundingClientRect(), rootRect = mirror.getBoundingClientRect();
+        const taRect = mdSource.getBoundingClientRect();
+        document.body.removeChild(mirror);
+        return {
+          left: taRect.left + (mr.left - rootRect.left),
+          top: taRect.top + (mr.top - rootRect.top) - mdSource.scrollTop,
+          width: mr.width,
+        };
+      }
+      const sel = window.getSelection();
+      if (!sel.rangeCount || sel.isCollapsed) return null;
+      const r = sel.getRangeAt(0);
+      if (!editor.contains(r.commonAncestorContainer)) return null;
+      const box = r.getBoundingClientRect();
+      if (!box.width && !box.height) return null;
+      return { left: box.left, top: box.top, width: box.width };
+    }
+
+    function updateSelMenu() {
+      const rect = selectionRect();
+      const text = (type === 'markdown' && mdView === 'edit')
+        ? mdSource.value.slice(mdSource.selectionStart, mdSource.selectionEnd).trim()
+        : String(window.getSelection());
+      if (!rect || !text.trim()) { hideSelMenu(); return; }
+      selMenu.classList.remove('hidden');
+      const mw = selMenu.offsetWidth, mh = selMenu.offsetHeight;
+      let left = rect.left + rect.width / 2 - mw / 2;
+      left = Math.max(6, Math.min(left, window.innerWidth - mw - 6));
+      let top = rect.top - mh - 8;
+      if (top < 4) top = rect.top + 24;  // 위가 좁으면 선택 아래로
+      selMenu.style.left = Math.round(left) + 'px';
+      selMenu.style.top = Math.round(top) + 'px';
+    }
+
+    // 선택이 끝나는 시점에만 갱신 (드래그 중에는 방해되지 않게)
+    document.addEventListener('mouseup', () => setTimeout(updateSelMenu, 0));
+    document.addEventListener('keyup', (e) => {
+      if (e.shiftKey || e.key === 'Escape' || e.ctrlKey) setTimeout(updateSelMenu, 0);
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideSelMenu(); });
+    document.addEventListener('mousedown', (e) => {
+      if (!selMenu.contains(e.target)) hideSelMenu();
+    }, true);
+    document.addEventListener('scroll', hideSelMenu, true);
+    window.addEventListener('blur', hideSelMenu);
+
     $('#aiCopyBtn').addEventListener('click', async () => {
       try {
         await navigator.clipboard.writeText(resultText);

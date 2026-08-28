@@ -87,6 +87,8 @@
   "ai.koToEn": "한→영",
   "ai.enToKo": "영→한",
   "ai.ask": "질문",
+  "sel.askAi": "AI에게 물어보기",
+  "sel.askPrompt": "\"{text}\"에 대해 알기 쉽게 설명해 주세요.",
   "ai.askPlaceholder": "메모에 대해 질문하거나 생성할 내용을 입력하세요…",
   "ai.run": "실행",
   "ai.insert": "본문에 삽입",

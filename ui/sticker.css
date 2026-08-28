@@ -715,3 +715,32 @@ body {
    투명해진 영역을 잘라내는 방식이라 본문이 움직이지 않는다 (sticker.js autoHide) */
 #titlebar, #toolbar { transition: opacity 0.18s ease; }
 .autofade { opacity: 0 !important; pointer-events: none !important; }
+
+/* ---------- 텍스트 선택 메뉴 ---------- */
+/* 선택 영역 위에 떠서 동작을 제안한다. 시안의 컨텍스트 메뉴와 같은 결. */
+#selMenu {
+  position: fixed;
+  z-index: 2147483000;
+  display: flex;
+  flex-direction: column;
+  min-width: 148px;
+  padding: 4px;
+  background: var(--panel-bg);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  color: var(--fg);
+  font-size: 13px;
+}
+.sel-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  white-space: nowrap;
+  color: var(--fg);
+}
+.sel-item:hover { background: var(--hover); }
+.sel-item svg { flex: none; opacity: 0.75; }

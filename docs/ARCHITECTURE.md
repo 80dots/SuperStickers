@@ -122,6 +122,25 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - **브로드캐스트는 1회 직렬화**: `BroadcastEvent`가 payload를 한 번 dump()하고
   `PostEventRaw`로 각 창에 전달한다.
 
+### 텍스트 선택 메뉴
+
+- 메모에서 글을 선택하면 선택 영역 **위에** 메뉴가 뜬다(`#selMenu`). 위쪽 공간이 모자라면
+  선택 아래로 뒤집는다. 창이 작아 화면 밖으로 나갈 수 없으므로 좌우도 뷰포트에 클램프한다.
+- **항목은 sticker.js의 `SEL_ACTIONS` 배열이 단일 출처**다. 마크업이 아니라 배열에서
+  DOM을 만들므로, 항목을 늘리려면 `{ id, label, icon, run }` 하나만 추가하면 된다.
+- 메뉴 버튼은 `mousedown`의 기본 동작을 막는다 — 막지 않으면 클릭하는 순간 선택이 풀려
+  대상 텍스트를 잃는다.
+- 선택 사각형은 리치 메모는 `Range.getBoundingClientRect()`로, 마크다운(textarea)은
+  Range API가 없어 **미러 div**(같은 폰트·패딩을 복제하고 선택 구간을 span으로 감싸 측정)로
+  구한다.
+- **마크다운 보기 모드도 지원**한다. 렌더된 `#mdPreview`는 일반 DOM이라 `window.getSelection()`
+  과 Range rect를 그대로 쓴다. 분기 기준은 메모 타입이 아니라 `type === 'markdown' && mdView === 'edit'`
+  일 때만 textarea(미러 div) 경로 — 그 외에는 전부 Selection/Range 경로다.
+  `captureSelection()`도 보기 모드의 선택을 `savedRange`로 붙잡아 AI 질문의 문맥으로 쓴다.
+- 'AI에게 물어보기'는 기존 AI 패널을 재사용한다: `captureSelection()`으로 선택을 붙잡고
+  패널을 질문 모드로 연다. 답변 스트리밍·삽입·교체·복사가 이미 패널에 있어 중복 구현이 없다.
+  (타이틀바의 AI 버튼을 없앤 뒤 패널의 새 진입점이 되었다.)
+
 ### AI Review 번역의 서식 유지
 
 - **입력은 항상 마크다운**: markdown 메모는 원본을, rich 메모는 `editorCore.getMarkdown()`

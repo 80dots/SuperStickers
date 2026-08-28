@@ -87,6 +87,8 @@
   "ai.koToEn": "KO→EN",
   "ai.enToKo": "EN→KO",
   "ai.ask": "Ask",
+  "sel.askAi": "Ask AI",
+  "sel.askPrompt": "Explain \"{text}\" in simple terms.",
   "ai.askPlaceholder": "Ask about this note or describe what to generate…",
   "ai.run": "Run",
   "ai.insert": "Insert",
