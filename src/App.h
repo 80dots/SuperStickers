@@ -91,6 +91,10 @@ public:
     // rect는 WM_MOVING이 준 제안 위치이며, 붙을 자리가 있으면 그 자리로 보정한다.
     void SnapStickerRect(StickerWindow* self, RECT* rect);
 
+    // 리사이즈 중 자석. 이동과 달리 잡고 있는 변만 움직여야 하므로 사각형을 통째로
+    // 옮기지 않고 그 변의 좌표만 당긴다. edge는 WM_SIZING의 wParam(WMSZ_*).
+    void SnapStickerResize(StickerWindow* self, RECT* rect, int edge);
+
     // 플로팅 스티커 드래그 → 그룹 드롭 감지
     void HandleStickerMoveEnd(StickerWindow* w);
     void UpdateDragHover(StickerWindow* w);  // WM_MOVING 중 하이라이트

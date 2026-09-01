@@ -26,6 +26,12 @@ struct Settings {
     int magnetGap = 10;            // 자석으로 붙을 때 유지할 간격 (논리 px, UI 배율 적용)
     // 자석이 당기기 시작하는 거리. "high"면 멀리서도 붙는다. "low" | "medium" | "high"
     std::string magnetSensitivity = "medium";
+    // 형광펜 사용자 추가 색 ("#RRGGBB"). 프리셋 8색은 페이지에 있고 여기엔 추가분만.
+    // 모든 메모창이 공유한다.
+    std::vector<std::string> highlightColors;
+    // AI 작업별 사용자 지정 프롬프트 (task -> 시스템 프롬프트).
+    // 값이 비었거나 키가 없으면 prompts.js의 기본 프롬프트를 쓴다.
+    std::map<std::string, std::string> prompts;
 };
 
 struct StickerData {

@@ -17,6 +17,72 @@
   }
   if (!state.settings.trash) state.settings.trash = { enabled: true, retentionDays: 30 };
 
+  // ---------- AI 프롬프트 편집 ----------
+  // 각 작업의 시스템 프롬프트를 직접 고칠 수 있다. 비워 두면 기본값(prompts.js)을 쓰므로
+  // 저장은 "빈 문자열 = 기본값으로 되돌리기"로 처리한다.
+  function renderPrompts() {
+    const host = $('#promptList');
+    if (!host) return;
+    const saved = state.settings.prompts || {};
+    host.innerHTML = '';
+    prompts.TASKS.forEach((task) => {
+      const def = prompts.defaultOf(task, i18n.lang);
+      const row = document.createElement('div');
+      row.className = 'prompt-item';
+
+      const head = document.createElement('div');
+      head.className = 'prompt-head';
+      const name = document.createElement('span');
+      name.className = 'prompt-name';
+      name.textContent = i18n.t('ai.task.' + task);
+      const badge = document.createElement('span');
+      badge.className = 'prompt-badge';
+      badge.textContent = i18n.t('ai.promptEdited');
+      const reset = document.createElement('button');
+      reset.className = 'prompt-reset';
+      reset.textContent = i18n.t('ai.promptReset');
+      head.appendChild(name);
+      head.appendChild(badge);
+      head.appendChild(reset);
+
+      const ta = document.createElement('textarea');
+      ta.className = 'prompt-text';
+      ta.spellcheck = false;
+      ta.placeholder = def;
+      ta.value = saved[task] || '';
+      ta.rows = task === 'review' ? 10 : 5;
+
+      const markEdited = () => {
+        const on = !!ta.value.trim();
+        row.classList.toggle('edited', on);
+      };
+      markEdited();
+
+      let timer = 0;
+      const save = () => {
+        const v = ta.value.trim();
+        if (v) state.settings.prompts = { ...(state.settings.prompts || {}), [task]: v };
+        else if (state.settings.prompts) delete state.settings.prompts[task];
+        bridge.call('settings.set', { prompts: { [task]: v } }).catch(console.error);
+      };
+      ta.addEventListener('input', () => {
+        markEdited();
+        clearTimeout(timer);
+        timer = setTimeout(save, 500);  // 타이핑이 멈추면 저장
+      });
+      ta.addEventListener('blur', () => { clearTimeout(timer); save(); });
+      reset.addEventListener('click', () => {
+        ta.value = '';
+        markEdited();
+        save();
+      });
+
+      row.appendChild(head);
+      row.appendChild(ta);
+      host.appendChild(row);
+    });
+  }
+
   // ---------- 탭 ----------
   function showTab(name) {
     document.querySelectorAll('.tab').forEach((t) =>
@@ -25,14 +91,16 @@
     $('#groupsTab').classList.toggle('hidden', name !== 'groups');
     $('#trashTab').classList.toggle('hidden', name !== 'trash');
     $('#settingsTab').classList.toggle('hidden', name !== 'settings');
+    $('#aiTab').classList.toggle('hidden', name !== 'ai');
     $('#dataTab').classList.toggle('hidden', name !== 'data');
     if (name === 'list') refreshList();
     if (name === 'groups') refreshGroups();
     if (name === 'trash') refreshTrash();
     if (name === 'data') refreshDataPath();
-    if (name === 'settings') {
-      refreshTrashCount();
+    if (name === 'settings') refreshTrashCount();
+    if (name === 'ai') {
       runConnectTest();  // Ollama 상태 자동 확인 (미설치면 설치 버튼 노출)
+      renderPrompts();
     }
   }
   document.querySelectorAll('.tab').forEach((t) =>

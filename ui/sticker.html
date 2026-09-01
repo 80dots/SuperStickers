@@ -42,11 +42,17 @@
       <button id="deleteBtn" class="tb-btn" data-i18n-title="tt.delete">
         <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M6 2h4l.5 1H14v1.5H2V3h3.5zM3 6h10l-.8 8.2c-.1.5-.5.8-1 .8H4.8c-.5 0-.9-.3-1-.8z"/></svg>
       </button>
+      <!-- 헤더 더보기: 폭이 모자라면 앞쪽 버튼들이 여기로 접혀 들어간다 -->
+      <button class="tb-btn hidden" id="hdrMoreBtn" data-i18n-title="tt.more">
+        <svg viewBox="0 0 16 16" width="14" height="14"><circle fill="currentColor" cx="3.2" cy="8" r="1.35"/><circle fill="currentColor" cx="8" cy="8" r="1.35"/><circle fill="currentColor" cx="12.8" cy="8" r="1.35"/></svg>
+      </button>
       <button id="hideBtn" class="tb-btn" data-i18n-title="tt.hide">
         <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M3.05 2 8 6.95 12.95 2 14 3.05 9.05 8 14 12.95 12.95 14 8 9.05 3.05 14 2 12.95 6.95 8 2 3.05z"/></svg>
       </button>
     </div>
-    <div id="newMenu" class="hidden">
+      <div id="hdrMoreMenu" class="hidden"></div>
+
+  <div id="newMenu" class="hidden">
       <button data-newtype="rich" data-i18n="menu.newRich"></button>
       <button data-newtype="markdown" data-i18n="menu.newMarkdown"></button>
       <button data-newtype="file" data-i18n="menu.newFile"></button>
@@ -133,11 +139,43 @@
     <button class="tb-btn fmt" data-cmd="underline" data-i18n-title="tt.underline"><u>U</u></button>
     <button class="tb-btn fmt" data-cmd="strikeThrough" data-i18n-title="tt.strike"><s>S</s></button>
     <span class="tb-sep"></span>
+    <!-- 형광펜 (rich 전용). 색 목록은 sticker.js가 프리셋+사용자 색으로 렌더 -->
+    <button class="tb-btn hidden" id="hlBtn" data-i18n-title="tt.highlight">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M11.3 1.7a1 1 0 0 1 1.4 0l1.6 1.6a1 1 0 0 1 0 1.4l-6.8 6.8-3.4.4a.5.5 0 0 1-.6-.6l.4-3.4zM10 4.4 5 9.4l-.2 1.8 1.8-.2 5-5zM2 13.5h12V15H2z"/></svg>
+    </button>
+    <div id="hlPopover" class="hidden">
+      <div id="hlGrid"></div>
+      <div id="hlActions">
+        <button id="hlAddBtn" class="hl-action" data-i18n-title="hl.addColor">
+          <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M7.2 2h1.6v5.2H14v1.6H8.8V14H7.2V8.8H2V7.2h5.2z"/></svg>
+        </button>
+        <button id="hlClearBtn" class="hl-action" data-i18n-title="hl.clear">
+          <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.5" d="m3 13 6.5-6.5m-3-3L13 10M5.6 13H13M2.6 9.9l4.8 -4.8 3.5 3.5-4.8 4.8H4z"/></svg>
+        </button>
+      </div>
+      <!-- 색 추가 피커: '+'를 누르면 펼쳐진다. 스포이드 없는 자체 UI (네이티브 피커 미사용) -->
+      <div id="hlPicker" class="hidden">
+        <div id="hlSv"><div id="hlSvDot"></div></div>
+        <input type="range" id="hlHue" min="0" max="360" value="50">
+        <div id="hlPickRow">
+          <span id="hlPreview"></span>
+          <input type="text" id="hlHex" spellcheck="false" maxlength="7">
+          <button id="hlConfirmBtn" data-i18n="hl.add"></button>
+        </div>
+      </div>
+    </div>
     <button class="tb-btn fmt" data-cmd="insertUnorderedList" data-i18n-title="tt.ul">
       <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 3.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm0 4a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm0 4a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM5.5 4h9v1.5h-9zm0 4h9v1.5h-9zm0 4h9v1.5h-9z"/></svg>
     </button>
     <button class="tb-btn fmt" data-cmd="insertOrderedList" data-i18n-title="tt.ol">
       <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2.3 2h1v3h-1V3.2l-.6.3-.4-.8zM1.2 8.7c0-.9.7-1.4 1.4-1.4s1.3.5 1.3 1.2c0 .5-.3.9-.8 1.3l-.5.4h1.4V11H1.2v-.8l1.3-1.1c.3-.3.4-.4.4-.6 0-.2-.2-.4-.4-.4-.3 0-.4.2-.5.5zM5.5 4h9v1.5h-9zm0 4h9v1.5h-9zm0 4h9v1.5h-9zM1.2 13.4c.1-.6.6-1 1.3-1 .8 0 1.3.4 1.3 1 0 .4-.2.6-.5.8.4.1.6.4.6.8 0 .7-.6 1.1-1.4 1.1-.7 0-1.2-.4-1.3-1h.9c0 .2.2.3.4.3.3 0 .4-.1.4-.4 0-.2-.1-.3-.4-.3h-.3v-.7h.3c.2 0 .4-.1.4-.3s-.1-.3-.4-.3c-.2 0-.3.1-.4.3z"/></svg>
+    </button>
+    <!-- 들여쓰기/내어쓰기 (rich 전용 — execCommand indent/outdent) -->
+    <button class="tb-btn hidden" id="outdentBtn" data-i18n-title="tt.outdent">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 2.5h12V4H2zm6 3.2h6v1.5H8zm0 3.1h6v1.5H8zM2 12h12v1.5H2zM5.5 6v4L2.6 8z"/></svg>
+    </button>
+    <button class="tb-btn hidden" id="indentBtn" data-i18n-title="tt.indent">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 2.5h12V4H2zm6 3.2h6v1.5H8zm0 3.1h6v1.5H8zM2 12h12v1.5H2zM2.6 6v4L5.5 8z"/></svg>
     </button>
     <button class="tb-btn" id="checkBtn" data-i18n-title="tt.check">
       <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M2.5 2.5h11v11h-11z"/><path fill="none" stroke="currentColor" stroke-width="1.6" d="m4.5 8 2.5 2.5L11.5 5"/></svg>
@@ -152,8 +190,15 @@
     <button class="tb-btn" id="model3dBtn" data-i18n-title="tt.model3d">
       <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M8 1.8 14 5v6L8 14.2 2 11V5z"/><path fill="none" stroke="currentColor" stroke-width="1.1" d="M2 5l6 3.2L14 5M8 8.2v6"/></svg>
     </button>
+    <!-- 더보기: 폭이 모자라면 뒤쪽 버튼들이 여기로 접혀 들어간다 (sticker.js layoutToolbar) -->
+    <button class="tb-btn hidden" id="tbMoreBtn" data-i18n-title="tt.more">
+      <svg viewBox="0 0 16 16" width="14" height="14"><circle fill="currentColor" cx="3.2" cy="8" r="1.35"/><circle fill="currentColor" cx="8" cy="8" r="1.35"/><circle fill="currentColor" cx="12.8" cy="8" r="1.35"/></svg>
+    </button>
+    <div id="tbMoreMenu" class="hidden"></div>
     <span class="tb-spacer"></span>
     <button class="tb-btn hidden" id="previewBtn"></button>
+    <!-- AI 패널 진입점 (서식 툴바 맨 오른쪽) -->
+    <button class="tb-btn" id="aiPanelBtn" data-i18n-title="sel.aiPanel">AI</button>
   </div>
 
   <!-- 파일 메모 툴바 -->
@@ -182,7 +227,8 @@
   <div id="aiPanel" class="hidden">
     <div class="ai-tasks">
       <button class="ai-task" data-task="summarize" data-i18n="ai.summarize"></button>
-      <button class="ai-task" data-task="polish" data-i18n="ai.polish"></button>
+      <button class="ai-task" data-task="spellcheck" data-i18n="sel.spellcheck"></button>
+      <button class="ai-task" data-task="refine" data-i18n="sel.refine"></button>
       <button class="ai-task" data-task="koToEn" data-i18n="ai.koToEn"></button>
       <button class="ai-task" data-task="enToKo" data-i18n="ai.enToKo"></button>
       <button class="ai-task" data-task="ask" data-i18n="ai.ask"></button>

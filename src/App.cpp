@@ -917,8 +917,7 @@ void App::HideSelectedStickers() {
 
 void App::SnapStickerRect(StickerWindow* self, RECT* rect) {
     if (!settings.magnetEnabled || !rect) return;
-    // 정렬 기준(UI 숨김 상태) 좌표로 바꿔 계산하고, 구한 이동량을 실제 사각형에 그대로 적용한다
-    RECT me = self->AlignBasis(*rect);
+    const RECT& me = *rect;
     const int w = me.right - me.left, h = me.bottom - me.top;
     const int gap = self->CssPx(settings.magnetGap);
     const int thrDip = settings.magnetSensitivity == "high"  ? kSnapThresholdHighDip
@@ -942,7 +941,8 @@ void App::SnapStickerRect(StickerWindow* self, RECT* rect) {
         if (other == self || !other->VisibleNow()) continue;
         // 함께 끌려오는 창에는 붙지 않는다 (서로 당겨 레이아웃이 무너진다)
         if (multi && IsSelected(other->data.id)) continue;
-        RECT o = other->AlignRectNow();
+        RECT o{};
+        GetWindowRect(other->hwnd(), &o);
         // 세로로 겹치거나 가까울 때만 좌우로 붙인다 (엉뚱하게 멀리 있는 창에 끌리지 않도록)
         if (me.top <= o.bottom + gap + thr && me.bottom >= o.top - gap - thr) {
             tryX(o.right + gap);          // 오른쪽에 간격 두고 붙이기
@@ -960,6 +960,70 @@ void App::SnapStickerRect(StickerWindow* self, RECT* rect) {
     }
     if (bestDx == 0 && bestDy == 0) return;
     OffsetRect(rect, bestDx, bestDy);
+}
+
+void App::SnapStickerResize(StickerWindow* self, RECT* rect, int edge) {
+    if (!settings.magnetEnabled || !rect) return;
+    // 잡고 있는 변 (모서리는 가로·세로를 한 변씩 동시에 끈다)
+    const bool dragL = edge == WMSZ_LEFT || edge == WMSZ_TOPLEFT || edge == WMSZ_BOTTOMLEFT;
+    const bool dragR = edge == WMSZ_RIGHT || edge == WMSZ_TOPRIGHT || edge == WMSZ_BOTTOMRIGHT;
+    const bool dragT = edge == WMSZ_TOP || edge == WMSZ_TOPLEFT || edge == WMSZ_TOPRIGHT;
+    const bool dragB = edge == WMSZ_BOTTOM || edge == WMSZ_BOTTOMLEFT || edge == WMSZ_BOTTOMRIGHT;
+    if (!dragL && !dragR && !dragT && !dragB) return;
+
+    const RECT& me = *rect;
+    const int gap = self->CssPx(settings.magnetGap);
+    const int thrDip = settings.magnetSensitivity == "high"  ? kSnapThresholdHighDip
+                       : settings.magnetSensitivity == "low" ? kSnapThresholdLowDip
+                                                             : kSnapThresholdMediumDip;
+    const int thr = self->CssPx(thrDip);
+
+    int bestDx = 0, bestDy = 0;
+    int bestX = thr + 1, bestY = thr + 1;
+    // cur = 지금 끌고 있는 변의 좌표, target = 붙을 후보 좌표
+    auto tryX = [&](int cur, int target) {
+        int d = target - cur;
+        if (abs(d) <= thr && abs(d) < bestX) { bestX = abs(d); bestDx = d; }
+    };
+    auto tryY = [&](int cur, int target) {
+        int d = target - cur;
+        if (abs(d) <= thr && abs(d) < bestY) { bestY = abs(d); bestDy = d; }
+    };
+
+    for (auto* other : stickers_) {
+        if (other == self || !other->VisibleNow()) continue;
+        RECT o{};
+        GetWindowRect(other->hwnd(), &o);
+        // 이동 자석과 같은 근접 조건: 세로로 가까울 때만 좌우로, 가로로 가까울 때만 위아래로
+        if (me.top <= o.bottom + gap + thr && me.bottom >= o.top - gap - thr) {
+            if (dragL) {
+                tryX(me.left, o.left);         // 왼쪽 변끼리 같은 X
+                tryX(me.left, o.right);        // 상대 오른쪽 변과 같은 X
+                tryX(me.left, o.right + gap);  // 상대 오른쪽에 간격 두고 맞대기
+            }
+            if (dragR) {
+                tryX(me.right, o.right);       // 오른쪽 변끼리 같은 X
+                tryX(me.right, o.left);        // 상대 왼쪽 변과 같은 X
+                tryX(me.right, o.left - gap);  // 상대 왼쪽에 간격 두고 맞대기
+            }
+        }
+        if (me.left <= o.right + gap + thr && me.right >= o.left - gap - thr) {
+            if (dragT) {
+                tryY(me.top, o.top);           // 윗변끼리 같은 Y
+                tryY(me.top, o.bottom);        // 상대 아랫변과 같은 Y
+                tryY(me.top, o.bottom + gap);  // 상대 아래에 간격 두고 맞대기
+            }
+            if (dragB) {
+                tryY(me.bottom, o.bottom);     // 아랫변끼리 같은 Y
+                tryY(me.bottom, o.top);        // 상대 윗변과 같은 Y
+                tryY(me.bottom, o.top - gap);  // 상대 위에 간격 두고 맞대기
+            }
+        }
+    }
+    if (dragL) rect->left += bestDx;
+    if (dragR) rect->right += bestDx;
+    if (dragT) rect->top += bestDy;
+    if (dragB) rect->bottom += bestDy;
 }
 
 void App::UpdateDragHover(StickerWindow*) {
@@ -1081,6 +1145,33 @@ void App::ApplySettingsPatch(const json& patch) {
             if (v == "low" || v == "medium" || v == "high") settings.magnetSensitivity = v;
         }
     }
+    if (patch.contains("prompts") && patch["prompts"].is_object()) {
+        // AI 프롬프트 재정의: 준 키만 갱신하고, 빈 문자열이면 기본값으로 되돌린다는 뜻이라 지운다
+        for (auto& [k, v] : patch["prompts"].items()) {
+            if (!v.is_string()) continue;
+            std::string val = v.get<std::string>();
+            if (val.size() > 8000) val.resize(8000);
+            if (val.empty()) settings.prompts.erase(k);
+            else settings.prompts[k] = val;
+        }
+        BroadcastEvent("prompts.changed", {{"prompts", settings.prompts}});
+    }
+    if (patch.contains("highlightColors") && patch["highlightColors"].is_array()) {
+        // 형광펜 사용자 색: 배열을 통째로 교체하고 모든 메모창에 즉시 방송한다
+        std::vector<std::string> v;
+        for (auto& c : patch["highlightColors"]) {
+            if (!c.is_string() || v.size() >= 24) continue;
+            std::string h = c.get<std::string>();
+            bool ok = h.size() == 7 && h[0] == '#';
+            for (size_t i = 1; ok && i < 7; i++)
+                if (!isxdigit((unsigned char)h[i])) ok = false;
+            if (ok) v.push_back(h);
+        }
+        if (v != settings.highlightColors) {
+            settings.highlightColors = v;
+            BroadcastEvent("highlight.colorsChanged", {{"colors", v}});
+        }
+    }
     if (patch.contains("trash") && patch["trash"].is_object()) {
         auto& t = patch["trash"];
         if (t.contains("enabled") && t["enabled"].is_boolean())
@@ -1140,7 +1231,9 @@ json App::MakeInitJson(const std::string& page, const std::string& stickerId) {
                 {"theme", EffectiveTheme()},
                 {"lang", i18n.Lang()},
                 {"autoHideUi", settings.autoHideUi},
-                {"uiRevealOnClick", settings.uiRevealOnClick}};
+                {"uiRevealOnClick", settings.uiRevealOnClick},
+                {"highlightColors", settings.highlightColors},
+                {"prompts", settings.prompts}};
 }
 
 void App::SetupCommonBridge(WebViewHost& host) {
@@ -1163,7 +1256,9 @@ void App::SetupCommonBridge(WebViewHost& host) {
                       {"magnet",
                        {{"enabled", settings.magnetEnabled},
                         {"gap", settings.magnetGap},
-                        {"sensitivity", settings.magnetSensitivity}}}}},
+                        {"sensitivity", settings.magnetSensitivity}}},
+                      {"highlightColors", settings.highlightColors},
+                      {"prompts", settings.prompts}}},
                     {"effectiveTheme", EffectiveTheme()},
                     {"lang", i18n.Lang()}};
     });

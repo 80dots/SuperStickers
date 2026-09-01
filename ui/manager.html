@@ -19,6 +19,7 @@
     <button class="tab" data-tab="groups" data-i18n="manager.tabGroups"></button>
     <button class="tab" data-tab="trash" data-i18n="manager.tabTrash"></button>
     <button class="tab" data-tab="data" data-i18n="manager.tabData"></button>
+    <button class="tab" data-tab="ai" data-i18n="manager.tabAi"></button>
     <button class="tab" data-tab="settings" data-i18n="manager.tabSettings"></button>
   </header>
 
@@ -154,6 +155,9 @@
       </div>
     </section>
 
+  </main>
+
+  <main id="aiTab" class="tabpage hidden">
     <section>
       <h2 data-i18n="settings.ollama"></h2>
       <p class="desc" data-i18n="settings.ollamaDesc"></p>
@@ -198,6 +202,12 @@
         </div>
       </div>
     </section>
+
+    <section>
+      <h2 data-i18n="ai.promptsTitle"></h2>
+      <p class="desc" data-i18n="ai.promptsDesc"></p>
+      <div id="promptList"></div>
+    </section>
   </main>
 
   <main id="dataTab" class="tabpage hidden">
@@ -233,6 +243,7 @@
   <script src="/common/bridge.js"></script>
   <script src="/common/i18n.js"></script>
   <script src="/common/color.js"></script>
+  <script src="/common/prompts.js"></script>
   <script src="/manager.js"></script>
 </body>
 </html>

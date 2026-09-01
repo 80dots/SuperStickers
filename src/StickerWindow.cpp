@@ -296,16 +296,14 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
         return json::object();
     });
 
-    // 페이지가 측정한 헤더/툴바 높이 보고 (자석 정렬 기준 계산에 쓰인다)
-    b.Register("window.setUiExtents", [self](const json& p) {
-        self->SetUiExtents(p.value("top", 0), p.value("bottom", 0));
-        return json::object();
-    });
-
-    // UI 자동 숨김: 페이지가 측정한 헤더/툴바 높이(CSS px)만큼 창을 접거나 편다
-    b.Register("window.setCollapse", [self](const json& p) {
-        int top = p.value("top", 0), bottom = p.value("bottom", 0);
-        App::I().RunOnUi([self, top, bottom]() { self->ApplyCollapse(top, bottom); });
+    // UI 자동 숨김 상태 보고 (web 메모 전용 — 사이트 뷰가 타이틀바 자리를 채우도록)
+    b.Register("window.setUiHidden", [self](const json& p) {
+        bool hidden = p.value("hidden", false);
+        App::I().RunOnUi([self, hidden]() {
+            if (self->webUiHidden_ == hidden) return;
+            self->webUiHidden_ = hidden;
+            self->LayoutWebView();
+        });
         return json::object();
     });
 
@@ -431,78 +429,17 @@ void StickerWindow::SetSelectedLook(bool on) {
 
 int StickerWindow::BandPx() const { return MulDiv(kBandDip, dpi_, 96); }
 
-// 접기/펼치기: 부모 창 rect만 200ms 선형으로 애니메이션한다.
-// 매 프레임 WM_SIZE → LayoutWebView가 자식 뷰를 화면에 고정하므로 본문은 정지 상태.
-void StickerWindow::ApplyCollapse(int topCss, int bottomCss) {
-    collapseTopCss_ = topCss;
-    collapseBottomCss_ = bottomCss;
-    double k = App::I().settings.uiScale * dpi_ / 96.0;  // CSS px → 물리 px
-    double toTop = topCss * k, toBottom = bottomCss * k;
-    if (fabs(toTop - animCurTop_) < 0.5 && fabs(toBottom - animCurBottom_) < 0.5) return;
-    // 현재 rect에서 "펼친 기준" rect를 복원한다.
-    // 현재 적용값(animCur*)으로 되돌리므로 애니메이션 중간에 재요청돼도 이어서 자연스럽다.
-    RECT r{};
-    GetWindowRect(hwnd_, &r);
-    animBase_ = r;
-    animBase_.top -= (LONG)llround(animCurTop_);
-    animBase_.bottom += (LONG)llround(animCurBottom_);
-    animFromTop_ = animCurTop_;
-    animFromBottom_ = animCurBottom_;
-    animToTop_ = toTop;
-    animToBottom_ = toBottom;
-    animStartTick_ = GetTickCount();
-    SetTimer(hwnd_, kCollapseTimerId, 10, nullptr);
-    StepCollapseAnim();  // 첫 프레임 즉시 — 페이지 트랜지션과 시작 시점을 맞춘다
-}
-
-void StickerWindow::StepCollapseAnim() {
-    double p = (GetTickCount() - animStartTick_) / (double)kCollapseAnimMs;
-    if (p >= 1.0) p = 1.0;
-    // 선형 보간으로 부모 rect만 이동/축소 — SetWindowPos가 동기 발생시키는 WM_SIZE에서
-    // LayoutWebView가 같은 틱에 자식 뷰를 화면 고정 위치로 되돌린다 (본문 정지)
-    animCurTop_ = animFromTop_ + (animToTop_ - animFromTop_) * p;
-    animCurBottom_ = animFromBottom_ + (animToBottom_ - animFromBottom_) * p;
-    int top = animBase_.top + (int)llround(animCurTop_);
-    int h = (animBase_.bottom - animBase_.top) - (int)llround(animCurTop_) -
-            (int)llround(animCurBottom_);
-    SetWindowPos(hwnd_, nullptr, animBase_.left, top, animBase_.right - animBase_.left, h,
-                 SWP_NOZORDER | SWP_NOACTIVATE);
-    if (p >= 1.0) KillTimer(hwnd_, kCollapseTimerId);
-}
-
 int StickerWindow::CssPx(int cssPx) const {
     return (int)llround(cssPx * App::I().settings.uiScale * dpi_ / 96.0);
-}
-
-void StickerWindow::SetUiExtents(int topCss, int bottomCss) {
-    uiExtentTopCss_ = topCss;
-    uiExtentBottomCss_ = bottomCss;
-}
-
-RECT StickerWindow::AlignBasis(const RECT& actual) const {
-    RECT r = actual;
-    if (!App::I().settings.autoHideUi) return r;  // 숨김을 안 쓰면 지금 모양이 곧 기준
-    // 아직 접히지 않은 만큼만 덜어낸다: 이미 접힌 창은 그대로, 펼친 창은 접혔을 때의 모양으로.
-    r.top += CssPx(uiExtentTopCss_ - collapseTopCss_);
-    r.bottom -= CssPx(uiExtentBottomCss_ - collapseBottomCss_);
-    if (r.bottom < r.top) r.bottom = r.top;
-    return r;
-}
-
-RECT StickerWindow::AlignRectNow() const {
-    RECT r{};
-    GetWindowRect(hwnd_, &r);
-    return AlignBasis(r);
 }
 
 void StickerWindow::StoreGeometryFromWindow() {
     RECT r{};
     GetWindowRect(hwnd_, &r);
-    // 애니메이션 중이어도 현재 적용값 기준으로 복원하므로 항상 "펼친 상태"가 저장된다
     data.x = r.left;
-    data.y = r.top - (int)llround(animCurTop_);
+    data.y = r.top;
     data.w = r.right - r.left;
-    data.h = (r.bottom - r.top) + (int)llround(animCurTop_) + (int)llround(animCurBottom_);
+    data.h = r.bottom - r.top;
 }
 
 void StickerWindow::ApplyUiScale() {
@@ -516,56 +453,20 @@ void StickerWindow::LayoutWebView() {
     RECT rc{};
     GetClientRect(hwnd_, &rc);
     int band = BandPx();
-    // UI 자동 숨김: 페이지 레이아웃은 절대 바뀌지 않는다. 대신 WebView 자식 창을
-    // 항상 "펼친 기준" 위치·크기에 고정(핀)한다 — 부모 창이 위/아래로 줄어도
-    // 자식 뷰는 화면에 정지해 있으므로 본문이 1px도 움직일 수 없고,
-    // 부모 밖으로 벗어난 부분(페이드 아웃된 헤더/툴바 영역)만 잘려나간다.
-    int cTop = (int)llround(animCurTop_);
-    int cBottom = (int)llround(animCurBottom_);
-    int y0 = rc.top + band - cTop;              // 펼친 기준 상단 (접힘만큼 위로)
-    int innerBottom = rc.bottom + cBottom - band;  // 펼친 기준 하단 (접힘만큼 아래로)
     if (data.type == "web") {
         // 상단 스트립(타이틀바 32 + URL바 32 CSS px) = 메인 페이지, 나머지 = 사이트 뷰.
-        // 레이아웃이 불변이므로 스트립도 항상 64 — 타이틀바는 부모 밖으로 잘린다.
-        int strip = (int)(64.0 * App::I().settings.uiScale * dpi_ / 96.0 + 0.5);
-        RECT top{rc.left + band, y0, rc.right - band, min(y0 + strip, innerBottom)};
-        RECT bottom{rc.left + band, top.bottom, rc.right - band, innerBottom};
+        // UI 숨김 중에는 타이틀바가 레이아웃에서 빠져 URL바(32)만 남는다.
+        double stripCss = webUiHidden_ ? 32.0 : 64.0;
+        int strip = (int)(stripCss * App::I().settings.uiScale * dpi_ / 96.0 + 0.5);
+        RECT top{rc.left + band, rc.top + band, rc.right - band,
+                 min(rc.top + band + strip, rc.bottom - band)};
+        RECT bottom{rc.left + band, top.bottom, rc.right - band, rc.bottom - band};
         host_.SetBounds(top);
         siteHost_.SetBounds(bottom);
-        ClipChildrenToBand();
         return;
     }
-    RECT bounds{rc.left + band, y0, rc.right - band, innerBottom};
+    RECT bounds{rc.left + band, rc.top + band, rc.right - band, rc.bottom - band};
     host_.SetBounds(bounds);
-    ClipChildrenToBand();
-}
-
-// 접힘 중에는 자식 뷰가 "펼친 기준" 위치에 고정돼 창의 위·아래 밴드를 덮는다.
-// 그 위에 그리는 선택 테두리가 가려져 위아래가 끊겨 보이므로, 자식을 밴드 안쪽으로 자른다.
-// (창 영역 밖으로 나간 부분은 어차피 보이지 않으므로 잘라도 화면은 그대로다)
-void StickerWindow::ClipChildrenToBand() {
-    RECT rc{};
-    GetClientRect(hwnd_, &rc);
-    int band = BandPx();
-    RECT inner{rc.left + band, rc.top + band, rc.right - band, rc.bottom - band};
-    bool collapsed = (collapseTopCss_ > 0 || collapseBottomCss_ > 0 || animCurTop_ > 0.5 ||
-                      animCurBottom_ > 0.5);
-    for (HWND c = GetWindow(hwnd_, GW_CHILD); c; c = GetWindow(c, GW_HWNDNEXT)) {
-        if (!collapsed) {
-            SetWindowRgn(c, nullptr, TRUE);  // 펼친 상태에선 자를 필요가 없다
-            continue;
-        }
-        RECT cr{};
-        GetWindowRect(c, &cr);
-        MapWindowPoints(nullptr, hwnd_, (POINT*)&cr, 2);  // 화면 → 부모 클라이언트 좌표
-        RECT vis{};
-        if (!IntersectRect(&vis, &cr, &inner)) {
-            SetWindowRgn(c, CreateRectRgn(0, 0, 0, 0), TRUE);
-            continue;
-        }
-        OffsetRect(&vis, -cr.left, -cr.top);  // 자식 좌표계로
-        SetWindowRgn(c, CreateRectRgn(vis.left, vis.top, vis.right, vis.bottom), TRUE);
-    }
 }
 
 // 타입별(file/web/pdf) 브리지 메서드
@@ -913,8 +814,8 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SIZE:
             LayoutWebView();
             // 선택 테두리는 창 가장자리를 따라 그려지므로, 크기가 바뀌면 새로 드러난
-            // 부분만 다시 그려져 테두리가 점선처럼 끊긴다(자동 숨김으로 창이 늘 때 발생).
-            // 선택 중일 때는 클라이언트 전체를 다시 칠해 테두리를 이어 준다.
+            // 부분만 다시 그려져 테두리가 점선처럼 끊긴다. 선택 중일 때는 클라이언트
+            // 전체를 다시 칠해 테두리를 이어 준다.
             if (selected_) InvalidateRect(hwnd, nullptr, TRUE);
             return 0;
 
@@ -934,22 +835,10 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return 0;
         }
 
-        case WM_TIMER:
-            if (wp == kCollapseTimerId) {
-                StepCollapseAnim();
-                return 0;
-            }
-            break;
-
         case WM_ENTERSIZEMOVE:
-            // 접기 애니메이션 중 드래그가 시작되면 즉시 목표 상태로 마무리
-            // (모달 이동 루프 중의 SetWindowPos가 드래그와 충돌하지 않도록)
-            if (animCurTop_ != animToTop_ || animCurBottom_ != animToBottom_) {
-                animStartTick_ = GetTickCount() - kCollapseAnimMs;
-                StepCollapseAnim();
-            }
             GetWindowRect(hwnd, &dragStartRect_);
             GetCursorPos(&dragStartCursor_);
+            inSizeMove_ = true;
             // 다중 선택 상태에서 선택된 창을 잡으면 나머지 선택 창도 같은 delta로 따라온다
             dragPeers_.clear();
             if (App::I().IsSelected(data.id) && App::I().HasMultiSelection()) {
@@ -974,7 +863,7 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             GetCursorPos(&c);
             // 커서가 움직였으면 마우스 드래그, 그대로면 키보드 이동(Alt+Space → 이동)이라
             // 제안 좌표를 그대로 존중한다.
-            if (c.x != dragStartCursor_.x || c.y != dragStartCursor_.y) {
+            if (inSizeMove_ && (c.x != dragStartCursor_.x || c.y != dragStartCursor_.y)) {
                 int w = pr->right - pr->left, h = pr->bottom - pr->top;
                 pr->left = dragStartRect_.left + (c.x - dragStartCursor_.x);
                 pr->top = dragStartRect_.top + (c.y - dragStartCursor_.y);
@@ -995,10 +884,51 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return TRUE;  // 보정한 사각형을 적용
         }
 
+        case WM_SIZING: {
+            RECT* pr = (RECT*)lp;
+            const int edge = (int)wp;
+            // WM_MOVING과 같은 이유로(위 주석 참고) 자석이 보정한 좌표가 다음 제안의
+            // 기준이 되면 변이 그 자리에 고착된다. 잡고 있는 변은 커서만 따라가는
+            // 자유 좌표로 매번 다시 계산해 자석의 입력으로 준다.
+            POINT c{};
+            GetCursorPos(&c);
+            if (inSizeMove_ && (c.x != dragStartCursor_.x || c.y != dragStartCursor_.y)) {
+                const int dx = c.x - dragStartCursor_.x, dy = c.y - dragStartCursor_.y;
+                if (edge == WMSZ_LEFT || edge == WMSZ_TOPLEFT || edge == WMSZ_BOTTOMLEFT)
+                    pr->left = dragStartRect_.left + dx;
+                if (edge == WMSZ_RIGHT || edge == WMSZ_TOPRIGHT || edge == WMSZ_BOTTOMRIGHT)
+                    pr->right = dragStartRect_.right + dx;
+                if (edge == WMSZ_TOP || edge == WMSZ_TOPLEFT || edge == WMSZ_TOPRIGHT)
+                    pr->top = dragStartRect_.top + dy;
+                if (edge == WMSZ_BOTTOM || edge == WMSZ_BOTTOMLEFT || edge == WMSZ_BOTTOMRIGHT)
+                    pr->bottom = dragStartRect_.bottom + dy;
+            }
+            App::I().SnapStickerResize(this, pr, edge);  // 인접 창의 변에 자석처럼 맞추기
+            // 자유 좌표를 직접 넣으면 DefWindowProc의 최소 크기 제한을 지나치게 되므로
+            // 여기서 다시 지킨다 (WM_GETMINMAXINFO와 같은 계산).
+            const double sc = App::I().settings.uiScale;
+            const int minW = (int)(kMinWDip * sc * dpi_ / 96.0);
+            const int minH = (int)(kMinHDip * sc * dpi_ / 96.0);
+            if (pr->right - pr->left < minW) {
+                if (edge == WMSZ_LEFT || edge == WMSZ_TOPLEFT || edge == WMSZ_BOTTOMLEFT)
+                    pr->left = pr->right - minW;
+                else
+                    pr->right = pr->left + minW;
+            }
+            if (pr->bottom - pr->top < minH) {
+                if (edge == WMSZ_TOP || edge == WMSZ_TOPLEFT || edge == WMSZ_TOPRIGHT)
+                    pr->top = pr->bottom - minH;
+                else
+                    pr->bottom = pr->top + minH;
+            }
+            return TRUE;  // 보정한 사각형을 적용
+        }
+
         case WM_EXITSIZEMOVE: {
+            inSizeMove_ = false;
             RECT r{};
             GetWindowRect(hwnd, &r);
-            StoreGeometryFromWindow();  // 접힌 상태면 펼친 기준으로 보정해 저장
+            StoreGeometryFromWindow();
             SaveData();
             for (auto& [peer, start] : dragPeers_) {  // 함께 움직인 창들도 저장
                 peer->StoreGeometryFromWindow();

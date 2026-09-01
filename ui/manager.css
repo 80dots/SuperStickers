@@ -306,3 +306,59 @@ progress.indeterminate { animation: progPulse 1.2s ease-in-out infinite; }
 }
 .status.ok::before { --status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.5 8.6 6.6 11.7 12.5 4.6'/%3E%3C/svg%3E"); }
 .status.err::before { --status-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23000' stroke-width='2.2' stroke-linecap='round'%3E%3Cpath d='M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4'/%3E%3C/svg%3E"); }
+
+/* ---------- AI 프롬프트 편집 ---------- */
+/* 작업마다 제목 줄 + 편집 영역. 비워 두면 기본값을 쓰며, 그때는 기본값을 안내 문구로 보여준다 */
+.prompt-item {
+  padding: 12px 0;
+  border-top: 1px solid var(--border);
+}
+.prompt-item:first-child { border-top: none; padding-top: 4px; }
+.prompt-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.prompt-name { font-size: 13px; font-weight: 600; color: var(--strong); }
+/* '수정됨' 표시는 사용자가 고친 항목에서만 나타난다 */
+.prompt-badge {
+  display: none;
+  font-size: 11px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: #4C40B8;
+}
+.prompt-item.edited .prompt-badge { display: inline-block; }
+.prompt-reset {
+  margin-left: auto;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--panel-bg);
+  color: var(--muted);
+}
+.prompt-item.edited .prompt-reset { color: var(--fg); }
+.prompt-reset:hover { background: var(--hover); }
+.prompt-text {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--panel-bg);
+  color: var(--fg);
+  font-family: inherit;
+  font-size: 12.5px;
+  line-height: 1.55;
+  resize: vertical;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+.prompt-text:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+.prompt-text::placeholder { color: var(--muted); opacity: 0.75; }

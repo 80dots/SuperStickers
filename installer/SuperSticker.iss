@@ -2,7 +2,7 @@
 ; 사용자 단위 설치(권한 상승 불필요) — 데이터/자동시작이 모두 HKCU·%APPDATA% 기반
 
 #define MyAppName "Super Sticker"
-#define MyAppVersion "1.4.0"
+#define MyAppVersion "1.5.0"
 #define MyAppExeName "SuperSticker.exe"
 
 [Setup]

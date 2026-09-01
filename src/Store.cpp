@@ -58,6 +58,14 @@ static json ParseOr(const std::optional<std::string>& bytes) {
     return json::parse(*bytes, nullptr, false);  // 예외 대신 discarded 반환
 }
 
+// "#RRGGBB" 형식인지 (형광펜 사용자 색 검증용)
+static bool IsHexColor(const std::string& c) {
+    if (c.size() != 7 || c[0] != '#') return false;
+    for (size_t i = 1; i < 7; i++)
+        if (!isxdigit((unsigned char)c[i])) return false;
+    return true;
+}
+
 Settings Store::LoadSettings() {
     Settings s;
     std::wstring path = AppDir() + L"\\settings.json";
@@ -92,6 +100,18 @@ Settings Store::LoadSettings() {
             if (s.magnetSensitivity != "low" && s.magnetSensitivity != "high")
                 s.magnetSensitivity = "medium";
         }
+        if (j.contains("prompts") && j["prompts"].is_object()) {
+            for (auto& [k, v] : j["prompts"].items())
+                if (v.is_string() && v.get<std::string>().size() <= 8000)
+                    s.prompts[k] = v.get<std::string>();
+        }
+        if (j.contains("highlightColors") && j["highlightColors"].is_array()) {
+            for (auto& c : j["highlightColors"]) {
+                if (c.is_string() && IsHexColor(c.get<std::string>()) &&
+                    s.highlightColors.size() < 24)
+                    s.highlightColors.push_back(c.get<std::string>());
+            }
+        }
     }
     return s;
 }
@@ -111,6 +131,8 @@ void Store::SaveSettings(const Settings& s) {
          {{"enabled", s.magnetEnabled},
           {"gap", s.magnetGap},
           {"sensitivity", s.magnetSensitivity}}},
+        {"highlightColors", s.highlightColors},
+        {"prompts", s.prompts},
     };
     WriteFileAtomic(AppDir() + L"\\settings.json", j.dump(2));
 }

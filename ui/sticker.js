@@ -1,6 +1,9 @@
 // 스티커 페이지 메인 — 타입(rich/markdown/file/web/pdf)별 UI 구성
 (async () => {
   const init = window.__init || { page: 'sticker', theme: 'light', lang: 'en' };
+  // 설정에서 편집한 AI 프롬프트를 반영한다 (비어 있으면 prompts.js의 기본값 사용)
+  prompts.setOverrides(init.prompts || {});
+  bridge.on('prompts.changed', (d) => prompts.setOverrides(d.prompts || {}));
   const $ = (sel) => document.querySelector(sel);
   const editor = $('#editor');
   const mdSource = $('#mdSource');
@@ -199,6 +202,73 @@
   function normalizeTag(t) {
     return t.trim().replace(/^#+/, '').trim();
   }
+  // ---------- 태그로 본문 찾기 ----------
+  // 태그를 누를 때마다 본문에서 그 낱말의 다음 위치로 이동한다(대소문자 무시, 순환).
+  // 어디까지 찾았는지는 태그별로 기억해 둔다.
+  const findState = { key: '', from: 0 };
+  function findNextInBody(term) {
+    if (!term) return;
+    const needle = term.toLowerCase();
+    // 리치/마크다운(편집)은 편집 대상에서, 마크다운 보기 모드는 렌더된 미리보기에서 찾는다
+    const inPreview = type === 'markdown' && mdView !== 'edit';
+    const host = type === 'markdown' ? (inPreview ? mdPreview : mdSource) : editor;
+    if (!host) return;
+    // 같은 태그를 연속으로 누르면 이어서, 다른 태그면 처음부터 찾는다.
+    // 편집/보기 모드는 본문이 서로 달라(원본 vs 렌더 결과) 위치가 호환되지 않으므로
+    // 모드까지 키에 넣어 모드가 바뀌면 처음부터 다시 찾게 한다.
+    const stateKey = needle + '|' + (inPreview ? 'view' : 'edit');
+    if (findState.key !== stateKey) { findState.key = stateKey; findState.from = 0; }
+
+    if (type === 'markdown' && !inPreview) {
+      const hay = host.value.toLowerCase();
+      let at = hay.indexOf(needle, findState.from);
+      if (at < 0) at = hay.indexOf(needle);        // 끝까지 갔으면 처음으로 순환
+      if (at < 0) { findState.from = 0; return; }
+      findState.from = at + needle.length;
+      host.focus();
+      host.setSelectionRange(at, at + needle.length);
+      // 캐럿이 보이도록 대략 가운데로 스크롤
+      const before = host.value.slice(0, at).split(String.fromCharCode(10)).length - 1;
+      const lineH = parseFloat(getComputedStyle(host).lineHeight) || 18;
+      host.scrollTop = Math.max(0, before * lineH - host.clientHeight / 2);
+      return;
+    }
+
+    // contenteditable / 미리보기: 텍스트 노드를 이어 붙여 건초더미를 만든다.
+    // innerText를 쓰면 블록 사이에 줄바꿈이 끼어들어 노드 오프셋과 어긋난다.
+    const parts = [];
+    let hay = '';
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT);
+    while (walker.nextNode()) {
+      parts.push({ node: walker.currentNode, start: hay.length });
+      hay += walker.currentNode.nodeValue;
+    }
+    if (!hay) return;
+    const low = hay.toLowerCase();
+    let at = low.indexOf(needle, findState.from);
+    if (at < 0) at = low.indexOf(needle);
+    if (at < 0) { findState.from = 0; return; }
+    findState.from = at + needle.length;
+
+    // at이 속한 텍스트 노드를 찾는다
+    let hit = null;
+    for (const p of parts) {
+      if (at < p.start + p.node.nodeValue.length) { hit = p; break; }
+    }
+    if (!hit) return;
+    const offset = at - hit.start;
+    const range = document.createRange();
+    range.setStart(hit.node, offset);
+    // 인라인 서식으로 노드가 쪼개졌으면 그 노드 끝까지만 선택한다
+    range.setEnd(hit.node, Math.min(hit.node.nodeValue.length, offset + needle.length));
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    if (!inPreview) host.focus();
+    const el = hit.node.parentElement;
+    if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }
+
   function renderTags() {
     const chips = $('#tagChips');
     chips.innerHTML = '';
@@ -206,7 +276,13 @@
       const chip = document.createElement('span');
       chip.className = 'tag-chip' + (isAi ? ' ai' : '');
       const label = document.createElement('span');
+      label.className = 'tag-find';
       label.textContent = '#' + t;
+      label.title = i18n.t('tags.find');
+      // 태그를 누르면 본문에서 같은 글자를 찾아 그 위치로 스크롤·커서 이동한다.
+      // 누를 때마다 다음 것으로, 끝에 닿으면 처음으로 돌아온다.
+      label.addEventListener('mousedown', (e) => e.preventDefault());
+      label.addEventListener('click', () => findNextInBody(t));
       const x = document.createElement('button');
       x.className = 'tag-x';
       x.textContent = '✕';
@@ -458,34 +534,8 @@
     clearSummaryErrorTimer();  // 새 리뷰 시작 — 이전 오류의 자동 소멸 예약 취소
     $('#summaryBox').classList.remove('hidden', 'error');
     $('#summaryText').textContent = i18n.t('review.working');
-    const messages = [
-      {
-        role: 'system',
-        content:
-          '당신은 스티커 메모 앱의 리뷰 도우미입니다. 주어진 메모 내용을 분석해 반드시 아래 JSON ' +
-          '형식으로만 응답하세요. 다른 설명이나 코드 펜스는 출력하지 마세요.\n' +
-          '입력은 마크다운 문서입니다.\n' +
-          '{"srcLang":"본문의 주 언어. ko 또는 en (그 외 언어면 en)",' +
-          '"summary":"한국어 요약 1~3문장 (본문이 다른 언어면 번역해서 요약)",' +
-          '"summaryEn":"영어 요약 1~3문장",' +
-          '"title":"요약을 바탕으로 한 15자 이내의 한국어 제목",' +
-          '"titleEn":"영어 제목 (5단어 이내)",' +
-          '"tags":["중요 키워드 3~6개, 각각 1~3단어의 한국어"],' +
-          '"translation":"본문 전체를 반대 언어로 충실히 번역 (srcLang이 ko면 영어로, en이면 한국어로)"}\n' +
-          '\n[translation 작성 규칙 - 반드시 지킬 것]\n' +
-          '1. 마크다운 기호를 원문 그대로 남긴다: 제목 #/##/###, 목록 -/*/1., ' +
-          '체크박스 - [ ] 와 - [x], 굵게 **, 기울임 *, 취소선 ~~, 인용 >, 표 |, 수평선 ---\n' +
-          '2. 코드 블록(```)과 인라인 코드(`)의 내용은 번역하지 않고 그대로 복사한다. ' +
-          '언어 표시(```js 등)도 유지한다.\n' +
-          '3. 링크와 이미지는 [텍스트](주소), ![대체텍스트](주소) 형태를 유지하고 ' +
-          '주소는 절대 바꾸지 않는다.\n' +
-          '4. HTML 태그(<u>, <br> 등), 파일 경로, 명령어, 변수와 함수 이름은 그대로 둔다.\n' +
-          '5. 줄바꿈과 빈 줄, 들여쓰기를 원문과 똑같이 유지한다. 줄 수가 달라지면 안 된다.\n' +
-          '6. 사람이 읽는 문장만 번역한다. 기호나 구조는 절대 지우거나 바꾸지 않는다.\n' +
-          '예) "## 설치\\n- `npm install` 실행" -> "## Install\\n- Run `npm install`"',
-      },
-      { role: 'user', content: text },
-    ];
+    // 리뷰 프롬프트는 prompts.js가 단일 출처 — 설정에서 편집한 값이 있으면 그것을 쓴다
+    const messages = prompts.build('review', text, i18n.lang);
     bridge.call('ollama.chat',
                 { requestId: reviewRequestId, ownerId: init.stickerId, messages,
                   format: 'json' })  // Ollama JSON 강제 — 형식 파싱 실패 방지
@@ -529,11 +579,15 @@
       }
       if (!data.viewLang) data.viewLang = data.srcLang;  // 기본 표시는 원문 언어
       if (Array.isArray(r.tags)) {
-        // AI 태그는 리뷰마다 새로 대체 — 사용자 태그는 보존, 중복되는 AI 태그는 제외
+        // AI 태그는 리뷰마다 새로 대체 — 사용자 태그는 보존, 중복되는 AI 태그는 제외.
+        // 본문에 없는 낱말은 버린다: 프롬프트로 요구해도 모델이 지어내는 일이 있고,
+        // 태그를 누르면 본문에서 찾아 이동하므로 없는 낱말은 아무 데도 닿지 못한다.
         const userSet = new Set((data.tags || []).map((t) => t.toLowerCase()));
+        const body = (reviewSrc || '').toLowerCase();
         data.aiTags = [...new Set(
           r.tags.map((t) => normalizeTag(String(t))).filter(Boolean))]
-          .filter((t) => !userSet.has(t.toLowerCase()));
+          .filter((t) => !userSet.has(t.toLowerCase()))
+          .filter((t) => body.includes(t.toLowerCase()));
       }
       data.needsReview = false;
       renderTags();
@@ -582,6 +636,9 @@
   if (type === 'rich') {
     editor.classList.remove('hidden');
     $('#toolbar').classList.remove('hidden');
+    $('#hlBtn').classList.remove('hidden');
+    $('#indentBtn').classList.remove('hidden');
+    $('#outdentBtn').classList.remove('hidden');
     editor.dataset.placeholder = i18n.t('editor.placeholder');
     editor.innerHTML = data.html || '';
     editorCore.init(editor, scheduleSave);
@@ -637,6 +694,203 @@
         else editorCore.exec(btn.dataset.cmd);
       });
     });
+    // ---------- 형광펜 (rich 전용) ----------
+    // 프리셋 8색 + 사용자 추가 색. 사용자 색은 설정에 저장되어 모든 메모창이 공유하고,
+    // 변경은 highlight.colorsChanged 방송으로 즉시 퍼진다.
+    (() => {
+      const HL_PRESETS = ['#FFF176', '#FFD54F', '#FFAB91', '#F48FB1',
+                          '#CE93D8', '#90CAF9', '#80DEEA', '#A5D6A7'];
+      const hlBtn = $('#hlBtn');
+      const pop = $('#hlPopover');
+      const grid = $('#hlGrid');
+      let userColors = Array.isArray(init.highlightColors) ? [...init.highlightColors] : [];
+
+      function renderGrid() {
+        grid.innerHTML = '';
+        const make = (color, deletable) => {
+          const sw = document.createElement('div');
+          sw.className = 'hl-swatch';
+          sw.style.background = color;
+          sw.title = color;
+          // mousedown을 막아야 클릭하는 순간 에디터 선택이 풀리지 않는다
+          sw.addEventListener('mousedown', (e) => e.preventDefault());
+          sw.addEventListener('click', () => { apply(color); close(); });
+          if (deletable) {
+            const del = document.createElement('span');
+            del.className = 'hl-del';
+            del.textContent = '×';
+            del.title = i18n.t('hl.deleteColor');
+            del.addEventListener('mousedown', (e) => e.preventDefault());
+            del.addEventListener('click', (e) => {
+              e.stopPropagation();
+              userColors = userColors.filter((c) => c !== color);
+              bridge.call('settings.set', { highlightColors: userColors }).catch(() => {});
+              renderGrid();
+            });
+            sw.appendChild(del);
+          }
+          grid.appendChild(sw);
+        };
+        HL_PRESETS.forEach((c) => make(c, false));
+        userColors.forEach((c) => make(c, true));
+      }
+
+      // 배경이 어두운지 (YIQ 가중 밝기 < 128). 'rgb(r, g, b)'와 '#RRGGBB' 모두 다룬다.
+      const isDarkBg = (c) => {
+        let r, g, b;
+        const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(c);
+        if (m) { r = +m[1]; g = +m[2]; b = +m[3]; }
+        else if (/^#[0-9a-fA-F]{6}$/.test(c)) {
+          const n = parseInt(c.slice(1), 16);
+          r = n >> 16; g = (n >> 8) & 255; b = n & 255;
+        } else return false;  // transparent 등 — 밝음으로 취급
+        return (r * 299 + g * 587 + b * 114) / 1000 < 128;
+      };
+
+      const apply = (color) => {
+        editorCore.exec('hiliteColor', color);
+        // 어두운 형광펜 위에서는 글자가 묻히므로 밝게 바꾼다. 글자색 스팬은 이 형광펜
+        // 로직만 만들므로, 밝은 배경(또는 지운 자리)에서는 걷어내면 원래 색으로 돌아온다.
+        editor.querySelectorAll('span[style*="background-color"]').forEach((sp) => {
+          if (isDarkBg(sp.style.backgroundColor)) sp.style.color = '#FFFFFF';
+          else sp.style.removeProperty('color');
+        });
+      };
+      const close = () => {
+        pop.classList.add('hidden');
+        $('#hlPicker').classList.add('hidden');
+        $('#hlAddBtn').classList.remove('on');
+      };
+
+      hlBtn.addEventListener('mousedown', (e) => e.preventDefault());
+      hlBtn.addEventListener('click', () => {
+        if (pop.classList.contains('hidden')) {
+          renderGrid();
+          pop.classList.remove('hidden');
+        } else close();
+      });
+
+      // 형광펜 지우기: 배경을 투명으로 덮어쓴다
+      $('#hlClearBtn').addEventListener('mousedown', (e) => e.preventDefault());
+      $('#hlClearBtn').addEventListener('click', () => { apply('transparent'); close(); });
+
+      // ---------- 색 추가 피커 (자체 UI — 네이티브 피커의 스포이드 문제 회피) ----------
+      // '+'로 펼치고, 색을 고른 뒤 '추가' 버튼을 눌러야 목록에 들어간다.
+      const picker = $('#hlPicker');
+      const sv = $('#hlSv');
+      const svDot = $('#hlSvDot');
+      const hueSlider = $('#hlHue');
+      const hexInput = $('#hlHex');
+      const preview = $('#hlPreview');
+      // HSV 상태 (h 0-360, s/v 0-1). 기본값은 형광펜다운 파스텔 노랑.
+      let hsv = { h: 50, s: 0.55, v: 1 };
+
+      const hsvToHex = ({ h, s, v }) => {
+        const f = (n) => {
+          const k = (n + h / 60) % 6;
+          const c = v - v * s * Math.max(0, Math.min(k, 4 - k, 1));
+          return Math.round(c * 255).toString(16).padStart(2, '0');
+        };
+        return ('#' + f(5) + f(3) + f(1)).toUpperCase();
+      };
+      const hexToHsv = (hex) => {
+        const n = parseInt(hex.slice(1), 16);
+        const r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
+        const max = Math.max(r, g, b), min = Math.min(r, g, b), d = max - min;
+        let h = 0;
+        if (d) {
+          if (max === r) h = 60 * (((g - b) / d) % 6);
+          else if (max === g) h = 60 * ((b - r) / d + 2);
+          else h = 60 * ((r - g) / d + 4);
+        }
+        if (h < 0) h += 360;
+        return { h, s: max ? d / max : 0, v: max };
+      };
+
+      // 피커의 세 입력(SV 영역·색상 슬라이더·HEX)을 상태와 동기화
+      function syncPicker(fromHex) {
+        const hex = hsvToHex(hsv);
+        sv.style.background =
+          'linear-gradient(to top, #000, transparent), ' +
+          'linear-gradient(to right, #fff, hsl(' + Math.round(hsv.h) + ', 100%, 50%))';
+        svDot.style.left = (hsv.s * 100) + '%';
+        svDot.style.top = ((1 - hsv.v) * 100) + '%';
+        hueSlider.value = Math.round(hsv.h);
+        preview.style.background = hex;
+        if (!fromHex) hexInput.value = hex;
+      }
+
+      // SV 영역: 클릭·드래그로 채도/명도 선택
+      const pickSv = (e) => {
+        const r = sv.getBoundingClientRect();
+        if (!r.width || !r.height) return;  // 보이지 않는 상태 — 0으로 나누면 NaN이 전염된다
+        hsv.s = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+        hsv.v = Math.max(0, Math.min(1, 1 - (e.clientY - r.top) / r.height));
+        syncPicker();
+      };
+      sv.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        pickSv(e);
+        const move = (ev) => pickSv(ev);
+        const up = () => {
+          document.removeEventListener('mousemove', move);
+          document.removeEventListener('mouseup', up);
+        };
+        document.addEventListener('mousemove', move);
+        document.addEventListener('mouseup', up);
+      });
+      hueSlider.addEventListener('input', () => {
+        hsv.h = +hueSlider.value;
+        syncPicker();
+      });
+      hexInput.addEventListener('input', () => {
+        const v = hexInput.value.trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+          hsv = hexToHsv(v.toUpperCase());
+          syncPicker(true);
+        }
+      });
+
+      const togglePicker = (show) => {
+        picker.classList.toggle('hidden', !show);
+        $('#hlAddBtn').classList.toggle('on', show);
+        if (show) syncPicker();
+      };
+      $('#hlAddBtn').addEventListener('mousedown', (e) => e.preventDefault());
+      $('#hlAddBtn').addEventListener('click', () =>
+        togglePicker(picker.classList.contains('hidden')));
+
+      // 추가 버튼을 눌렀을 때만 목록에 들어간다
+      $('#hlConfirmBtn').addEventListener('mousedown', (e) => e.preventDefault());
+      $('#hlConfirmBtn').addEventListener('click', () => {
+        const c = hsvToHex(hsv);
+        if (!HL_PRESETS.includes(c) && !userColors.includes(c) && userColors.length < 24) {
+          userColors.push(c);
+          bridge.call('settings.set', { highlightColors: userColors }).catch(() => {});
+          renderGrid();
+        }
+        togglePicker(false);
+      });
+
+      // 팝오버 밖 클릭으로 닫기
+      document.addEventListener('mousedown', (e) => {
+        if (!e.target.closest('#hlPopover') && !e.target.closest('#hlBtn')) close();
+      });
+
+      // 다른 메모창에서 색을 추가/삭제하면 즉시 반영
+      bridge.on('highlight.colorsChanged', (d) => {
+        userColors = Array.isArray(d.colors) ? [...d.colors] : [];
+        if (!pop.classList.contains('hidden')) renderGrid();
+      });
+    })();
+
+    // 들여쓰기/내어쓰기 (rich 전용). 목록 안에서는 중첩 목록, 일반 문단은 블록 들여쓰기.
+    ['indent', 'outdent'].forEach((cmd) => {
+      const b = $('#' + cmd + 'Btn');
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => editorCore.exec(cmd));
+    });
+
     $('#checkBtn').addEventListener('mousedown', (e) => e.preventDefault());
     $('#checkBtn').addEventListener('click', () => {
       if (type === 'markdown') mdTools.prefixLines('- [ ] ');
@@ -886,6 +1140,9 @@
     let savedMdSel = null;
     let resultText = '';
     let streaming = false;
+    // 자동 숨김 쪽에서 "지금 응답을 받는 중인가"를 물어본다.
+    // #aiStopBtn.disabled는 setActionsState()가 한 번이라도 돌기 전에는 false라 못 쓴다.
+    window.__aiStreaming = () => streaming;
 
     function hasSelection() {
       if (type === 'markdown') return savedMdSel && savedMdSel[0] !== savedMdSel[1];
@@ -898,9 +1155,15 @@
       $('#aiCopyBtn').disabled = !hasResult;
       $('#aiReplaceBtn').disabled = !hasResult || !hasSelection();
     }
-    // 타이틀바의 AI 패널 버튼은 제거했다. 패널 기능은 그대로 남아 있고 진입점만 없는
-    // 상태라, 다른 방식(단축키/메뉴 등)에서 이 함수를 부르면 즉시 동작한다.
+    // 패널 진입점은 서식 툴바 맨 오른쪽의 'AI' 버튼이다 (타이틀바 버튼은 없앴다).
+    // 다른 경로(단축키 등)에서 열고 싶으면 이 함수를 부른다.
     window.__toggleAiPanel = () => aiPanel.classList.toggle('hidden');
+    $('#aiPanelBtn').addEventListener('mousedown', (e) => e.preventDefault());
+    $('#aiPanelBtn').addEventListener('click', () => {
+      // 선택을 붙잡아 두면 패널의 '바꾸기'로 그 자리를 바로 교체할 수 있다
+      captureSelection();
+      aiPanel.classList.toggle('hidden');
+    });
     $('#aiCloseBtn').addEventListener('click', () => {
       if (currentRequestId) bridge.call('ollama.abort', { requestId: currentRequestId });
       aiPanel.classList.add('hidden');
@@ -1052,8 +1315,81 @@
     });
     // ---------- 텍스트 선택 메뉴 ----------
     // 선택한 글에 대해 할 수 있는 동작을 선택 영역 위에 띄운다.
-    // 항목을 늘리려면 SEL_ACTIONS에 { id, label, icon, run } 하나만 추가하면 된다.
+    // 위쪽은 서식 버튼 한 줄(SEL_FORMATS), 구분선 아래는 AI 동작(SEL_ACTIONS)이다.
+    // 항목을 늘리려면 해당 배열에 하나만 추가하면 된다.
+    // 서식 툴바와 같은 항목을 그대로 제공한다 (아이콘도 툴바와 동일한 것을 쓴다)
+    const ICON = {
+      ul: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 3.5a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm0 4a1 1 0 1 1 0 2 1 1 0 0 1 0-2zm0 4a1 1 0 1 1 0 2 1 1 0 0 1 0-2zM5.5 4h9v1.5h-9zm0 4h9v1.5h-9zm0 4h9v1.5h-9z"/></svg>',
+      ol: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2.3 2h1v3h-1V3.2l-.6.3-.4-.8zM1.2 8.7c0-.9.7-1.4 1.4-1.4s1.3.5 1.3 1.2c0 .5-.3.9-.8 1.3l-.5.4h1.4V11H1.2v-.8l1.3-1.1c.3-.3.4-.4.4-.6 0-.2-.2-.4-.4-.4-.3 0-.4.2-.5.5zM5.5 4h9v1.5h-9zm0 4h9v1.5h-9zm0 4h9v1.5h-9zM1.2 13.4c.1-.6.6-1 1.3-1 .8 0 1.3.4 1.3 1 0 .4-.2.6-.5.8.4.1.6.4.6.8 0 .7-.6 1.1-1.4 1.1-.7 0-1.2-.4-1.3-1h.9c0 .2.2.3.4.3.3 0 .4-.1.4-.4 0-.2-.1-.3-.4-.3h-.3v-.7h.3c.2 0 .4-.1.4-.3s-.1-.3-.4-.3c-.2 0-.3.1-.4.3z"/></svg>',
+      check: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M2.5 2.5h11v11h-11z"/><path fill="none" stroke="currentColor" stroke-width="1.6" d="m4.5 8 2.5 2.5L11.5 5"/></svg>',
+      outdent: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 2.5h12V4H2zm6 3.2h6v1.5H8zm0 3.1h6v1.5H8zM2 12h12v1.5H2zM5.5 6v4L2.6 8z"/></svg>',
+      indent: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 2.5h12V4H2zm6 3.2h6v1.5H8zm0 3.1h6v1.5H8zM2 12h12v1.5H2zM2.6 6v4L5.5 8z"/></svg>',
+      hl: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M11.3 1.7a1 1 0 0 1 1.4 0l1.6 1.6a1 1 0 0 1 0 1.4l-6.8 6.8-3.4.4a.5.5 0 0 1-.6-.6l.4-3.4zM10 4.4 5 9.4l-.2 1.8 1.8-.2 5-5zM2 13.5h12V15H2z"/></svg>',
+    };
+    // rich 전용 항목은 richOnly로 표시한다 (마크다운에는 대응 문법이 없거나 툴바가 다르게 처리)
+    const SEL_FORMATS = [
+      { cmd: 'bold', title: 'tt.bold', glyph: '<b>B</b>' },
+      { cmd: 'italic', title: 'tt.italic', glyph: '<i>I</i>' },
+      { cmd: 'underline', title: 'tt.underline', glyph: '<u>U</u>' },
+      { cmd: 'strikeThrough', title: 'tt.strike', glyph: '<s>S</s>' },
+      { cmd: 'highlight', title: 'sel.highlight', glyph: ICON.hl, richOnly: true },
+      { cmd: 'insertUnorderedList', title: 'tt.ul', glyph: ICON.ul },
+      { cmd: 'insertOrderedList', title: 'tt.ol', glyph: ICON.ol },
+      { cmd: 'checklist', title: 'tt.check', glyph: ICON.check },
+      { cmd: 'outdent', title: 'tt.outdent', glyph: ICON.outdent, richOnly: true },
+      { cmd: 'indent', title: 'tt.indent', glyph: ICON.indent, richOnly: true },
+    ];
+    // 마크다운은 원본을 감싸고, 리치는 execCommand를 쓴다 (서식 툴바와 같은 규칙)
+    const MD_WRAP = {
+      bold: ['**', '**'], italic: ['*', '*'],
+      underline: ['<u>', '</u>'], strikeThrough: ['~~', '~~'],
+    };
+    const MD_PREFIX = {
+      insertUnorderedList: '- ', insertOrderedList: '1. ', checklist: '- [ ] ',
+    };
+    // 마크다운 보기 모드는 렌더된 결과라 편집할 수 없다 — 서식 줄을 감춘다
+    const canFormat = () => type !== 'markdown' || mdView === 'edit';
+    function applyFormat(cmd) {
+      if (type === 'markdown') {
+        if (MD_WRAP[cmd]) mdTools.wrapSelection(...MD_WRAP[cmd]);
+        else if (MD_PREFIX[cmd]) mdTools.prefixLines(MD_PREFIX[cmd]);
+        return;
+      }
+      if (cmd === 'checklist') { editorCore.insertChecklist(); return; }
+      // 형광펜은 색을 골라야 하므로 서식 툴바의 팝오버를 그대로 연다
+      if (cmd === 'highlight') { $('#hlBtn').click(); return; }
+      editorCore.exec(cmd);
+    }
+
+    // AI 항목: 선택한 글을 문맥으로 넣고 해당 작업을 바로 실행한다.
+    // 결과는 AI 패널에 스트리밍되고, 패널의 '바꾸기'로 원문을 교체할 수 있다.
+    const aiAction = (id, task, labelKey, icon) => ({
+      id, icon,
+      label: () => i18n.t(labelKey),
+      run() {
+        captureSelection();          // 선택 범위를 잡아 둔다 (결과 교체 시 사용)
+        aiPanel.classList.remove('hidden');
+        aiAskRow.classList.add('hidden');
+        document.querySelectorAll('.ai-task').forEach((b) => b.classList.remove('on'));
+        const btn = document.querySelector('.ai-task[data-task="' + task + '"]');
+        if (btn) btn.classList.add('on');
+        runTask(task);
+      },
+    });
+
     const SEL_ACTIONS = [
+      aiAction('summarize', 'summarize', 'sel.summarize',
+        '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" '
+        + 'd="M2 2.5h12V4H2zm0 3.4h12v1.5H2zm0 3.4h8v1.5H2zm0 3.4h5V14H2z"/></svg>'),
+      aiAction('spellcheck', 'spellcheck', 'sel.spellcheck',
+        '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" '
+        + 'stroke-width="1.5" d="m1.8 9.4 2.6 2.6 5-6.4"/><path fill="currentColor" '
+        + 'd="M9.6 12.2h5.1v1.4H9.6zM11.4 2.3h1.6l2.4 6.3h-1.5l-.5-1.5h-2.5l-.5 1.5H8.9zm.8 1.9-.8 2.3h1.6z"/></svg>'),
+      aiAction('refine', 'refine', 'sel.refine',
+        '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" '
+        + 'd="M11.3 1.7a1 1 0 0 1 1.4 0l1.6 1.6a1 1 0 0 1 0 1.4l-7.6 7.6-3.4.4a.5.5 0 0 1-.6-.6'
+        + 'l.4-3.4zM10 4.4l-5 5-.2 1.8 1.8-.2 5-5z"/><path fill="currentColor" '
+        + 'd="M2.6 2 3 3.2l1.2.4-1.2.4-.4 1.2-.4-1.2L1 3.6l1.2-.4z"/></svg>'),
       {
         id: 'ask',
         label: () => i18n.t('sel.askAi'),
@@ -1081,6 +1417,30 @@
 
     const selMenu = $('#selMenu');
     selMenu.innerHTML = '';
+
+    const fmtRow = document.createElement('div');
+    fmtRow.className = 'sel-formats';
+    const fmtGrid = document.createElement('div');
+    fmtGrid.className = 'sel-fmt-grid';
+    fmtRow.appendChild(fmtGrid);
+    SEL_FORMATS.forEach((f) => {
+      const b = document.createElement('button');
+      b.className = 'sel-fmt';
+      b.dataset.cmd = f.cmd;
+      if (f.richOnly) b.dataset.richOnly = '1';
+      b.innerHTML = f.glyph;
+      b.title = i18n.t(f.title);
+      // mousedown 기본 동작을 막아야 클릭하는 순간 선택이 풀리지 않는다
+      b.addEventListener('mousedown', (e) => e.preventDefault());
+      b.addEventListener('click', () => { hideSelMenu(); applyFormat(f.cmd); });
+      fmtGrid.appendChild(b);
+    });
+    selMenu.appendChild(fmtRow);
+
+    const selSep = document.createElement('div');
+    selSep.className = 'sel-sep';
+    selMenu.appendChild(selSep);
+
     SEL_ACTIONS.forEach((a) => {
       const b = document.createElement('button');
       b.className = 'sel-item';
@@ -1089,6 +1449,10 @@
       b.querySelector('span').textContent = a.label();
       // mousedown 기본 동작을 막아야 클릭하는 순간 선택이 풀리지 않는다
       b.addEventListener('mousedown', (e) => e.preventDefault());
+      // AI 동작은 한 번 고르면 끝이므로 메뉴를 닫아 둔다. 이 mouseup이 document까지
+      // 올라가면 updateSelMenu가 (선택이 남아 있으니) 메뉴를 곧바로 되살린다.
+      // 서식 버튼은 일부러 막지 않는다 — 메뉴가 남아 여러 서식을 이어서 적용할 수 있다.
+      b.addEventListener('mouseup', (e) => e.stopPropagation());
       b.addEventListener('click', () => { hideSelMenu(); a.run(); });
       selMenu.appendChild(b);
     });
@@ -1149,6 +1513,12 @@
         ? mdSource.value.slice(mdSource.selectionStart, mdSource.selectionEnd).trim()
         : String(window.getSelection());
       if (!rect || !text.trim()) { hideSelMenu(); return; }
+      const fmt = canFormat();
+      fmtGrid.classList.toggle('hidden', !fmt);  // 편집할 수 없으면 격자째 감춘다
+      fmtGrid.querySelectorAll('.sel-fmt').forEach((b) => {
+        // 마크다운에 대응 문법이 없는 항목(형광펜·들여쓰기)은 rich에서만 보인다
+        b.classList.toggle('hidden', b.dataset.richOnly === '1' && type !== 'rich');
+      });
       selMenu.classList.remove('hidden');
       const mw = selMenu.offsetWidth, mh = selMenu.offsetHeight;
       let left = rect.left + rect.width / 2 - mw / 2;
@@ -1185,121 +1555,241 @@
     });
   }
 
-  // ---------- UI 자동 숨김 (헤더 + 서식 툴바) ----------
-  // 마우스가 창을 벗어나고 3초 뒤: 헤더/서식 툴바를 페이드 아웃한 다음 네이티브가
-  // 창 가장자리만 200ms 동안 부드럽게 줄인다. 페이지 레이아웃은 절대 바꾸지 않으며,
-  // 네이티브가 WebView 자식 창을 화면에 고정(핀)하므로 본문은 1px도 움직이지 않는다
-  // — 잘려나가는 부분은 이미 투명해진 헤더/툴바 영역뿐이다. 펼칠 때는 역순.
+  // ---------- 툴바 오버플로 ('더보기') ----------
+  // 폭이 모자라면 지정한 버튼들을 뒤에서부터 '더보기' 메뉴로 접어 넣는다.
+  // 좁아질수록 더 많이 접힌다. 헤더(타이틀바)와 서식 툴바가 같은 코드를 쓴다.
+  //
+  // 버튼을 DOM에서 옮기지 않고 감추기만 하고, 메뉴에는 원래 버튼을 대신 눌러 주는
+  // 대리 항목을 만든다 — 리스너와 팝오버(형광펜·새 메모)의 위치 기준이 그대로 유지된다.
+  function setupOverflow(bar, moreBtn, moreMenu, items, reserveExtra) {
+    if (!bar || !moreBtn || !moreMenu) return () => {};
+    const closeMore = () => moreMenu.classList.add('hidden');
+
+    // 접힌 버튼들로 메뉴를 다시 만든다 (아이콘은 원본을 복제, 이름은 title에서)
+    function buildMenu(folded) {
+      moreMenu.innerHTML = '';
+      folded.forEach((btn) => {
+        if (!btn.matches('button')) return;  // 구분선은 메뉴에 넣지 않는다
+        const item = document.createElement('button');
+        item.className = 'tb-more-item';
+        if (btn.disabled) item.disabled = true;
+        const icon = document.createElement('span');
+        icon.className = 'tb-more-icon';
+        icon.innerHTML = btn.innerHTML;
+        const label = document.createElement('span');
+        label.textContent = btn.title || '';
+        item.appendChild(icon);
+        item.appendChild(label);
+        item.addEventListener('mousedown', (e) => e.preventDefault());
+        item.addEventListener('click', () => { closeMore(); btn.click(); });
+        moreMenu.appendChild(item);
+      });
+    }
+
+    function layout() {
+      // 숨겨졌거나 아직 배치 전이면 잴 수 없다 (UI 자동 숨김 중에는 폭이 0이다)
+      if (bar.classList.contains('hidden') || !bar.clientWidth) return;
+      // 1) 모두 펼친 상태로 되돌려 실제 폭을 잰다 (감춘 뒤에는 offsetWidth가 0이다)
+      items.forEach((el) => el.classList.remove('tb-overflow'));
+      moreBtn.classList.add('hidden');
+      closeMore();
+      const style = getComputedStyle(bar);
+      const gap = parseFloat(style.gap) || 0;
+      const pad = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+      // 접을 수 없는 것들이 차지하는 폭
+      let fixed = 0;
+      const walk = (el) => {
+        for (const c of el.children) {
+          if (c === moreMenu || c === moreBtn) continue;
+          if (c.classList.contains('hidden')) continue;
+          if (items.includes(c)) continue;
+          const cs = getComputedStyle(c);
+          if (cs.position === 'absolute') continue;
+          // 늘어나는 여백(드래그 영역·스페이서)은 지금 폭이 "남은 공간"이라 세면 안 된다.
+          // 세는 순간 avail이 0에 가까워져 폭과 상관없이 다 접힌다(실측).
+          // 대신 reserveExtra로 최소 여백만 잡아 둔다.
+          if (parseFloat(cs.flexGrow) > 0) continue;
+          if (c.classList.contains('tb-group')) { walk(c); continue; }
+          fixed += c.offsetWidth + gap;
+        }
+      };
+      walk(bar);
+      const live = items.filter((el) => !el.classList.contains('hidden'));
+      const widths = live.map((el) => el.offsetWidth + gap);
+      let need = widths.reduce((a, b) => a + b, 0);
+      let avail = bar.clientWidth - pad - fixed - (reserveExtra || 0);
+      if (need <= avail) return;  // 다 들어간다
+
+      // 2) 더보기 버튼 자리를 확보하고, 뒤에서부터 접는다
+      moreBtn.classList.remove('hidden');
+      avail -= moreBtn.offsetWidth + gap;
+      const folded = [];
+      for (let i = live.length - 1; i >= 0 && need > avail; i--) {
+        need -= widths[i];
+        live[i].classList.add('tb-overflow');
+        folded.unshift(live[i]);
+      }
+      buildMenu(folded);
+    }
+
+    moreBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    moreBtn.addEventListener('click', () => moreMenu.classList.toggle('hidden'));
+    document.addEventListener('mousedown', (e) => {
+      if (!moreMenu.contains(e.target) && !moreBtn.contains(e.target)) closeMore();
+    });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeMore(); });
+    if (window.ResizeObserver) new ResizeObserver(layout).observe(bar);
+    window.addEventListener('resize', layout);
+    return layout;
+  }
+
   (() => {
-    const header = $('#titlebar');
+    // --- 서식 툴바: 스페이서 앞의 항목이 접힘 대상 (미리보기·AI는 항상 남는다) ---
     const toolbar = $('#toolbar');
+    const tbItems = [];
+    if (toolbar) {
+      const spacer = toolbar.querySelector('.tb-spacer');
+      for (const el of toolbar.children) {
+        if (el === spacer) break;
+        if (el.id === 'tbMoreBtn' || el.id === 'tbMoreMenu' || el.id === 'hlPopover') continue;
+        tbItems.push(el);
+      }
+    }
+    const layoutToolbar =
+      setupOverflow(toolbar, $('#tbMoreBtn'), $('#tbMoreMenu'), tbItems, 0);
+
+    // --- 헤더: 오른쪽 묶음에서 숨기기(창 닫기 성격)만 남기고 접는다.
+    //     제목·드래그 영역이 늘어나는 자리라 최소 여백(28px)을 남겨 둔다. ---
+    const hdrItems = ['#managerBtn', '#newBtn', '#aiReviewBtn', '#deleteBtn']
+      .map((sel) => $(sel)).filter(Boolean);
+    const layoutHeader =
+      setupOverflow($('#titlebar'), $('#hdrMoreBtn'), $('#hdrMoreMenu'), hdrItems, 28);
+
+    const relayout = () => { layoutToolbar(); layoutHeader(); };
+    window.__relayoutToolbar = relayout;
+    requestAnimationFrame(() => requestAnimationFrame(relayout));
+  })();
+
+  // ---------- UI 자동 숨김 (헤더 + 서식 툴바) ----------
+  // 마우스가 창을 벗어나고 3초 뒤: 창 내용 전체를 페이드 아웃 → 헤더/서식 툴바를
+  // 레이아웃에서 제거해 본문이 그 여백을 채움 → 새 레이아웃으로 페이드 인.
+  // 보일 때는 역순. 텍스트가 움직이는 순간은 항상 화면이 비어 있을 때다.
+  // 창 크기는 바뀌지 않는다.
+  (() => {
     const root = document.documentElement;
-    const FADE_MS = 180, RESIZE_MS = 200, HIDE_DELAY_MS = 3000, INITIAL_DELAY_MS = 3000;
+    const FADE_MS = 180, HIDE_DELAY_MS = 3000, INITIAL_DELAY_MS = 3000;
     let enabled = init.autoHideUi !== false;
     // true면 창을 클릭해야 UI가 나타난다 (마우스만 올리는 것으로는 나타나지 않음)
     let clickOnly = init.uiRevealOnClick !== false;
-    let state = 'expanded';  // 'expanded' | 'fading'(페이드 아웃 중) | 'collapsed'
+    let hidden = false;  // 레이아웃 기준 목표 상태
+    let seq = 0;         // 진행 중인 전환의 취소 토큰
     let timer = 0;
+    const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-    // 접기 대상: 헤더는 항상, 서식 툴바는 표시 중일 때만 (file/web/pdf 메모는 툴바 없음)
-    const parts = () => {
-      const els = [header];
-      if (toolbar && !toolbar.classList.contains('hidden')) els.push(toolbar);
-      return els;
-    };
-    // 팝오버가 열려 있으면 접지 않는다
+    // 팝오버가 열려 있으면 숨기지 않는다
     const popoverOpen = () =>
       !$('#newMenu').classList.contains('hidden') ||
-      !$('#colorPopover').classList.contains('hidden');
+      !$('#colorPopover').classList.contains('hidden') ||
+      !$('#hlPopover').classList.contains('hidden') ||
+      !$('#tbMoreMenu').classList.contains('hidden') ||
+      !$('#hdrMoreMenu').classList.contains('hidden');
     // 텍스트 입력 중(에디터·마크다운·태그·타이틀·URL 입력에 캐럿이 있음)에는 숨기지 않는다
     const isEditing = () => {
       if (!document.hasFocus()) return false;
       const a = document.activeElement;
       return !!a && (a.isContentEditable || a.tagName === 'TEXTAREA' || a.tagName === 'INPUT');
     };
+    // AI 응답을 받는 중이면 숨기지 않는다 — 숨김이 패널을 닫으면서 요청을 끊기 때문
+    const aiBusy = () =>
+      typeof window.__aiStreaming === 'function' && window.__aiStreaming();
     // 클릭해야 보이는 모드에서는 마우스를 올려둔 것만으로 UI를 붙잡아 두지 않는다
-    const canCollapse = () =>
-      (clickOnly || !root.matches(':hover')) && !isEditing() && !popoverOpen();
+    const canHide = () =>
+      (clickOnly || !root.matches(':hover')) && !isEditing() && !popoverOpen() && !aiBusy();
 
-    // 헤더·툴바 높이를 네이티브에 알린다. 자석 정렬이 "UI가 숨겨졌을 때"의 창 모양을
-    // 기준으로 삼기 위해 필요하며, 접힘 여부와 무관하게 항상 측정된다(페이드만 하므로).
-    function reportUiExtents() {
-      const els = parts();
-      bridge.call('window.setUiExtents', {
-        top: header.offsetHeight,
-        bottom: els.includes(toolbar) ? toolbar.offsetHeight : 0,
-      }).catch(() => {});
+    // UI를 감출 때 AI 패널도 닫는다. 닫기 버튼에 맡겨 진행 중 요청 정리까지 함께 한다.
+    // (다시 보일 때 패널을 되살리지는 않는다 — 사용자가 직접 열어야 한다)
+    function closeAiPanel() {
+      const panel = $('#aiPanel');
+      if (panel && !panel.classList.contains('hidden')) $('#aiCloseBtn').click();
     }
-    const unfade = () =>
-      document.querySelectorAll('.autofade').forEach((el) => el.classList.remove('autofade'));
 
-    async function collapse() {
-      if (!enabled || state !== 'expanded' || !canCollapse()) return;
-      const els = parts();
-      state = 'fading';
-      els.forEach((el) => el.classList.add('autofade'));
-      await new Promise((r) => setTimeout(r, FADE_MS + 40));
-      if (state !== 'fading') return;  // 도중에 expand()가 취소함
-      if (!enabled || !canCollapse()) {
-        state = 'expanded';
-        unfade();
+    // web 메모는 사이트 뷰가 별도의 네이티브 자식 창이라 CSS 리플로우가 닿지 않는다.
+    // 타이틀바가 빠진 만큼 상단 스트립을 줄여 달라고 네이티브에 알린다.
+    const syncNative = (on) => {
+      if (type === 'web') bridge.call('window.setUiHidden', { hidden: on }).catch(() => {});
+    };
+
+    async function hide() {
+      if (!enabled || hidden || !canHide()) return;
+      const my = ++seq;
+      document.body.classList.add('ui-fading');
+      await wait(FADE_MS + 40);
+      if (my !== seq) return;  // 도중에 show()가 취소함
+      if (!enabled || !canHide()) {
+        document.body.classList.remove('ui-fading');
         return;
       }
-      state = 'collapsed';
-      // 창 축소량 = 요소가 레이아웃에서 차지하는 높이 (레이아웃은 그대로, 창만 줄어
-      // 그 영역이 잘린다)
-      const top = header.offsetHeight;
-      const bottom = els.includes(toolbar) ? toolbar.offsetHeight : 0;
-      reportUiExtents();
-      bridge.call('window.setCollapse', { top, bottom }).catch(() => {});
+      hidden = true;
+      closeAiPanel();
+      root.classList.add('ui-collapsed');  // 화면이 비어 있는 동안에만 자리가 바뀐다
+      syncNative(true);
+      requestAnimationFrame(() => {
+        if (my === seq) document.body.classList.remove('ui-fading');  // 페이드 인
+      });
     }
 
-    function expand(withFade) {
+    async function show() {
       clearTimeout(timer);
-      if (state === 'fading') {
-        state = 'expanded';
-        unfade();
+      if (!hidden) {
+        // 페이드 아웃이 진행 중이던 hide를 취소하고 즉시 되살린다
+        if (document.body.classList.contains('ui-fading')) {
+          seq++;
+          document.body.classList.remove('ui-fading');
+        }
         return;
       }
-      if (state !== 'collapsed') return;
-      state = 'expanded';
-      bridge.call('window.setCollapse', { top: 0, bottom: 0 }).catch(() => {});
-      if (withFade === false) unfade();
-      else setTimeout(unfade, RESIZE_MS + 30);  // 창이 다 커진 뒤 페이드 인
+      const my = ++seq;
+      document.body.classList.add('ui-fading');
+      await wait(FADE_MS + 40);
+      if (my !== seq) return;
+      hidden = false;
+      root.classList.remove('ui-collapsed');
+      syncNative(false);
+      requestAnimationFrame(() => {
+        if (my === seq) document.body.classList.remove('ui-fading');
+      });
     }
 
     const schedule = () => {
       if (!enabled) return;
       clearTimeout(timer);
-      timer = setTimeout(collapse, HIDE_DELAY_MS);
+      timer = setTimeout(hide, HIDE_DELAY_MS);
     };
     // 호버로 보이기 (클릭 전용 모드가 아닐 때만)
-    root.addEventListener('mouseenter', () => { if (!clickOnly) expand(true); });
+    root.addEventListener('mouseenter', () => { if (!clickOnly) show(); });
     root.addEventListener('mouseleave', schedule);
     // 클릭으로 보이기 — 창 안 어디를 눌러도 UI가 올라온다
-    document.addEventListener('mousedown', () => expand(true), true);
+    document.addEventListener('mousedown', () => show(), true);
     // 입력을 마치고 포커스가 떠나거나 창이 비활성화되면 (마우스도 밖이면) 숨김 예약
     document.addEventListener('focusout', schedule);
     window.addEventListener('blur', schedule);
-    // 키보드 포커스로 입력이 재개되면 (Alt+Tab 복귀 등) 접힌 UI를 되살린다
-    window.addEventListener('focus', () => { if (isEditing()) expand(true); });
+    // 키보드 포커스로 입력이 재개되면 (Alt+Tab 복귀 등) 숨겨진 UI를 되살린다
+    window.addEventListener('focus', () => { if (isEditing()) show(); });
 
     bridge.on('ui.autoHideChanged', (d) => {
       enabled = !!d.on;
-      if (!enabled) expand(false);
-      else if (canCollapse()) collapse();
+      if (!enabled) show();
+      else if (canHide()) hide();
     });
 
     // 표시 조건(호버 vs 클릭) 변경 — 클릭 전용으로 바뀌면 호버로 떠 있던 UI를 정리한다
     bridge.on('ui.revealModeChanged', (d) => {
       clickOnly = !!d.clickOnly;
-      if (enabled && clickOnly && canCollapse()) collapse();
+      if (enabled && clickOnly && canHide()) hide();
     });
 
-    // 최초 로드: 레이아웃이 잡힌 뒤 높이를 보고하고, 잠시 뒤 마우스가 창 위에 없고
-    // 입력 중도 아니면 접는다
-    requestAnimationFrame(() => requestAnimationFrame(reportUiExtents));
-    setTimeout(() => { if (enabled && canCollapse()) collapse(); }, INITIAL_DELAY_MS);
+    // 최초 로드: 잠시 뒤 마우스가 창 위에 없고 입력 중도 아니면 숨긴다
+    setTimeout(() => { if (enabled && canHide()) hide(); }, INITIAL_DELAY_MS);
   })();
 
   // ---------- 다중 선택 (Shift+클릭으로 고르고, 함께 옮기거나 Delete로 숨김) ----------

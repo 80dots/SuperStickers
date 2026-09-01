@@ -176,6 +176,9 @@ body {
   color: #4C40B8;
   padding: 1px 3px 1px 7px;
 }
+/* 태그 이름 — 누르면 본문에서 같은 글자를 찾아 이동한다 */
+.tag-find { cursor: pointer; border-radius: 999px; }
+.tag-find:hover { text-decoration: underline; }
 .tag-chip .tag-x {
   width: 14px;
   height: 14px;
@@ -711,10 +714,13 @@ body {
 .ai-danger { color: var(--danger); }
 
 /* ---------- UI 자동 숨김 (헤더/서식 툴바) ---------- */
-/* 페이드 아웃만 CSS가 담당한다. 레이아웃은 바뀌지 않고, 창 축소는 네이티브가
-   투명해진 영역을 잘라내는 방식이라 본문이 움직이지 않는다 (sticker.js autoHide) */
-#titlebar, #toolbar { transition: opacity 0.18s ease; }
-.autofade { opacity: 0 !important; pointer-events: none !important; }
+/* 숨길 때: 창 내용 전체를 페이드 아웃 → 헤더/툴바를 레이아웃에서 제거(본문이 여백을
+   채움) → 새 레이아웃으로 페이드 인. 보일 때는 역순. 텍스트가 갑자기 이동하는 대신
+   보이지 않는 동안에만 자리가 바뀐다 (sticker.js autoHide) */
+body > * { transition: opacity 0.18s ease; }
+body.ui-fading > * { opacity: 0 !important; }
+html.ui-collapsed #titlebar,
+html.ui-collapsed #toolbar { display: none !important; }
 
 /* ---------- 텍스트 선택 메뉴 ---------- */
 /* 선택 영역 위에 떠서 동작을 제안한다. 시안의 컨텍스트 메뉴와 같은 결. */
@@ -723,7 +729,7 @@ body {
   z-index: 2147483000;
   display: flex;
   flex-direction: column;
-  min-width: 148px;
+  min-width: 168px;
   padding: 4px;
   background: var(--panel-bg);
   border-radius: var(--r-lg);
@@ -744,3 +750,246 @@ body {
 }
 .sel-item:hover { background: var(--hover); }
 .sel-item svg { flex: none; opacity: 0.75; }
+
+/* 서식 줄 — 아이콘 격자(5개씩). 아래 구분선으로 AI 동작 목록과 나뉜다 */
+.sel-formats { display: flex; }
+.sel-fmt-grid { display: flex; flex-wrap: wrap; width: 160px; }
+.sel-fmt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 30px;
+  border-radius: var(--r-sm);
+  color: var(--fg);
+  font-size: 13px;
+  opacity: 0.78;
+}
+.sel-fmt:hover { background: var(--hover); opacity: 1; }
+/* 서식 툴바 맨 오른쪽의 AI 패널 버튼 — 서식이 아니므로 강조색 글자로 구분한다 */
+#aiPanelBtn {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: var(--accent);
+  opacity: 1;
+}
+#aiPanelBtn:hover { background: var(--accent-soft); }
+.sel-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--border);
+}
+
+/* ---------- 형광펜 팝오버 ---------- */
+/* 서식 툴바 위로 열린다. 스와치는 프리셋 + 사용자 색이며 사용자 색에는 삭제 배지가 뜬다 */
+#toolbar { position: relative; }
+#hlPopover {
+  position: absolute;
+  bottom: 34px;
+  left: 88px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  background: var(--panel-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 30;
+}
+#hlPopover.hidden { display: none; }
+#hlGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 22px);
+  gap: 6px;
+}
+.hl-swatch {
+  position: relative;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+}
+.hl-swatch:hover { transform: scale(1.12); }
+/* 사용자 색 삭제 배지 — 스와치에 마우스를 올렸을 때만 보인다 */
+.hl-del {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: var(--danger);
+  color: #fff;
+  font-size: 9px;
+  line-height: 13px;
+  text-align: center;
+  display: none;
+  cursor: pointer;
+}
+.hl-swatch:hover .hl-del { display: block; }
+#hlActions { display: flex; gap: 6px; }
+.hl-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 22px;
+  border-radius: var(--r-sm);
+  border: 1px dashed var(--border-strong);
+  color: var(--fg);
+  opacity: 0.75;
+  cursor: pointer;
+  position: relative;
+}
+.hl-action:hover { background: var(--hover); opacity: 1; }
+/* ---------- 색 추가 피커 (스포이드 없는 자체 UI) ---------- */
+/* 메모창의 기본 팝오버 스타일(디자인 토큰)과 같은 결로 맞춘다 */
+#hlPicker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 168px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+#hlPicker.hidden { display: none; }
+/* 채도(가로) x 명도(세로) 선택 영역 */
+#hlSv {
+  position: relative;
+  height: 96px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  cursor: crosshair;
+  /* 배경은 JS가 현재 색상(hue)으로 갱신한다 */
+}
+#hlSvDot {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+/* 색상(Hue) 슬라이더 — 무지개 트랙 위를 흰 원이 다닌다 */
+#hlHue {
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: linear-gradient(to right,
+    #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%);
+  outline: none;
+  cursor: pointer;
+}
+#hlHue::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-sm);
+}
+#hlPickRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#hlPreview {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+#hlHex {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--panel-bg);
+  color: var(--fg);
+  font-size: 12px;
+  font-family: inherit;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+#hlHex:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+}
+/* 추가 확정 버튼 — 메모창의 기본(primary) 버튼과 같은 모양 */
+#hlConfirmBtn {
+  flex: none;
+  padding: 4px 12px;
+  border-radius: var(--r-sm);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: var(--shadow-sm);
+  transition: filter 0.12s ease;
+}
+#hlConfirmBtn:hover { filter: brightness(1.08); }
+#hlConfirmBtn:active { filter: brightness(0.96); }
+/* 피커가 열려 있는 동안 + 버튼은 눌린 상태로 표시 */
+.hl-action.on { background: var(--active); opacity: 1; }
+
+/* ---------- 서식 툴바 오버플로 ('더보기') ---------- */
+/* 툴바 항목은 줄어들지 않는다. flex가 버튼을 눌러 버리면 폭이 모자라도 '들어간다'고
+   계산되어(실측) 접히지 않고 그냥 찌그러진다. */
+#toolbar > .tb-btn, #toolbar > .tb-sep { flex: none; }
+#titlebar > .tb-btn, #titlebar .tb-group, #titlebar .tb-group > * { flex: none; }
+/* 폭이 모자라 접힌 버튼. DOM에는 그대로 남고 화면에서만 빠진다 (sticker.js layoutToolbar) */
+.tb-overflow { display: none !important; }
+/* 접힌 버튼들의 목록 — 툴바 위로 열린다 */
+#tbMoreMenu, #hdrMoreMenu {
+  position: absolute;
+  bottom: 34px;
+  right: 6px;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  min-width: 160px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 4px;
+  background: var(--panel-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  font-size: 13px;
+}
+#tbMoreMenu.hidden, #hdrMoreMenu.hidden { display: none; }
+/* 헤더 메뉴는 타이틀바 아래로 펼쳐진다 */
+#hdrMoreMenu { top: 34px; bottom: auto; }
+.tb-more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  white-space: nowrap;
+  color: var(--fg);
+}
+.tb-more-item:hover { background: var(--hover); }
+/* 원본 버튼의 아이콘(또는 B/I/U/S 같은 글자)을 그대로 복제해 넣는다 */
+.tb-more-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  flex: none;
+  opacity: 0.75;
+}

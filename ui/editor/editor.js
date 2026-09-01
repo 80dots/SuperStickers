@@ -23,9 +23,9 @@ const editorCore = (() => {
     if (onChange) onChange();
   }
 
-  function exec(cmd) {
+  function exec(cmd, value) {
     editor.focus();
-    document.execCommand(cmd, false, null);
+    document.execCommand(cmd, false, value == null ? null : value);
     notify();
   }
 
@@ -207,7 +207,11 @@ const editorCore = (() => {
       if (tag === 'blockquote') {
         const sub = [];
         [...node.childNodes].forEach((c) => block(c, sub, depth));
-        sub.forEach((l) => out.push('> ' + l));
+        // 들여쓰기 버튼(execCommand indent)이 만든 blockquote는 인용이 아니다
+        // (border:none 스타일이 표식). 마크다운에서는 들여쓰기 표현이 마땅치 않아
+        // 접두사 없이 그대로 풀어낸다.
+        const isIndent = node.style && node.style.borderStyle === 'none';
+        sub.forEach((l) => out.push(isIndent ? l : '> ' + l));
         return;
       }
       if (tag === 'pre') {
