@@ -1,4 +1,4 @@
-/* Super Sticker 랜딩 사이트 — 언어/테마 전환, 최신 릴리스 정보 표시 */
+/* Super Sticker 랜딩 사이트 — 언어/테마 전환, 스크롤 연출, 최신 릴리스 정보 표시 */
 (function () {
   'use strict';
 
@@ -57,16 +57,31 @@
     });
   }
 
-  /* ---------- 스크린샷 자리표시자 ---------- */
-  // 이미지가 아직 준비되지 않았으면 점선 박스로 대체한다.
-  function markEmpty(img) {
-    var fig = img.closest('.shot');
-    if (fig) fig.classList.add('is-empty');
+  /* ---------- 스크롤 연출 ---------- */
+  // 모션을 줄이도록 설정한 사용자에게는 아무것도 하지 않는다(CSS도 .reveal을 즉시 보이게 한다).
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var targets = document.querySelectorAll('.reveal');
+
+  if (reduced || !('IntersectionObserver' in window)) {
+    Array.prototype.forEach.call(targets, function (el) { el.classList.add('in'); });
+  } else {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (e) {
+        if (!e.isIntersecting) return;
+        e.target.classList.add('in');
+        io.unobserve(e.target);
+      });
+    }, { rootMargin: '0px 0px -12% 0px', threshold: .08 });
+    Array.prototype.forEach.call(targets, function (el) { io.observe(el); });
   }
-  Array.prototype.forEach.call(document.querySelectorAll('.shot img'), function (img) {
-    if (img.complete && img.naturalWidth === 0) markEmpty(img);
-    img.addEventListener('error', function () { markEmpty(img); });
-  });
+
+  // 헤더는 스크롤이 시작되면 그림자를 키운다.
+  var header = document.getElementById('site-header');
+  if (header) {
+    var onScroll = function () { header.classList.toggle('scrolled', window.scrollY > 8); };
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+  }
 
   /* ---------- 최신 릴리스 정보 ---------- */
   function formatSize(bytes) {

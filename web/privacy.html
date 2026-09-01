@@ -22,13 +22,18 @@
 </head>
 <body>
 
-<header class="site-header">
+<header class="site-header" id="site-header">
   <div class="wrap">
     <a class="brand" href="/">
       <img src="/assets/logo.svg" alt="">
       <span>Super Sticker</span>
     </a>
-    <div class="header-actions" style="margin-left:auto">
+    <nav class="nav">
+      <a href="/"><span data-lang-ko>홈</span><span data-lang-en>Home</span></a>
+      <a href="/download"><span data-lang-ko>다운로드</span><span data-lang-en>Download</span></a>
+      <a href="https://github.com/80dots/SuperStickers">GitHub</a>
+    </nav>
+    <div class="header-actions">
       <button class="icon-btn" id="lang-toggle" type="button">EN</button>
       <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme">☾</button>
     </div>
@@ -69,10 +74,10 @@
 
 <h2><span data-lang-ko>AI 기능</span><span data-lang-en>AI features</span></h2>
 <p>
-  <span data-lang-ko>요약, 문장 다듬기, 번역, AI Review 등 모든 AI 기능은 사용자 PC에 설치된
+  <span data-lang-ko>요약, 맞춤법 검사, 문장 다듬기, 번역, AI Review 등 모든 AI 기능은 사용자 PC에 설치된
     <b>Ollama</b>에 <code>http://localhost:11434</code>로 요청을 보내 처리됩니다.
     메모 내용이 인터넷으로 나가지 않으며, OpenAI를 비롯한 외부 AI 서비스를 사용하지 않습니다.</span>
-  <span data-lang-en>Summarization, rewriting, translation and AI Review all run through
+  <span data-lang-en>Summarization, spellcheck, rewriting, translation and AI Review all run through
     <b>Ollama</b> installed on your own PC, via a request to <code>http://localhost:11434</code>.
     Note contents never leave your machine, and no third-party AI service such as OpenAI is used.</span>
 </p>
@@ -97,10 +102,10 @@
       domain.</span>
   </li>
   <li>
-    <span data-lang-ko><b>Ollama 및 모델 다운로드</b> — 설정에서 다운로드를 누르면
+    <span data-lang-ko><b>Ollama 및 모델 다운로드</b> — 설정의 AI 탭에서 다운로드를 누르면
       Ollama 공식 서버(<code>ollama.com</code>)에 접속합니다.</span>
     <span data-lang-en><b>Ollama and model downloads</b> contact the official Ollama servers
-      (<code>ollama.com</code>) when you start a download from the settings screen.</span>
+      (<code>ollama.com</code>) when you start a download from the AI tab in settings.</span>
   </li>
 </ul>
 <p>
@@ -144,9 +149,12 @@
 
 <footer>
   <div class="wrap">
-    <span>&copy; 2026 minkyu</span>
-    <a href="https://github.com/80dots/SuperStickers">GitHub</a>
-    <span class="spacer">MIT License</span>
+    <div class="foot-bottom" style="border-top:0; padding-top:0">
+      <span>&copy; 2026 minkyu</span>
+      <a href="/"><span data-lang-ko>홈</span><span data-lang-en>Home</span></a>
+      <a href="https://github.com/80dots/SuperStickers">GitHub</a>
+      <span class="spacer">MIT License</span>
+    </div>
   </div>
 </footer>
 

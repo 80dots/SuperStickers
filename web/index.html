@@ -4,13 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Super Sticker — 바탕화면 스티커 메모</title>
-<meta name="description" content="Windows용 무료 오픈소스 스티커 메모 앱. 서식 있는 텍스트·이미지·동영상·PDF·3D 모델을 바탕화면에 붙이고, 로컬 AI로 요약·번역하세요. 데이터는 내 PC에만 남습니다.">
+<meta name="description" content="Windows용 무료 오픈소스 스티커 메모 앱. 서식 있는 텍스트·이미지·동영상·PDF·3D 모델을 바탕화면에 붙이고, 형광펜으로 칠하고, 로컬 AI로 요약·번역하세요. 데이터는 내 PC에만 남습니다.">
 <link rel="icon" href="/assets/logo.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/assets/style.css">
 
 <meta property="og:type" content="website">
 <meta property="og:title" content="Super Sticker — 바탕화면 스티커 메모">
-<meta property="og:description" content="Windows용 무료 오픈소스 스티커 메모 앱. 로컬 AI로 요약·번역까지, 데이터는 내 PC에만.">
+<meta property="og:description" content="Windows용 무료 오픈소스 스티커 메모 앱. 형광펜·선택 메뉴·로컬 AI까지, 데이터는 내 PC에만.">
 <meta property="og:image" content="/assets/img/og.png">
 <meta name="twitter:card" content="summary_large_image">
 
@@ -26,25 +26,32 @@
   } catch (e) {}
 })();
 </script>
+<noscript>
+  <!-- 스크롤 등장 연출은 JS가 켜 준다. JS가 없으면 처음부터 보이게 둔다. -->
+  <style>.reveal { opacity: 1; transform: none; }</style>
+</noscript>
 </head>
 <body>
 
-<header class="site-header">
+<header class="site-header" id="site-header">
   <div class="wrap">
     <a class="brand" href="/">
       <img src="/assets/logo.svg" alt="">
       <span>Super Sticker</span>
     </a>
     <nav class="nav">
+      <a href="#new"><span data-lang-ko>새 기능</span><span data-lang-en>What&rsquo;s new</span></a>
       <a href="#kinds"><span data-lang-ko>메모 종류</span><span data-lang-en>Note types</span></a>
-      <a href="#group"><span data-lang-ko>그룹</span><span data-lang-en>Groups</span></a>
+      <a href="#writing"><span data-lang-ko>쓰기</span><span data-lang-en>Writing</span></a>
       <a href="#ai"><span data-lang-ko>로컬 AI</span><span data-lang-en>Local AI</span></a>
-      <a href="#download"><span data-lang-ko>다운로드</span><span data-lang-en>Download</span></a>
       <a href="https://github.com/80dots/SuperStickers">GitHub</a>
     </nav>
     <div class="header-actions">
       <button class="icon-btn" id="lang-toggle" type="button">EN</button>
       <button class="icon-btn" id="theme-toggle" type="button" aria-label="Toggle theme">☾</button>
+      <a class="btn btn-primary btn-sm header-cta" href="/download">
+        <span data-lang-ko>다운로드</span><span data-lang-en>Download</span>
+      </a>
     </div>
   </div>
 </header>
@@ -56,18 +63,21 @@
   <div class="wrap">
     <div class="hero-inner">
       <p class="eyebrow">
-        <span data-lang-ko>Windows 10/11 · 무료 · 오픈소스</span>
-        <span data-lang-en>Windows 10/11 · Free · Open source</span>
+        <b class="tagv" data-rel-version>v1.5.0</b>
+        <span data-lang-ko>형광펜과 선택 메뉴 서식이 새로 들어왔습니다</span>
+        <span data-lang-en>Now with a highlighter and inline formatting</span>
       </p>
       <h1>
-        <span data-lang-ko>바탕화면에 붙이는<br>똑똑한 스티커 메모</span>
-        <span data-lang-en>Smart sticky notes<br>for your desktop</span>
+        <span data-lang-ko>바탕화면에 붙이는<br><span class="hl">똑똑한</span> 스티커 메모</span>
+        <span data-lang-en>Smart sticky notes<br>for your <span class="hl">desktop</span></span>
       </h1>
       <p class="lede">
-        <span data-lang-ko>가볍고 빠른 네이티브 앱입니다. 서식 있는 텍스트부터 이미지·동영상·PDF·3D 모델까지
-          붙여 두고, 로컬 AI로 요약과 번역까지 처리하세요. 데이터는 전부 내 PC에만 남습니다.</span>
-        <span data-lang-en>A fast, lightweight native app. Pin rich text, images, video, PDFs and even 3D models
-          to your desktop, then summarize and translate them with local AI. Your data never leaves your PC.</span>
+        <span data-lang-ko>가볍고 빠른 네이티브 앱입니다. 서식 있는 글부터 이미지·동영상·PDF·3D 모델까지
+          붙여 두고, 중요한 곳은 형광펜으로 칠하고, 로컬 AI로 요약과 번역까지 끝내세요.
+          데이터는 전부 내 PC에만 남습니다.</span>
+        <span data-lang-en>A fast, lightweight native app. Pin rich text, images, video, PDFs and even 3D
+          models to your desktop, highlight what matters, then summarize and translate with local AI.
+          Your data never leaves your PC.</span>
       </p>
 
       <div class="cta-row">
@@ -84,11 +94,17 @@
         </a>
       </div>
 
+      <ul class="hero-facts">
+        <li><span class="tick">✓</span><span data-lang-ko>설치에 관리자 권한 불필요</span><span data-lang-en>No admin rights needed</span></li>
+        <li><span class="tick">✓</span><span data-lang-ko>계정 가입 없음</span><span data-lang-en>No account, no sign-in</span></li>
+        <li><span class="tick">✓</span><span data-lang-ko>MIT 오픈소스</span><span data-lang-en>MIT open source</span></li>
+      </ul>
+
       <p class="meta-line">
-        <b data-rel-version>v1.1.0</b> ·
-        <span data-rel-setup-size>7.0 MB</span> ·
-        <span data-lang-ko>Windows 10/11 (64비트) · 설치에 관리자 권한이 필요 없습니다</span>
-        <span data-lang-en>Windows 10/11 (64-bit) · No administrator rights required</span>
+        <b data-rel-version>v1.5.0</b> ·
+        <span data-rel-setup-size>9.5 MB</span> ·
+        <span data-lang-ko>Windows 10/11 (64비트)</span>
+        <span data-lang-en>Windows 10/11 (64-bit)</span>
       </p>
 
       <details class="notice">
@@ -119,223 +135,645 @@
       </details>
     </div>
 
-    <figure class="shot hero-shot" data-placeholder="스크린샷 준비 중 · Screenshot coming soon">
-      <img src="/assets/img/hero.png" alt="바탕화면에 여러 색상의 스티커 메모가 붙어 있는 모습">
-    </figure>
+    <!-- 앱 화면 목업 (CSS로 그린 것) -->
+    <div class="stage hero-stage" aria-hidden="true">
+      <div class="mock m-md floaty d1">
+        <div class="m-bar">
+          <span class="m-title"><span data-lang-ko>주간 정리</span><span data-lang-en>Weekly</span></span>
+          <span class="sp"></span><span class="m-btn">M</span>
+        </div>
+        <div class="m-body">
+          <p><b><span data-lang-ko>## 이번 주</span><span data-lang-en>## This week</span></b></p>
+          <p><span data-lang-ko>- [x] 릴리스 노트</span><span data-lang-en>- [x] Release notes</span></p>
+          <p><span data-lang-ko>- [ ] 아이콘 다듬기</span><span data-lang-en>- [ ] Polish icons</span></p>
+          <div class="m-line w70"></div>
+        </div>
+      </div>
+
+      <div class="mock m-note floaty">
+        <div class="m-bar">
+          <span class="m-title"><span data-lang-ko>회의 준비</span><span data-lang-en>Meeting prep</span></span>
+          <span class="sp"></span><span class="m-btn">AI</span><span class="m-btn">+</span>
+        </div>
+        <div class="m-body">
+          <p><span data-lang-ko>내일 <span class="mark">10시 디자인 리뷰</span> — 시안 3안 준비</span>
+             <span data-lang-en>Tomorrow: <span class="mark">design review at 10</span></span></p>
+          <p><span data-lang-ko><span class="mark mint">배포 체크리스트</span>를 먼저 공유하기</span>
+             <span data-lang-en>Share the <span class="mark mint">release checklist</span> first</span></p>
+          <div class="m-line w80"></div>
+          <div class="m-line w45"></div>
+        </div>
+        <div class="m-tags">
+          <span class="m-tag"><span data-lang-ko>디자인</span><span data-lang-en>design</span></span>
+          <span class="m-tag"><span data-lang-ko>배포</span><span data-lang-en>release</span></span>
+        </div>
+        <div class="m-tools">
+          <i class="on">B</i><i>I</i><i>U</i><i>S</i><i>✎</i><i>•</i><span class="sp"></span><i>⋯</i><i>AI</i>
+        </div>
+      </div>
+
+      <div class="mock m-group floaty d2">
+        <div class="m-bar">
+          <span class="m-title"><span data-lang-ko>프로젝트 보드</span><span data-lang-en>Project board</span></span>
+          <span class="sp"></span><span class="m-btn">▦</span>
+        </div>
+        <div class="board">
+          <div class="h4"></div><div class="h3"></div>
+          <div class="h2"></div><div class="h5"></div>
+          <div class="h3"></div><div class="h2"></div>
+        </div>
+      </div>
+
+      <div class="selmenu floaty d1">
+        <div class="grid">
+          <span>B</span><span>I</span><span>U</span><span>S</span><span class="hi">✎</span>
+          <span>•</span><span>1.</span><span>☑</span><span>⇥</span><span>⇤</span>
+        </div>
+        <hr>
+        <div class="row"><span data-lang-ko>요약</span><span data-lang-en>Summarize</span></div>
+        <div class="row hi"><span data-lang-ko>AI에게 물어보기</span><span data-lang-en>Ask AI</span></div>
+      </div>
+
+      <div class="aipanel floaty">
+        <div class="ai-head">
+          <span class="dotpulse"></span>
+          <span data-lang-ko>AI 도우미 · 요약</span><span data-lang-en>AI assistant · summary</span>
+        </div>
+        <div class="ai-body">
+          <span data-lang-ko>10시 디자인 리뷰 전에 배포 체크리스트를 공유<span class="caret"></span></span>
+          <span data-lang-en>Share the release checklist before the 10am review<span class="caret"></span></span>
+        </div>
+        <div class="ai-acts">
+          <em class="solid"><span data-lang-ko>바꾸기</span><span data-lang-en>Replace</span></em>
+          <em><span data-lang-ko>삽입</span><span data-lang-en>Insert</span></em>
+          <em><span data-lang-ko>복사</span><span data-lang-en>Copy</span></em>
+        </div>
+      </div>
+
+      <span class="chip c1 floaty d2"><span class="dot"></span>
+        <span data-lang-ko>형광펜 8색 + 직접 추가</span><span data-lang-en>8 colors + your own</span></span>
+      <span class="chip c2 floaty"><span class="dot"></span>
+        <span data-lang-ko>전부 내 PC에서</span><span data-lang-en>100% on your PC</span></span>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------- 흐르는 띠 ---------------- -->
+<div class="marquee" aria-hidden="true">
+  <div class="track">
+    <b class="mq"><span data-lang-ko>형광펜</span><span data-lang-en>Highlighter</span></b>
+    <b class="mq"><span data-lang-ko>텍스트 선택 메뉴</span><span data-lang-en>Selection menu</span></b>
+    <b class="mq"><span data-lang-ko>마크다운</span><span data-lang-en>Markdown</span></b>
+    <b class="mq"><span data-lang-ko>메모 그룹</span><span data-lang-en>Note groups</span></b>
+    <b class="mq"><span data-lang-ko>로컬 AI</span><span data-lang-en>Local AI</span></b>
+    <b class="mq"><span data-lang-ko>창 자석 정렬</span><span data-lang-en>Window snapping</span></b>
+    <b class="mq"><span data-lang-ko>3D 모델</span><span data-lang-en>3D models</span></b>
+    <b class="mq"><span data-lang-ko>PDF 뷰어</span><span data-lang-en>PDF viewer</span></b>
+    <b class="mq"><span data-lang-ko>휴지통</span><span data-lang-en>Recycle bin</span></b>
+    <b class="mq"><span data-lang-ko>한국어 · English</span><span data-lang-en>Korean &amp; English</span></b>
+    <b class="mq"><span data-lang-ko>형광펜</span><span data-lang-en>Highlighter</span></b>
+    <b class="mq"><span data-lang-ko>텍스트 선택 메뉴</span><span data-lang-en>Selection menu</span></b>
+    <b class="mq"><span data-lang-ko>마크다운</span><span data-lang-en>Markdown</span></b>
+    <b class="mq"><span data-lang-ko>메모 그룹</span><span data-lang-en>Note groups</span></b>
+    <b class="mq"><span data-lang-ko>로컬 AI</span><span data-lang-en>Local AI</span></b>
+    <b class="mq"><span data-lang-ko>창 자석 정렬</span><span data-lang-en>Window snapping</span></b>
+    <b class="mq"><span data-lang-ko>3D 모델</span><span data-lang-en>3D models</span></b>
+    <b class="mq"><span data-lang-ko>PDF 뷰어</span><span data-lang-en>PDF viewer</span></b>
+    <b class="mq"><span data-lang-ko>휴지통</span><span data-lang-en>Recycle bin</span></b>
+    <b class="mq"><span data-lang-ko>한국어 · English</span><span data-lang-en>Korean &amp; English</span></b>
+  </div>
+</div>
+
+<!-- ---------------- 새 기능 (v1.5) ---------------- -->
+<section id="new">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="section-tag" data-rel-version>v1.5.0</p>
+      <h2>
+        <span data-lang-ko>이번 버전에서 새로 생긴 것</span>
+        <span data-lang-en>New in this release</span>
+      </h2>
+      <p>
+        <span data-lang-ko>칠하고, 고르고, 시키는 세 가지가 한 번에 좋아졌습니다.</span>
+        <span data-lang-en>Three things got better at once: marking up, selecting, and asking.</span>
+      </p>
+    </div>
+
+    <div class="whatsnew">
+      <article class="nw nw-hl reveal">
+        <span class="badge">NEW</span>
+        <h3><span data-lang-ko>형광펜</span><span data-lang-en>Highlighter</span></h3>
+        <p>
+          <span data-lang-ko>프리셋 8색에 더해 직접 만든 색까지 칠합니다. 추가한 색은 모든 메모창이 함께
+            쓰고, 어두운 색을 칠하면 글자색이 자동으로 밝아집니다.</span>
+          <span data-lang-en>Eight presets plus colors you mix yourself. New colors are shared across every
+            note window, and text turns light automatically on dark shades.</span>
+        </p>
+        <div class="stage" aria-hidden="true">
+          <div class="mock">
+            <div class="m-bar">
+              <span class="m-title"><span data-lang-ko>읽은 것</span><span data-lang-en>Reading</span></span>
+              <span class="sp"></span><span class="m-btn">✎</span>
+            </div>
+            <div class="m-body">
+              <p><span data-lang-ko>핵심은 <span class="mark">한 번에 하나씩</span>이라는 것</span>
+                 <span data-lang-en>The point is <span class="mark">one thing at a time</span></span></p>
+              <p><span data-lang-ko><span class="mark blue">측정</span>하지 않으면 <span class="mark slate">개선되지 않는다</span></span>
+                 <span data-lang-en><span class="mark blue">Measure</span> or <span class="mark slate">never improve</span></span></p>
+              <div class="m-line w70"></div>
+            </div>
+          </div>
+          <div class="hlpop">
+            <div class="sw">
+              <b style="background:var(--hl-yellow)"></b><b style="background:var(--hl-mint)"></b>
+              <b style="background:var(--hl-blue)" class="sel"></b><b style="background:var(--hl-pink)"></b>
+              <b style="background:var(--hl-violet)"></b><b style="background:var(--hl-lime)"></b>
+              <b style="background:var(--hl-peach)"></b><b style="background:var(--hl-slate)"></b>
+            </div>
+            <div class="add">+ <span data-lang-ko>색 추가</span><span data-lang-en>Add color</span></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="nw nw-sel reveal">
+        <span class="badge">NEW</span>
+        <h3><span data-lang-ko>선택 메뉴에서 바로 서식</span><span data-lang-en>Format right where you select</span></h3>
+        <p>
+          <span data-lang-ko>글을 선택하면 그 자리에 서식 격자와 AI 동작이 함께 뜹니다. 툴바까지
+            마우스를 옮길 일이 없고, 서식은 이어서 여러 번 적용할 수 있습니다.</span>
+          <span data-lang-en>Select text and a formatting grid appears right there, with AI actions below.
+            No trip to the toolbar, and formats can be applied back to back.</span>
+        </p>
+        <div class="stage" aria-hidden="true">
+          <div class="selmenu">
+            <div class="grid">
+              <span>B</span><span>I</span><span>U</span><span>S</span><span class="hi">✎</span>
+              <span>•</span><span>1.</span><span>☑</span><span>⇥</span><span>⇤</span>
+            </div>
+            <hr>
+            <div class="row"><span data-lang-ko>요약</span><span data-lang-en>Summarize</span></div>
+            <div class="row"><span data-lang-ko>맞춤법 검사</span><span data-lang-en>Check spelling</span></div>
+            <div class="row hi"><span data-lang-ko>문장 다듬기</span><span data-lang-en>Refine writing</span></div>
+          </div>
+          <div class="mock">
+            <div class="m-body">
+              <p><span data-lang-ko>선택한 <span class="mark pink">문장을 그대로</span> 두고 서식만 입힙니다</span>
+                 <span data-lang-en>Keep the <span class="mark pink">selected sentence</span> and just style it</span></p>
+              <div class="m-line w80"></div>
+              <div class="m-line w60"></div>
+            </div>
+            <div class="m-tools"><i>B</i><i>I</i><i class="on">✎</i><i>•</i><i>☑</i><span class="sp"></span><i>⋯</i><i>AI</i></div>
+          </div>
+        </div>
+      </article>
+
+      <article class="nw nw-ai reveal">
+        <span class="badge">NEW</span>
+        <h3><span data-lang-ko>AI 프롬프트 직접 편집</span><span data-lang-en>Edit the AI prompts</span></h3>
+        <p>
+          <span data-lang-ko>요약·맞춤법 검사·번역이 쓰는 지시문을 설정의 AI 탭에서 고칩니다.
+            비우면 기본값으로 돌아가고, 변경은 열려 있는 모든 메모창에 즉시 반영됩니다.</span>
+          <span data-lang-en>Rewrite the instructions behind summarize, spellcheck and translate in the
+            AI tab. Clear a field to restore the default; changes reach every open note instantly.</span>
+        </p>
+        <div class="stage" aria-hidden="true">
+          <div class="aipanel">
+            <div class="ai-head">
+              <span class="dotpulse"></span>
+              <span data-lang-ko>설정 · AI</span><span data-lang-en>Settings · AI</span>
+            </div>
+            <div class="ai-body">
+              <span data-lang-ko>맞춤법과 띄어쓰기만 고치고, 문체와 어순은 그대로 둘 것<span class="caret"></span></span>
+              <span data-lang-en>Fix only spelling and spacing; leave tone and word order alone<span class="caret"></span></span>
+            </div>
+          </div>
+          <div class="prompt-row">
+            <b><span data-lang-ko>맞춤법 검사</span><span data-lang-en>Spellcheck</span></b>
+            <span class="pill"><span data-lang-ko>수정됨</span><span data-lang-en>Edited</span></span>
+          </div>
+          <div class="prompt-row">
+            <b><span data-lang-ko>문장 다듬기</span><span data-lang-en>Refine</span></b>
+            <span class="pill"><span data-lang-ko>기본값으로</span><span data-lang-en>Reset</span></span>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    <div class="features reveal" style="margin-top:20px">
+      <div class="feature">
+        <span class="f-ic">🔎</span>
+        <h3><span data-lang-ko>태그로 본문 찾기</span><span data-lang-en>Jump by tag</span></h3>
+        <p><span data-lang-ko>태그 이름을 누르면 본문에서 그 낱말로 이동합니다. 누를 때마다 다음 위치로,
+          끝에 닿으면 처음으로 돌아옵니다.</span>
+          <span data-lang-en>Click a tag to jump to that word in the note &mdash; again for the next
+          match, wrapping around at the end.</span></p>
+      </div>
+      <div class="feature">
+        <span class="f-ic">⋯</span>
+        <h3><span data-lang-ko>툴바 더보기</span><span data-lang-en>Toolbar overflow</span></h3>
+        <p><span data-lang-ko>창이 좁아지면 버튼이 뒤쪽부터 ⋯ 메뉴로 접힙니다. 좁은 메모에서도 기능이
+          사라지지 않습니다.</span>
+          <span data-lang-en>Narrow the window and buttons fold into a ⋯ menu from the end &mdash;
+          nothing gets lost in a small note.</span></p>
+      </div>
+      <div class="feature">
+        <span class="f-ic">⇲</span>
+        <h3><span data-lang-ko>크기 변경 자석</span><span data-lang-en>Snap while resizing</span></h3>
+        <p><span data-lang-ko>테두리를 끌어 크기를 바꿀 때도 잡고 있는 변이 이웃 창의 변에 딱 맞춰집니다.</span>
+          <span data-lang-en>Drag a border and the edge you hold snaps to the neighboring window&rsquo;s
+          edge.</span></p>
+      </div>
+      <div class="feature">
+        <span class="f-ic">◍</span>
+        <h3><span data-lang-ko>자리를 지키는 자동 숨김</span><span data-lang-en>Steadier auto-hide</span></h3>
+        <p><span data-lang-ko>헤더와 툴바가 사라져도 창 크기는 그대로입니다. 본문이 그 여백을 채우고,
+          글자가 튀어 보이지 않게 페이드로 넘어갑니다.</span>
+          <span data-lang-en>The window no longer shrinks: content fills the freed space, and the swap
+          happens behind a fade so nothing jumps.</span></p>
+      </div>
+    </div>
   </div>
 </section>
 
 <!-- ---------------- 메모 종류 ---------------- -->
-<section id="kinds" class="alt">
+<section id="kinds" style="background:var(--bg-soft); border-block:1px solid var(--border)">
   <div class="wrap">
-    <div class="section-head">
+    <div class="section-head reveal">
+      <p class="section-tag"><span data-lang-ko>메모 종류</span><span data-lang-en>Note types</span></p>
       <h2>
-        <span data-lang-ko>메모 하나로 부족할 때, 여섯 가지 종류</span>
-        <span data-lang-en>Six kinds of notes</span>
+        <span data-lang-ko>텍스트만 적는 메모가 아닙니다</span>
+        <span data-lang-en>Not just a box for text</span>
       </h2>
       <p>
-        <span data-lang-ko>텍스트만 적는 메모가 아닙니다. 필요한 형태를 골라 바탕화면에 붙이세요.</span>
-        <span data-lang-en>Not just text. Pick the format you need and stick it on your desktop.</span>
+        <span data-lang-ko>여섯 가지 중에 필요한 형태를 골라 바탕화면에 붙이세요.</span>
+        <span data-lang-en>Pick one of six formats and stick it on your desktop.</span>
       </p>
     </div>
 
     <div class="kinds">
-      <article class="kind" style="background: var(--sticky-yellow)">
+      <article class="kind wide reveal" style="background: var(--sticky-yellow)">
         <span class="k-icon">📝</span>
         <h3><span data-lang-ko>일반 메모</span><span data-lang-en>Rich note</span></h3>
         <p>
-          <span data-lang-ko>굵게·목록·체크리스트 같은 서식과 이미지·동영상·YouTube 임베드를 지원합니다.
-            YouTube 주소를 붙여넣으면 바로 재생됩니다.</span>
-          <span data-lang-en>Bold, lists and checklists, plus images, video and YouTube embeds.
-            Paste a YouTube URL and it plays right away.</span>
+          <span data-lang-ko>굵게·기울임·목록·체크리스트에 더해 <b>형광펜</b>과 <b>들여쓰기</b>까지.
+            이미지·동영상·YouTube 임베드를 붙이면 메모 안에서 바로 재생됩니다.</span>
+          <span data-lang-en>Bold, italic, lists and checklists, plus a <b>highlighter</b> and
+            <b>indenting</b>. Drop in images, video or a YouTube link and it plays inside the note.</span>
         </p>
       </article>
 
-      <article class="kind" style="background: var(--sticky-blue)">
+      <article class="kind wide reveal" style="background: var(--sticky-blue)">
         <span class="k-icon">↓</span>
         <h3><span data-lang-ko>마크다운 메모</span><span data-lang-en>Markdown note</span></h3>
         <p>
-          <span data-lang-ko>편집과 보기를 오가며 GFM으로 작성합니다. 미리보기의 체크박스를 클릭하면
-            원본 소스가 함께 갱신됩니다.</span>
-          <span data-lang-en>Write in GFM and toggle between edit and preview. Ticking a checkbox in the
-            preview updates the source too.</span>
+          <span data-lang-ko>편집과 보기를 오가며 GFM으로 씁니다. 미리보기에서 체크박스를 누르면
+            원본 소스가 함께 갱신되고, 선택 메뉴의 서식도 그대로 통합니다.</span>
+          <span data-lang-en>Write GFM and toggle between edit and preview. Ticking a checkbox updates the
+            source, and the selection menu formats the raw text for you.</span>
         </p>
       </article>
 
-      <article class="kind" style="background: var(--sticky-mint)">
+      <article class="kind reveal" style="background: var(--sticky-mint)">
         <span class="k-icon">📁</span>
         <h3><span data-lang-ko>파일 메모</span><span data-lang-en>File note</span></h3>
         <p>
-          <span data-lang-ko>탐색기에서 파일·폴더를 끌어다 놓으면 목록이나 썸네일로 보관됩니다.
-            더블클릭으로 실행하고, 복사해 탐색기에 붙여넣을 수 있습니다.</span>
-          <span data-lang-en>Drop files and folders from Explorer to keep them as a list or thumbnails.
-            Double-click to open, or copy and paste them back into Explorer.</span>
+          <span data-lang-ko>파일·폴더를 끌어다 놓고 목록이나 썸네일로 보관합니다. 더블클릭으로 실행,
+            복사해서 탐색기에 붙여넣기도 됩니다.</span>
+          <span data-lang-en>Drop files and folders in as a list or thumbnails. Double-click to open, or
+            copy them back into Explorer.</span>
         </p>
       </article>
 
-      <article class="kind" style="background: var(--sticky-violet)">
+      <article class="kind reveal" style="background: var(--sticky-violet)">
         <span class="k-icon">🌐</span>
         <h3><span data-lang-ko>웹 메모</span><span data-lang-en>Web note</span></h3>
         <p>
-          <span data-lang-ko>주소를 등록하면 스티커 안에서 웹사이트를 그대로 띄우고 클릭 탐색까지 됩니다.
-            마지막으로 본 페이지는 자동으로 복원됩니다.</span>
-          <span data-lang-en>Register a URL and browse the site inside the sticker itself.
-            The last page you viewed is restored automatically.</span>
+          <span data-lang-ko>주소를 등록하면 스티커 안에서 웹사이트를 그대로 띄웁니다.
+            마지막으로 본 페이지는 자동 복원됩니다.</span>
+          <span data-lang-en>Register a URL and browse the site inside the sticker. The last page you
+            viewed is restored automatically.</span>
         </p>
       </article>
 
-      <article class="kind" style="background: var(--sticky-pink)">
+      <article class="kind reveal" style="background: var(--sticky-pink)">
         <span class="k-icon">📄</span>
         <h3><span data-lang-ko>PDF 메모</span><span data-lang-en>PDF note</span></h3>
         <p>
-          <span data-lang-ko>PDF를 끌어다 놓으면 내장 뷰어로 바로 열립니다. 자주 보는 문서를
-            바탕화면에 펼쳐 두세요.</span>
-          <span data-lang-en>Drop in a PDF and it opens in the built-in viewer &mdash; keep the documents
-            you reference most right on your desktop.</span>
+          <span data-lang-ko>PDF를 끌어다 놓으면 내장 뷰어로 열립니다. 자주 보는 문서를 펼쳐 두세요.</span>
+          <span data-lang-en>Drop in a PDF and it opens in the built-in viewer &mdash; keep your reference
+            documents open.</span>
         </p>
       </article>
 
-      <article class="kind" style="background: var(--sticky-lime)">
-        <span class="k-icon">▦</span>
-        <h3><span data-lang-ko>그룹</span><span data-lang-en>Group</span></h3>
-        <p>
-          <span data-lang-ko>흩어진 메모를 하나의 보드로 묶습니다. 창을 그룹 위로 끌어다 놓기만 하면
-            바로 정리됩니다.</span>
-          <span data-lang-en>Collect scattered notes into a single board &mdash; just drag a window onto
-            the group and drop it.</span>
-        </p>
+      <article class="kind full reveal" style="background: var(--sticky-lime)">
+        <div class="k-copy">
+          <span class="k-icon">▦</span>
+          <h3><span data-lang-ko>그룹</span><span data-lang-en>Group</span></h3>
+          <p>
+            <span data-lang-ko>흩어진 메모를 하나의 보드로 묶습니다. 창을 그룹 위로 끌어다 놓기만 하면
+              정리되고, 카드를 밖으로 끌어내면 다시 개별 스티커가 됩니다. 그리드·혼합·목록 세 가지
+              정렬과 배경 투명도를 그룹마다 따로 정할 수 있습니다.</span>
+            <span data-lang-en>Collect scattered notes into one board: drag a window onto the group to
+              file it, drag a card out to set it free again. Each group keeps its own layout &mdash;
+              grid, masonry or list &mdash; and its own background transparency.</span>
+          </p>
+        </div>
+        <div class="stage" aria-hidden="true">
+          <div class="mock">
+            <div class="board">
+              <div class="h3"></div><div class="h2"></div>
+              <div class="h2"></div><div class="h4"></div>
+              <div class="h4"></div><div class="h2"></div>
+            </div>
+          </div>
+        </div>
       </article>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------- 쓰기 (서식·형광펜·태그) ---------------- -->
+<section id="writing">
+  <div class="wrap split">
+    <div class="split-text reveal">
+      <p class="section-tag"><span data-lang-ko>쓰기</span><span data-lang-en>Writing</span></p>
+      <h2>
+        <span data-lang-ko>손이 멈추지 않게, 서식은 선택한 자리에서</span>
+        <span data-lang-en>Formatting where your cursor already is</span>
+      </h2>
+      <p>
+        <span data-lang-ko>글을 고르면 그 위에 메뉴가 뜹니다. 굵게부터 형광펜·체크리스트·들여쓰기까지
+          같은 자리에서 누르고, 이어서 AI에게 요약이나 맞춤법 검사를 시킬 수도 있습니다.</span>
+        <span data-lang-en>Select text and the menu comes to you: bold, highlighter, checklists and
+          indenting in one place &mdash; and the same menu hands the selection to the AI.</span>
+      </p>
+      <ul class="split-list">
+        <li><span class="tick">✓</span><span><b data-lang-ko>형광펜 8색 + 직접 추가</b><b data-lang-en>8 highlight colors, plus your own</b>
+          <span data-lang-ko> — 만든 색은 모든 메모창이 공유하고, 어두운 색에는 글자가 밝게 바뀝니다</span>
+          <span data-lang-en> &mdash; shared across every window, with text flipping light on dark shades</span></span></li>
+        <li><span class="tick">✓</span><span><b data-lang-ko>태그로 본문 찾기</b><b data-lang-en>Tags that navigate</b>
+          <span data-lang-ko> — 태그를 누르면 본문의 그 낱말로 이동합니다</span>
+          <span data-lang-en> &mdash; click a tag to jump to that word in the note</span></span></li>
+        <li><span class="tick">✓</span><span><b data-lang-ko>좁아져도 다 쓸 수 있게</b><b data-lang-en>Nothing lost when narrow</b>
+          <span data-lang-ko> — 창이 좁아지면 툴바 버튼이 ⋯ 메뉴로 접힙니다</span>
+          <span data-lang-en> &mdash; toolbar buttons fold into a ⋯ menu as the window shrinks</span></span></li>
+        <li><span class="tick">✓</span><span><b data-lang-ko>이미지 · 동영상 · 3D</b><b data-lang-en>Images, video, 3D</b>
+          <span data-lang-ko> — 붙여넣거나 끌어다 놓으면 본문에 그대로 들어갑니다</span>
+          <span data-lang-en> &mdash; paste or drop and it lands in the note</span></span></li>
+      </ul>
+    </div>
+
+    <div class="figure-pad pad-md reveal">
+      <div class="stage" aria-hidden="true">
+        <div class="mock">
+          <div class="m-bar">
+            <span class="m-title"><span data-lang-ko>편집</span><span data-lang-en>Edit</span></span>
+            <span class="sp"></span><span class="m-btn">M</span>
+          </div>
+          <div class="m-body">
+            <p><span data-lang-ko>## 배포 순서</span><span data-lang-en>## Release steps</span></p>
+            <p><span data-lang-ko>1. 태그 만들기</span><span data-lang-en>1. Tag the commit</span></p>
+            <p><span data-lang-ko>2. **설치본** 올리기</span><span data-lang-en>2. Upload the **installer**</span></p>
+            <div class="m-line w60"></div>
+          </div>
+        </div>
+        <div class="mock two">
+          <div class="m-bar">
+            <span class="m-title"><span data-lang-ko>보기</span><span data-lang-en>Preview</span></span>
+            <span class="sp"></span><span class="m-btn">👁</span>
+          </div>
+          <div class="m-body">
+            <p><b><span data-lang-ko>배포 순서</span><span data-lang-en>Release steps</span></b></p>
+            <p><span data-lang-ko>☑ 태그 만들기</span><span data-lang-en>☑ Tag the commit</span></p>
+            <p><span data-lang-ko>☐ <span class="mark">설치본</span> 올리기</span>
+               <span data-lang-en>☐ Upload the <span class="mark">installer</span></span></p>
+            <div class="m-line w45"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </section>
 
 <!-- ---------------- 그룹 ---------------- -->
-<section id="group">
-  <div class="wrap split">
-    <div class="split-text">
+<section id="group" style="background:var(--bg-soft); border-block:1px solid var(--border)">
+  <div class="wrap split reverse">
+    <div class="split-text reveal">
+      <p class="section-tag"><span data-lang-ko>정리</span><span data-lang-en>Organizing</span></p>
       <h2>
         <span data-lang-ko>끌어다 놓으면 정리됩니다</span>
         <span data-lang-en>Organize by dragging</span>
       </h2>
       <p>
-        <span data-lang-ko>메모 창을 그룹 위로 끌면 그룹에 들어가고, 카드를 밖으로 끌어내면
-          그 자리에 다시 개별 스티커가 됩니다. 폴더를 만들고 이름을 붙이는 과정이 없습니다.</span>
-        <span data-lang-en>Drag a note window onto a group to file it away, or drag a card back out to
-          turn it into a standalone sticker again. No folders to create, no names to type.</span>
+        <span data-lang-ko>메모 창을 그룹 위로 끌면 그룹에 들어가고, 카드를 밖으로 끌어내면 그 자리에서
+          다시 개별 스티커가 됩니다. 폴더를 만들고 이름을 붙이는 과정이 없습니다.</span>
+        <span data-lang-en>Drag a note window onto a group to file it, or drag a card back out to turn it
+          into a standalone sticker. No folders to create, no names to type.</span>
       </p>
-      <ul>
-        <li><b data-lang-ko>세 가지 정렬</b><b data-lang-en>Three layouts</b>
+      <ul class="split-list">
+        <li><span class="tick">✓</span><span><b data-lang-ko>세 가지 정렬</b><b data-lang-en>Three layouts</b>
           <span data-lang-ko> — 균일 그리드, 내용 길이별 혼합(masonry), 제목만 보는 목록</span>
-          <span data-lang-en> &mdash; uniform grid, masonry by content length, or a title-only list</span></li>
-        <li><b data-lang-ko>카드 크기 조절</b><b data-lang-en>Resizable cards</b>
-          <span data-lang-ko> — 전체를 S/M/L로 바꾸거나, 혼합 모드에서 메모마다 높이를 따로 조절</span>
-          <span data-lang-en> &mdash; switch all cards to S/M/L, or set each note&rsquo;s height in masonry mode</span></li>
-        <li><b data-lang-ko>배경 투명도</b><b data-lang-en>Adjustable transparency</b>
-          <span data-lang-ko> — 0~100%로 조절하면 뒤의 바탕화면이 비쳐 보이고, 카드는 선명하게 유지됩니다</span>
-          <span data-lang-en> &mdash; from 0 to 100%; the desktop shows through while cards stay crisp</span></li>
-        <li><b data-lang-ko>안전한 삭제</b><b data-lang-en>Safe deletion</b>
-          <span data-lang-ko> — 그룹을 지워도 안에 있던 메모는 개별 스티커로 남습니다</span>
-          <span data-lang-en> &mdash; deleting a group leaves its notes behind as individual stickers</span></li>
+          <span data-lang-en> &mdash; uniform grid, masonry by content length, or a title-only list</span></span></li>
+        <li><span class="tick">✓</span><span><b data-lang-ko>카드 크기 조절</b><b data-lang-en>Resizable cards</b>
+          <span data-lang-ko> — 전체를 S/M/L로 바꾸거나 혼합 모드에서 메모마다 따로 조절</span>
+          <span data-lang-en> &mdash; switch all cards to S/M/L, or size each note in masonry mode</span></span></li>
+        <li><span class="tick">✓</span><span><b data-lang-ko>배경 투명도</b><b data-lang-en>Adjustable transparency</b>
+          <span data-lang-ko> — 0~100%로 조절하면 바탕화면이 비쳐 보이고 카드는 선명하게 남습니다</span>
+          <span data-lang-en> &mdash; from 0 to 100%; the desktop shows through while cards stay crisp</span></span></li>
+        <li><span class="tick">✓</span><span><b data-lang-ko>창 자석 정렬</b><b data-lang-en>Window snapping</b>
+          <span data-lang-ko> — 창을 옮길 때도, 테두리를 끌어 크기를 바꿀 때도 이웃 창에 맞춰집니다</span>
+          <span data-lang-en> &mdash; windows align to each other when you move them and when you
+            resize them</span></span></li>
       </ul>
     </div>
-    <figure class="shot" data-placeholder="그룹 창 스크린샷 · Group window screenshot">
-      <img src="/assets/img/group.png" alt="여러 메모 카드가 담긴 그룹 창">
-    </figure>
-  </div>
-</section>
 
-<!-- ---------------- 마크다운 ---------------- -->
-<section class="alt">
-  <div class="wrap split reverse">
-    <div class="split-text">
-      <h2>
-        <span data-lang-ko>마크다운으로 빠르게</span>
-        <span data-lang-en>Write in Markdown</span>
-      </h2>
-      <p>
-        <span data-lang-ko>편집 화면에서 <code>&lt;</code>를 입력하면 마크다운 태그 목록이 설명과 함께
-          나타나 골라 넣을 수 있습니다. 체크리스트·표·코드 블록을 포함한 GFM을 지원하고,
-          YouTube 링크는 임베드로 렌더링됩니다.</span>
-        <span data-lang-en>Type <code>&lt;</code> while editing to get an annotated list of Markdown tags to
-          insert. Full GFM support including checklists, tables and code blocks &mdash; and YouTube links
-          render as embeds.</span>
-      </p>
-      <ul>
-        <li><span data-lang-ko>편집 ↔ 미리보기 즉시 전환</span><span data-lang-en>Instant edit / preview toggle</span></li>
-        <li><span data-lang-ko>미리보기의 체크박스가 소스와 양방향 동기화</span><span data-lang-en>Preview checkboxes sync back to the source</span></li>
-        <li><span data-lang-ko>메모마다 태그를 붙여 분류</span><span data-lang-en>Tag notes to keep them sorted</span></li>
-      </ul>
+    <div class="figure-pad pad-group reveal">
+      <div class="stage" aria-hidden="true">
+        <div class="mock">
+          <div class="m-bar">
+            <span class="m-title"><span data-lang-ko>이번 분기</span><span data-lang-en>This quarter</span></span>
+            <span class="sp"></span><span class="m-btn">S</span><span class="m-btn">M</span><span class="m-btn">▦</span>
+          </div>
+          <div class="board">
+            <div class="h4"></div><div class="h3"></div>
+            <div class="h2"></div><div class="h5"></div>
+            <div class="h5"></div><div class="h2"></div>
+            <div class="h3"></div><div class="h4"></div>
+          </div>
+        </div>
+      </div>
     </div>
-    <figure class="shot" data-placeholder="마크다운 메모 스크린샷 · Markdown note screenshot">
-      <img src="/assets/img/markdown.png" alt="마크다운 메모의 편집 화면과 미리보기">
-    </figure>
   </div>
 </section>
 
 <!-- ---------------- 로컬 AI ---------------- -->
 <section id="ai">
   <div class="wrap split">
-    <div class="split-text">
-      <p class="privacy-badge">
-        <span data-lang-ko>🔒 전부 내 PC에서 처리 — 외부 전송 없음</span>
-        <span data-lang-en>🔒 Runs entirely on your PC &mdash; nothing is uploaded</span>
-      </p>
+    <div class="split-text reveal">
+      <p class="section-tag"><span data-lang-ko>로컬 AI</span><span data-lang-en>Local AI</span></p>
       <h2>
-        <span data-lang-ko>로컬 AI가 읽고, 요약하고, 번역합니다</span>
-        <span data-lang-en>Local AI reads, summarizes and translates</span>
+        <span data-lang-ko>읽고, 요약하고, 번역합니다 — 전부 내 PC에서</span>
+        <span data-lang-en>Reads, summarizes and translates &mdash; all on your PC</span>
       </h2>
       <p>
-        <span data-lang-ko><b>Ollama</b>와 연동해 메모 요약, 문장 다듬기, 한↔영 번역, 자유 질문을
-          지원합니다. 모델이 내 컴퓨터에서 돌기 때문에 메모 내용이 서버로 전송되지 않습니다.
-          API 키도, 구독료도 필요 없습니다.</span>
-        <span data-lang-en>Connect <b>Ollama</b> to summarize notes, polish sentences, translate between
-          Korean and English, or just ask questions. The model runs on your machine, so note contents are
-          never sent to a server. No API key, no subscription.</span>
+        <span data-lang-ko><b>Ollama</b>와 연동해 요약, 맞춤법 검사, 문장 다듬기, 한↔영 번역, 자유 질문을
+          지원합니다. 모델이 내 컴퓨터에서 돌기 때문에 메모가 서버로 전송되지 않습니다.
+          API 키도, 구독료도 없습니다.</span>
+        <span data-lang-en>Connect <b>Ollama</b> to summarize, check spelling, refine sentences, translate
+          between Korean and English, or just ask. The model runs on your machine, so nothing is uploaded.
+          No API key, no subscription.</span>
       </p>
-      <ul>
-        <li><b>AI Review</b>
-          <span data-lang-ko> — 버튼 한 번으로 요약·제목 생성·키워드 태그 추가·한영 번역을 한꺼번에</span>
-          <span data-lang-en> &mdash; one click summarizes, titles, tags keywords and translates</span></li>
-        <li><b data-lang-ko>설치까지 앱 안에서</b><b data-lang-en>Guided setup</b>
-          <span data-lang-ko> — 설정 화면에서 Ollama와 추천 모델을 진행률을 보며 바로 내려받습니다</span>
-          <span data-lang-en> &mdash; download Ollama and a recommended model from the settings screen,
-            with progress shown</span></li>
-        <li><b data-lang-ko>스트리밍 출력</b><b data-lang-en>Streaming output</b>
-          <span data-lang-ko> — 결과가 실시간으로 표시되고 언제든 중단할 수 있습니다</span>
-          <span data-lang-en> &mdash; results appear as they generate and can be stopped anytime</span></li>
+      <ul class="split-list">
+        <li><span class="tick">✓</span><span><b>AI Review</b>
+          <span data-lang-ko> — 버튼 한 번으로 요약·제목 생성·태그 추가·한영 번역을 한꺼번에.
+            태그는 본문에 실제로 있는 낱말만 골라 붙습니다</span>
+          <span data-lang-en> &mdash; one click summarizes, titles, tags and translates. Tags are picked
+            only from words that really appear in the note</span></span></li>
+        <li><span class="tick">✓</span><span><b data-lang-ko>맞춤법 검사와 문장 다듬기</b><b data-lang-en>Spellcheck vs. refine</b>
+          <span data-lang-ko> — 앞은 틀린 것만 고치고, 뒤는 뜻을 지킨 채 자연스럽게 고쳐 씁니다</span>
+          <span data-lang-en> &mdash; one fixes only what is wrong, the other rewrites for flow while
+            keeping the meaning</span></span></li>
+        <li><span class="tick">✓</span><span><b data-lang-ko>프롬프트 편집</b><b data-lang-en>Editable prompts</b>
+          <span data-lang-ko> — 각 작업의 지시문을 설정에서 직접 고치고, 비우면 기본값으로 돌아갑니다</span>
+          <span data-lang-en> &mdash; rewrite the instruction behind each task; clear it to restore the
+            default</span></span></li>
+        <li><span class="tick">✓</span><span><b data-lang-ko>설치까지 앱 안에서</b><b data-lang-en>Guided setup</b>
+          <span data-lang-ko> — 설정의 AI 탭에서 Ollama와 추천 모델을 진행률을 보며 내려받습니다</span>
+          <span data-lang-en> &mdash; download Ollama and a recommended model from the AI tab, with
+            progress shown</span></span></li>
       </ul>
     </div>
-    <figure class="shot" data-placeholder="AI 패널 스크린샷 · AI panel screenshot">
-      <img src="/assets/img/ai.png" alt="메모의 AI 요약 및 번역 패널">
-    </figure>
+
+    <div class="figure-pad pad-ai reveal">
+      <div class="stage" aria-hidden="true">
+        <div class="mock">
+          <div class="m-bar">
+            <span class="m-title"><span data-lang-ko>출장 메모</span><span data-lang-en>Trip notes</span></span>
+            <span class="sp"></span><span class="m-btn">AI</span>
+          </div>
+          <div class="m-body">
+            <p><span data-lang-ko>공항 도착 07:40, 숙소 체크인은 15시 이후</span>
+               <span data-lang-en>Land 07:40, check-in after 15:00</span></p>
+            <div class="m-line w80"></div>
+            <div class="m-line w60"></div>
+          </div>
+          <div class="m-tags">
+            <span class="m-tag"><span data-lang-ko>출장</span><span data-lang-en>trip</span></span>
+            <span class="m-tag"><span data-lang-ko>숙소</span><span data-lang-en>hotel</span></span>
+          </div>
+        </div>
+        <div class="aipanel">
+          <div class="ai-head">
+            <span class="dotpulse"></span>
+            <span data-lang-ko>AI Review · 한국어 / English</span><span data-lang-en>AI Review · Korean / English</span>
+          </div>
+          <div class="ai-body">
+            <span data-lang-ko>도착 후 숙소 체크인까지 7시간이 비어 일정 조정 필요<span class="caret"></span></span>
+            <span data-lang-en>Seven-hour gap between landing and check-in<span class="caret"></span></span>
+          </div>
+          <div class="ai-acts">
+            <em class="solid"><span data-lang-ko>바꾸기</span><span data-lang-en>Replace</span></em>
+            <em><span data-lang-ko>삽입</span><span data-lang-en>Insert</span></em>
+            <em><span data-lang-ko>중단</span><span data-lang-en>Stop</span></em>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </section>
 
-<!-- ---------------- 기능 그리드 ---------------- -->
-<section class="alt">
+<!-- ---------------- 프라이버시 ---------------- -->
+<section class="tight">
   <div class="wrap">
-    <div class="section-head">
+    <div class="privacy-band reveal">
+      <div class="lock">🔒</div>
+      <div>
+        <h2>
+          <span data-lang-ko>서버가 없습니다. 그래서 보낼 곳도 없습니다.</span>
+          <span data-lang-en>There is no server, so there is nowhere to send it</span>
+        </h2>
+        <p>
+          <span data-lang-ko>메모·첨부·설정은 전부 내 PC의 폴더에만 저장됩니다. 분석 도구도, 사용 통계도,
+            계정도 없습니다. AI 기능조차 내 컴퓨터에서 돕니다.
+            <a href="/privacy">개인정보처리방침 보기</a></span>
+          <span data-lang-en>Notes, attachments and settings live only in a folder on your PC. No
+            analytics, no telemetry, no account &mdash; even the AI runs locally.
+            <a href="/privacy">Read the privacy policy</a></span>
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------- 숫자 ---------------- -->
+<section class="tight">
+  <div class="wrap">
+    <div class="stats reveal">
+      <div class="stat">
+        <b>6</b>
+        <span class="cap"><span data-lang-ko>가지 메모 종류</span><span data-lang-en>kinds of notes</span></span>
+      </div>
+      <div class="stat">
+        <b>0</b>
+        <span class="cap"><span data-lang-ko>원 · 계정 · 광고</span><span data-lang-en>cost, accounts, ads</span></span>
+      </div>
+      <div class="stat">
+        <b>~1 MB</b>
+        <span class="cap"><span data-lang-ko>네이티브 실행 파일</span><span data-lang-en>native executable</span></span>
+      </div>
+      <div class="stat">
+        <b>100%</b>
+        <span class="cap"><span data-lang-ko>내 PC에서 처리</span><span data-lang-en>processed on your PC</span></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ---------------- 그 밖의 기능 ---------------- -->
+<section style="background:var(--bg-soft); border-block:1px solid var(--border)">
+  <div class="wrap">
+    <div class="section-head reveal">
+      <p class="section-tag"><span data-lang-ko>그 밖에</span><span data-lang-en>More</span></p>
       <h2>
-        <span data-lang-ko>그 밖의 기능</span>
-        <span data-lang-en>Everything else</span>
+        <span data-lang-ko>매일 쓰다 보면 고마워지는 것들</span>
+        <span data-lang-en>The parts you notice after a week</span>
       </h2>
     </div>
-    <div class="features">
+    <div class="features cols-3 reveal">
       <div class="feature">
+        <span class="f-ic">🧊</span>
         <h3><span data-lang-ko>3D 모델 임베드</span><span data-lang-en>3D model embeds</span></h3>
-        <p><span data-lang-ko>GLB·GLTF·OBJ·STL을 메모 안에서 회전·확대해 봅니다. 원본 파일을 복사하지 않고
-          직접 참조하며, 와이어프레임·솔리드·PBR 렌더링을 지원합니다.</span>
-          <span data-lang-en>Orbit and zoom GLB, GLTF, OBJ and STL models inside a note. Files are
-          referenced in place, with wireframe, solid and PBR rendering.</span></p>
+        <p><span data-lang-ko>GLB·GLTF·OBJ·STL을 메모 안에서 회전·확대해 봅니다. 원본을 복사하지 않고
+          직접 참조하며, 와이어프레임·솔리드·PBR을 지원합니다.</span>
+          <span data-lang-en>Orbit and zoom GLB, GLTF, OBJ and STL inside a note. Files are referenced in
+          place, with wireframe, solid and PBR rendering.</span></p>
       </div>
       <div class="feature">
+        <span class="f-ic">🗑</span>
         <h3><span data-lang-ko>휴지통</span><span data-lang-en>Recycle bin</span></h3>
         <p><span data-lang-ko>삭제한 메모는 휴지통에 보관됩니다. 미리보기로 확인하고 되살리거나,
           보관 기간이 지나면 자동으로 정리됩니다.</span>
-          <span data-lang-en>Deleted notes go to a bin where you can preview and restore them.
-          Items past the retention period clean themselves up.</span></p>
+          <span data-lang-en>Deleted notes go to a bin where you can preview and restore them. Items past
+          the retention period clean themselves up.</span></p>
       </div>
       <div class="feature">
+        <span class="f-ic">🎨</span>
+        <h3><span data-lang-ko>20색 + 컬러 휠</span><span data-lang-en>20 colors + a wheel</span></h3>
+        <p><span data-lang-ko>스티커 색을 프리셋이나 자유 색으로 정하면 배경 밝기에 따라 글자색이 자동으로
+          맞춰집니다.</span>
+          <span data-lang-en>Pick a preset or any custom color; text contrast adjusts to the background
+          automatically.</span></p>
+      </div>
+      <div class="feature">
+        <span class="f-ic">⇱</span>
+        <h3><span data-lang-ko>다중 선택 · 함께 이동</span><span data-lang-en>Multi-select</span></h3>
+        <p><span data-lang-ko>Shift+클릭으로 여러 창을 고르고 하나를 끌면 배치를 유지한 채 함께 움직입니다.
+          Delete로 한 번에 숨길 수도 있습니다.</span>
+          <span data-lang-en>Shift-click several windows and drag one &mdash; they all move together,
+          keeping their layout. Delete hides them at once.</span></p>
+      </div>
+      <div class="feature">
+        <span class="f-ic">🔍</span>
         <h3><span data-lang-ko>테마와 UI 배율</span><span data-lang-en>Theme &amp; UI scale</span></h3>
         <p><span data-lang-ko>라이트·다크·시스템 연동 테마를 지원하고, 모든 창을 30%~200%로 한 번에
           확대·축소할 수 있습니다.</span>
@@ -343,44 +781,43 @@
           resizes every window at once.</span></p>
       </div>
       <div class="feature">
+        <span class="f-ic">🌏</span>
         <h3><span data-lang-ko>한국어 · English</span><span data-lang-en>Korean &amp; English</span></h3>
         <p><span data-lang-ko>실행 중에 전환할 수 있고, 처음 실행할 때는 OS 언어를 자동으로 감지합니다.</span>
-          <span data-lang-en>Switch languages while running; on first launch the OS language is detected
+          <span data-lang-en>Switch while running; on first launch the OS language is detected
           automatically.</span></p>
       </div>
       <div class="feature">
+        <span class="f-ic">💾</span>
         <h3><span data-lang-ko>데이터 관리</span><span data-lang-en>Data management</span></h3>
         <p><span data-lang-ko>저장 폴더를 원하는 위치로 옮기고, 전체 데이터를 ZIP으로 백업할 수 있습니다.</span>
-          <span data-lang-en>Move the storage folder wherever you like, and back up everything to a ZIP.</span></p>
+          <span data-lang-en>Move the storage folder wherever you like, and back up everything to a
+          ZIP.</span></p>
       </div>
       <div class="feature">
+        <span class="f-ic">🛡</span>
         <h3><span data-lang-ko>안전한 자동 저장</span><span data-lang-en>Safe autosave</span></h3>
-        <p><span data-lang-ko>입력이 멈추면 0.8초 뒤 자동 저장되며, 원자적 쓰기와 백업 파일로
-          데이터를 보호합니다.</span>
-          <span data-lang-en>Saves 0.8 seconds after you stop typing, using atomic writes and backup
-          files to protect your data.</span></p>
+        <p><span data-lang-ko>입력이 멈추면 0.8초 뒤 자동 저장되며, 원자적 쓰기와 백업 파일로 데이터를
+          지킵니다.</span>
+          <span data-lang-en>Saves 0.8 seconds after you stop typing, using atomic writes and backup files
+          to protect your data.</span></p>
       </div>
       <div class="feature">
+        <span class="f-ic">🔔</span>
         <h3><span data-lang-ko>트레이 상주 · 자동 시작</span><span data-lang-en>Tray &amp; autostart</span></h3>
         <p><span data-lang-ko>창을 닫아도 트레이에 남고, Windows 시작 시 자동 실행할 수 있습니다.
           모든 스티커를 한 번에 숨기거나 보이게 할 수도 있습니다.</span>
           <span data-lang-en>Closing a window keeps the app in the tray, and it can start with Windows.
           Hide or show every sticker at once.</span></p>
       </div>
-      <div class="feature">
-        <h3><span data-lang-ko>UI 자동 숨김</span><span data-lang-en>Auto-hiding chrome</span></h3>
-        <p><span data-lang-ko>마우스가 벗어나고 3초가 지나면 헤더와 툴바가 사라지고 내용만 남습니다.</span>
-          <span data-lang-en>Three seconds after the pointer leaves, the header and toolbar fade away
-          and only your content remains.</span></p>
-      </div>
     </div>
   </div>
 </section>
 
-<!-- ---------------- 요구 사항 & 다운로드 ---------------- -->
+<!-- ---------------- 다운로드 ---------------- -->
 <section id="download">
   <div class="wrap">
-    <div class="download-card">
+    <div class="download-card reveal">
       <h2>
         <span data-lang-ko>지금 바로 시작하세요</span>
         <span data-lang-en>Get started now</span>
@@ -395,25 +832,25 @@
         <a class="btn btn-primary" href="/download">
           <span data-lang-ko>설치 프로그램 내려받기</span>
           <span data-lang-en>Download installer</span>
-          <span>(<span data-rel-setup-size>7.0 MB</span>)</span>
+          <span class="sz">(<span data-rel-setup-size>9.5 MB</span>)</span>
         </a>
         <a class="btn btn-ghost" href="/download/portable">
           <span data-lang-ko>포터블 ZIP</span>
           <span data-lang-en>Portable ZIP</span>
-          <span>(<span data-rel-portable-size>4.2 MB</span>)</span>
+          <span class="sz">(<span data-rel-portable-size>6.5 MB</span>)</span>
         </a>
       </div>
       <p class="meta-line">
-        <b data-rel-version>v1.1.0</b>
+        <b data-rel-version>v1.5.0</b>
         <span data-lang-ko>공개일</span><span data-lang-en>released</span>
-        <span data-rel-date>2026-08-27</span> ·
+        <span data-rel-date>2026-09-01</span> ·
         <a href="https://github.com/80dots/SuperStickers/releases">
           <span data-lang-ko>모든 버전 보기</span><span data-lang-en>All releases</span>
         </a>
       </p>
     </div>
 
-    <dl class="reqs">
+    <dl class="reqs reveal">
       <div class="req">
         <dt><span data-lang-ko>운영체제</span><span data-lang-en>OS</span></dt>
         <dd>Windows 10 / 11 <small>64-bit (x64)</small></dd>
@@ -428,8 +865,8 @@
       <div class="req">
         <dt><span data-lang-ko>AI 기능 (선택)</span><span data-lang-en>AI features (optional)</span></dt>
         <dd>Ollama
-          <small><span data-lang-ko>앱의 설정 화면에서 바로 설치할 수 있습니다.</span>
-            <span data-lang-en>Installable directly from the app&rsquo;s settings screen.</span></small>
+          <small><span data-lang-ko>앱의 설정 → AI 탭에서 바로 설치할 수 있습니다.</span>
+            <span data-lang-en>Installable from the app&rsquo;s Settings → AI tab.</span></small>
         </dd>
       </div>
       <div class="req">
@@ -447,18 +884,44 @@
 
 <footer>
   <div class="wrap">
-    <span>&copy; 2026 minkyu</span>
-    <a href="https://github.com/80dots/SuperStickers">GitHub</a>
-    <a href="https://github.com/80dots/SuperStickers/releases">
-      <span data-lang-ko>릴리스</span><span data-lang-en>Releases</span>
-    </a>
-    <a href="https://github.com/80dots/SuperStickers/issues">
-      <span data-lang-ko>버그 신고</span><span data-lang-en>Report a bug</span>
-    </a>
-    <a href="/privacy">
-      <span data-lang-ko>개인정보처리방침</span><span data-lang-en>Privacy</span>
-    </a>
-    <span class="spacer">MIT License</span>
+    <div class="foot-top">
+      <div class="foot-brand">
+        <a class="brand" href="/">
+          <img src="/assets/logo.svg" alt="">
+          <span>Super Sticker</span>
+        </a>
+        <p>
+          <span data-lang-ko>Windows 바탕화면에 붙이는 스티커 메모. C++/Win32와 WebView2로 만든
+            가벼운 네이티브 앱이며, 코드는 MIT 라이선스로 공개되어 있습니다.</span>
+          <span data-lang-en>Sticky notes for the Windows desktop &mdash; a lightweight native app built
+            with C++/Win32 and WebView2, released under the MIT license.</span>
+        </p>
+      </div>
+      <div class="foot-links">
+        <div>
+          <h4><span data-lang-ko>제품</span><span data-lang-en>Product</span></h4>
+          <ul>
+            <li><a href="#new"><span data-lang-ko>새 기능</span><span data-lang-en>What&rsquo;s new</span></a></li>
+            <li><a href="#kinds"><span data-lang-ko>메모 종류</span><span data-lang-en>Note types</span></a></li>
+            <li><a href="#ai"><span data-lang-ko>로컬 AI</span><span data-lang-en>Local AI</span></a></li>
+            <li><a href="/download"><span data-lang-ko>다운로드</span><span data-lang-en>Download</span></a></li>
+          </ul>
+        </div>
+        <div>
+          <h4><span data-lang-ko>프로젝트</span><span data-lang-en>Project</span></h4>
+          <ul>
+            <li><a href="https://github.com/80dots/SuperStickers">GitHub</a></li>
+            <li><a href="https://github.com/80dots/SuperStickers/releases"><span data-lang-ko>릴리스</span><span data-lang-en>Releases</span></a></li>
+            <li><a href="https://github.com/80dots/SuperStickers/issues"><span data-lang-ko>버그 신고</span><span data-lang-en>Report a bug</span></a></li>
+            <li><a href="/privacy"><span data-lang-ko>개인정보처리방침</span><span data-lang-en>Privacy</span></a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span>&copy; 2026 minkyu</span>
+      <span class="spacer">MIT License</span>
+    </div>
   </div>
 </footer>
 
