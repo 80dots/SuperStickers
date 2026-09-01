@@ -20,6 +20,7 @@
 #include "StickerWindow.h"
 #include "Theme.h"
 #include "Utils.h"
+#include "Version.h"  // 빌드 시 CMake가 생성 (원본: src/Version.h.in)
 #include "WebViewHost.h"
 #include "resource.h"
 
@@ -1225,6 +1226,62 @@ void App::SendEventToManager(const std::string& ev, const json& data) {
 
 // ---------- 공통 브리지 ----------
 
+namespace {
+
+// 레지스트리의 문자열/DWORD 값 (없으면 기본값)
+std::wstring RegStr(const wchar_t* subkey, const wchar_t* name) {
+    wchar_t buf[256]{};
+    DWORD cb = sizeof(buf);
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, subkey, name, RRF_RT_REG_SZ, nullptr, buf, &cb) !=
+        ERROR_SUCCESS) {
+        return L"";
+    }
+    return buf;
+}
+
+DWORD RegDword(const wchar_t* subkey, const wchar_t* name) {
+    DWORD v = 0, cb = sizeof(v);
+    if (RegGetValueW(HKEY_LOCAL_MACHINE, subkey, name, RRF_RT_REG_DWORD, nullptr, &v, &cb) !=
+        ERROR_SUCCESS) {
+        return 0;
+    }
+    return v;
+}
+
+// "Windows 11 24H2 (빌드 26200.1234)" 형태.
+// GetVersionEx는 매니페스트에 따라 거짓말을 하므로 레지스트리를 읽는다. ProductName도
+// Windows 11에서 "Windows 10 …"으로 남아 있어(마이크로소프트가 고치지 않았다) 쓰지 않고,
+// 빌드 번호로 10/11을 가른다(11 = 22000 이상).
+std::string OsVersionString() {
+    const wchar_t* kKey = L"SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion";
+    std::wstring buildStr = RegStr(kKey, L"CurrentBuildNumber");
+    std::wstring display = RegStr(kKey, L"DisplayVersion");
+    DWORD ubr = RegDword(kKey, L"UBR");
+    long build = buildStr.empty() ? 0 : wcstol(buildStr.c_str(), nullptr, 10);
+
+    std::wstring s = build >= 22000 ? L"Windows 11" : L"Windows 10";
+    if (!display.empty()) s += L" " + display;
+    if (build > 0) {
+        s += L" (" + buildStr;
+        if (ubr) s += L"." + std::to_wstring(ubr);
+        s += L")";
+    }
+    return util::WideToUtf8(s);
+}
+
+std::string CpuArchString() {
+    SYSTEM_INFO si{};
+    GetNativeSystemInfo(&si);
+    switch (si.wProcessorArchitecture) {
+        case PROCESSOR_ARCHITECTURE_AMD64: return "x64";
+        case PROCESSOR_ARCHITECTURE_ARM64: return "ARM64";
+        case PROCESSOR_ARCHITECTURE_INTEL: return "x86";
+        default: return "unknown";
+    }
+}
+
+}  // namespace
+
 json App::MakeInitJson(const std::string& page, const std::string& stickerId) {
     return json{{"page", page},
                 {"stickerId", stickerId},
@@ -1238,6 +1295,33 @@ json App::MakeInitJson(const std::string& page, const std::string& stickerId) {
 
 void App::SetupCommonBridge(WebViewHost& host) {
     Bridge& b = host.bridge();
+
+    // '정보' 탭이 쓰는 실행 시점의 사실들. 버전·릴리스 날짜는 Version.h(=CMakeLists)에서 온다.
+    // 서드파티 고지 목록은 표시용 데이터라 manager.js가 들고 있다.
+    b.Register("app.info", [this](const json&) {
+        wchar_t exe[MAX_PATH]{};
+        GetModuleFileNameW(nullptr, exe, MAX_PATH);
+
+        // WebView2 런타임 버전 (설치돼 있지 않으면 빈 문자열 — UI가 안내 문구로 바꾼다)
+        std::string wv2;
+        wil::unique_cotaskmem_string wv2Ver;
+        if (SUCCEEDED(GetAvailableCoreWebView2BrowserVersionString(nullptr, &wv2Ver)) && wv2Ver) {
+            wv2 = util::WideToUtf8(wv2Ver.get());
+        }
+
+        return json{{"name", SS_APP_NAME},
+                    {"version", SS_VERSION},
+                    {"releaseDate", SS_RELEASE_DATE},
+                    {"copyright", SS_COPYRIGHT},
+                    {"license", SS_LICENSE},
+                    {"homepage", SS_HOMEPAGE},
+                    {"exePath", util::WideToUtf8(exe)},
+                    {"dataDir", util::WideToUtf8(store.AppDir())},
+                    {"os", OsVersionString()},
+                    {"arch", CpuArchString()},
+                    {"webview2", wv2},
+                    {"ollamaEndpoint", settings.ollama.endpoint}};
+    });
 
     b.Register("app.getState", [this](const json&) {
         return json{{"settings",
@@ -1684,6 +1768,7 @@ void App::ShowTrayMenu() {
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, IDM_TRAY_LIST, i18n.T("tray.list").c_str());
     AppendMenuW(menu, MF_STRING, IDM_TRAY_SETTINGS, i18n.T("tray.settings").c_str());
+    AppendMenuW(menu, MF_STRING, IDM_TRAY_ABOUT, i18n.T("tray.about").c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(menu, MF_STRING, IDM_TRAY_EMPTY_TRASH, i18n.T("tray.emptyTrash").c_str());
     AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -1768,6 +1853,9 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     break;
                 case IDM_TRAY_SETTINGS:
                     OpenManager("settings");
+                    break;
+                case IDM_TRAY_ABOUT:
+                    OpenManager("about");
                     break;
                 case IDM_TRAY_EMPTY_TRASH:
                     EmptyTrashInteractive(nullptr);

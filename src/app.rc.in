@@ -1,11 +1,13 @@
+// exe의 버전 리소스 (원본: src/app.rc.in — CMake가 generated/app.rc로 만든다).
+// 버전 값은 CMakeLists.txt의 project(VERSION)에서 온다. 이 파일을 직접 고치지 말 것.
 #include <winres.h>
-#include "resource.h"
+#include "@CMAKE_CURRENT_SOURCE_DIR@/src/resource.h"
 
-IDI_APP ICON "icons/app.ico"
+IDI_APP ICON "@SS_ICON_PATH@"
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,0
- PRODUCTVERSION 1,0,0,0
+ FILEVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
+ PRODUCTVERSION @PROJECT_VERSION_MAJOR@,@PROJECT_VERSION_MINOR@,@PROJECT_VERSION_PATCH@,0
  FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
  FILEFLAGS 0x0L
  FILEOS VOS__WINDOWS32
@@ -18,12 +20,12 @@ BEGIN
         BEGIN
             VALUE "CompanyName", "SuperSticker"
             VALUE "FileDescription", "Super Sticker - Desktop sticky notes"
-            VALUE "FileVersion", "1.0.0.0"
+            VALUE "FileVersion", "@PROJECT_VERSION@.0"
             VALUE "InternalName", "SuperSticker"
             VALUE "LegalCopyright", "Copyright (C) 2026"
             VALUE "OriginalFilename", "SuperSticker.exe"
             VALUE "ProductName", "Super Sticker"
-            VALUE "ProductVersion", "1.0.0.0"
+            VALUE "ProductVersion", "@PROJECT_VERSION@.0"
         END
     END
     BLOCK "VarFileInfo"

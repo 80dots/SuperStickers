@@ -1,4 +1,4 @@
-# Super Sticker 빌드 스크립트
+﻿# Super Sticker 빌드 스크립트
 # 사용법:
 #   .\scripts\build.ps1              # Release 빌드
 #   .\scripts\build.ps1 -Debug      # Debug 빌드
@@ -40,7 +40,15 @@ if ($Installer) {
         Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/p/?LinkId=2124703" -OutFile $bootstrapper -UseBasicParsing
     }
 
-    & $iscc "$root\installer\SuperSticker.iss"
+    # 버전 단일 출처: CMakeLists.txt의 project(... VERSION ...)를 읽어 ISCC에 넘긴다
+    $cml = Get-Content "$root\CMakeLists.txt" -Raw
+    if ($cml -notmatch 'project\(SuperSticker VERSION ([0-9]+\.[0-9]+\.[0-9]+)') {
+        throw "CMakeLists.txt에서 버전을 찾지 못했습니다."
+    }
+    $ver = $Matches[1]
+    Write-Host "설치 프로그램 버전: $ver"
+
+    & $iscc "/DMyAppVersion=$ver" "$root\installer\SuperSticker.iss"
     if ($LASTEXITCODE -ne 0) { throw "설치 프로그램 빌드 실패" }
     Write-Host "`n설치 프로그램: $root\installer\Output\" -ForegroundColor Green
 }

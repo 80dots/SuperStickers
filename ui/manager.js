@@ -83,6 +83,135 @@
     });
   }
 
+  // ---------- 정보 탭 ----------
+  // 배포본에 함께 실리는 서드파티 고지. 네이티브 의존성 버전의 출처는 CMakeLists.txt,
+  // 웹 의존성은 ui/vendor의 파일 헤더다 — 올릴 때 여기도 함께 고친다.
+  const THIRD_PARTY = [
+    { name: 'Microsoft Edge WebView2 SDK', version: '1.0.4129.50',
+      license: 'Microsoft Software License Terms',
+      url: 'https://developer.microsoft.com/microsoft-edge/webview2/' },
+    { name: 'Windows Implementation Library (WIL)', version: '1.0.260126.7', license: 'MIT',
+      url: 'https://github.com/microsoft/wil' },
+    { name: 'nlohmann/json', version: '3.11.3', license: 'MIT',
+      url: 'https://github.com/nlohmann/json' },
+    { name: 'marked', version: '15.0.12', license: 'MIT', url: 'https://marked.js.org/' },
+    { name: 'three.js', version: 'r147', license: 'MIT', url: 'https://threejs.org/' },
+    { name: 'Pretendard', version: 'Variable', license: 'SIL Open Font License 1.1',
+      url: 'https://github.com/orioncactus/pretendard' },
+    { name: 'Poly Haven HDRI', version: 'quarry_01 · royal_esplanade · venice_sunset',
+      license: 'CC0 1.0', url: 'https://polyhaven.com/hdris' },
+  ];
+
+  // MIT 전문. 설치 폴더의 LICENSE.txt와 같은 내용이며, 저작권 줄만 app.info로 채운다.
+  const MIT_TEXT = (holder) => `MIT License
+
+${holder}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.`;
+
+  let appInfo = null;
+
+  async function renderAbout() {
+    try {
+      appInfo = await bridge.call('app.info');
+    } catch (e) {
+      console.error(e);
+      return;
+    }
+    const set = (sel, text) => { $(sel).textContent = text; };
+    const dash = (v) => (v ? v : i18n.t('about.unknown'));
+
+    set('#aboutName', appInfo.name);
+    set('#aboutVersion', 'v' + appInfo.version);
+    set('#aboutReleaseDate', appInfo.releaseDate);
+    set('#infoVersion', appInfo.version);
+    set('#infoReleaseDate', appInfo.releaseDate);
+    set('#infoLicense', appInfo.license);
+    set('#infoCopyright', appInfo.copyright);
+    set('#infoOs', dash(appInfo.os) + (appInfo.arch ? ' · ' + appInfo.arch : ''));
+    set('#infoWebview2', appInfo.webview2 || i18n.t('about.webview2Missing'));
+    set('#infoOllama', appInfo.ollamaEndpoint || i18n.t('about.unknown'));
+    set('#infoExePath', dash(appInfo.exePath));
+    set('#infoDataDir', dash(appInfo.dataDir));
+    set('#licenseText', MIT_TEXT(appInfo.copyright));
+
+    const host = $('#ossList');
+    host.innerHTML = '';
+    THIRD_PARTY.forEach((c) => {
+      const row = document.createElement('div');
+      row.className = 'oss-item';
+
+      const name = document.createElement('button');
+      name.className = 'link-btn oss-name';
+      name.textContent = c.name;
+      name.dataset.url = c.url;
+      row.appendChild(name);
+
+      const ver = document.createElement('span');
+      ver.className = 'oss-ver';
+      ver.textContent = c.version || '';
+      row.appendChild(ver);
+
+      const lic = document.createElement('span');
+      lic.className = 'oss-lic';
+      lic.textContent = c.license;
+      row.appendChild(lic);
+
+      host.appendChild(row);
+    });
+  }
+
+  // 링크는 https만 열린다 (네이티브 app.openExternal이 한 번 더 확인한다)
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.link-btn[data-url]');
+    if (!btn) return;
+    bridge.call('app.openExternal', { url: btn.dataset.url }).catch(console.error);
+  });
+
+  $('#aboutRepoBtn').addEventListener('click', () =>
+    bridge.call('app.openExternal', { url: 'https://github.com/80dots/SuperStickers' })
+      .catch(console.error));
+  $('#aboutReleasesBtn').addEventListener('click', () =>
+    bridge.call('app.openExternal', { url: 'https://github.com/80dots/SuperStickers/releases' })
+      .catch(console.error));
+
+  // 버그 신고에 붙이기 좋게 버전·환경을 한 덩어리로 복사한다
+  $('#copyInfoBtn').addEventListener('click', async () => {
+    if (!appInfo) return;
+    const text = [
+      `${appInfo.name} ${appInfo.version} (${appInfo.releaseDate})`,
+      `OS: ${appInfo.os} ${appInfo.arch}`,
+      `WebView2: ${appInfo.webview2 || '-'}`,
+      `Ollama: ${appInfo.ollamaEndpoint || '-'}`,
+      `Exe: ${appInfo.exePath}`,
+      `Data: ${appInfo.dataDir}`,
+    ].join('\n');
+    const status = $('#copyInfoStatus');
+    try {
+      await navigator.clipboard.writeText(text);
+      status.textContent = i18n.t('about.copied');
+    } catch {
+      status.textContent = i18n.t('about.copyFailed');
+    }
+    setTimeout(() => { status.textContent = ''; }, 2500);
+  });
+
   // ---------- 탭 ----------
   function showTab(name) {
     document.querySelectorAll('.tab').forEach((t) =>
@@ -93,6 +222,7 @@
     $('#settingsTab').classList.toggle('hidden', name !== 'settings');
     $('#aiTab').classList.toggle('hidden', name !== 'ai');
     $('#dataTab').classList.toggle('hidden', name !== 'data');
+    $('#aboutTab').classList.toggle('hidden', name !== 'about');
     if (name === 'list') refreshList();
     if (name === 'groups') refreshGroups();
     if (name === 'trash') refreshTrash();
@@ -102,6 +232,7 @@
       runConnectTest();  // Ollama 상태 자동 확인 (미설치면 설치 버튼 노출)
       renderPrompts();
     }
+    if (name === 'about') renderAbout();
   }
   document.querySelectorAll('.tab').forEach((t) =>
     t.addEventListener('click', () => showTab(t.dataset.tab)));
@@ -866,6 +997,8 @@
     applySettingsUi();
     buildPullCombo();  // 콤보 안내 문구 언어 갱신
     if (!$('#listTab').classList.contains('hidden')) refreshList();
+    // 정보 탭의 값에는 i18n 문구가 섞여 있어(미설치 안내 등) 다시 채워야 한다
+    if (!$('#aboutTab').classList.contains('hidden')) renderAbout();
   });
 
   // ---------- 초기 표시 ----------

@@ -61,7 +61,7 @@ C++/Win32 네이티브 셸 + WebView2 하이브리드 구조로, 가볍고 빠�
   **복원**(개별 스티커로 되살림)하거나 개별 **완전 삭제** 가능. 설정과 트레이 메뉴의
   **휴지통 비우기**(최종 확인 팝업 포함) 제공. 휴지통 사용을 끄면 삭제 시 바로 완전 삭제
 - **시스템 트레이 상주**: 창을 닫아도 트레이에 유지. 트레이 메뉴에서
-  새 스티커 / 모든 스티커 감추기·보이기 / 스티커 목록 / 설정 / 휴지통 비우기 / 종료
+  새 스티커 / 모든 스티커 감추기·보이기 / 스티커 목록 / 설정 / **정보** / 휴지통 비우기 / 종료
 - **자동 시작**: Windows 시작 시 자동 실행 (설정 또는 설치 시 선택)
 - **다중 선택**: Shift+클릭으로 여러 메모창을 고르고(다시 Shift+클릭하면 해제), 하나를
   끌면 선택한 창이 배치를 유지한 채 함께 이동. Delete를 누르면 모두 숨김. 선택하지 않은
@@ -112,6 +112,10 @@ C++/Win32 네이티브 셸 + WebView2 하이브리드 구조로, 가볍고 빠�
 - **데이터 관리**: 관리자 창의 데이터 탭에서 저장 폴더 바로 열기, **저장 경로 변경**
   (선택한 폴더로 데이터 복사 후 앱 재시작 — 원본은 보존), **백업 ZIP 만들기**(전체 데이터를
   선택한 폴더에 압축 저장) 제공
+- **정보 탭**: 관리자 창의 **정보** 탭(트레이 메뉴 '정보…'로 바로 이동)에서 버전·릴리스 날짜·
+  라이선스·저작권, 운영체제·WebView2 런타임·실행 파일·데이터 폴더 같은 시스템 정보,
+  개인정보 처리 방침 요약, MIT 라이선스 전문, 포함된 오픈소스 고지, 저장소·릴리스·버그 신고
+  링크를 확인할 수 있습니다. **정보 복사** 버튼으로 버그 신고에 붙일 환경 정보를 한 번에 복사
 - **자동 저장**: 입력 후 0.8초 디바운스 자동 저장, 원자적 파일 쓰기(.bak 백업)로 데이터 보호
 - **단일 인스턴스**: 중복 실행 시 기존 인스턴스의 스티커를 표시
 
@@ -125,6 +129,10 @@ C++/Win32 네이티브 셸 + WebView2 하이브리드 구조로, 가볍고 빠�
 ## 설치
 
 `installer/Output/SuperSticker-Setup-<버전>.exe`를 실행합니다.
+
+> 버전을 올릴 때는 `CMakeLists.txt`의 `project(SuperSticker VERSION ...)`과
+> `SS_RELEASE_DATE`만 고치면 됩니다 — exe 버전 리소스, 앱의 정보 탭, 설치 파일 이름이
+> 모두 여기서 나옵니다.
 한국어/영어 설치 UI를 제공하며, 관리자 권한 없이 사용자 단위로 설치됩니다
 (`%LOCALAPPDATA%\Programs\Super Sticker`).
 
@@ -212,10 +220,16 @@ Copyright © 2026. 개인 프로젝트.
 
 | 구성요소 | 용도 | 라이선스 |
 |---|---|---|
+| [Microsoft Edge WebView2 SDK](https://developer.microsoft.com/microsoft-edge/webview2/) | 웹 UI 호스팅 | Microsoft Software License Terms |
+| [WIL](https://github.com/microsoft/wil) | COM 스마트 포인터 | MIT |
+| [nlohmann/json](https://github.com/nlohmann/json) | JSON 직렬화 | MIT |
 | [Pretendard](https://github.com/orioncactus/pretendard) | 본문 서체 | SIL Open Font License 1.1 — `ui/vendor/fonts/OFL.txt` |
 | [three.js](https://threejs.org/) | 3D 모델 렌더링 | MIT |
 | [marked](https://marked.js.org/) | 마크다운 파싱 | MIT |
 | Poly Haven HDRI | 3D PBR 환경광 | CC0 |
+
+같은 목록을 앱의 **정보** 탭에서도 볼 수 있습니다 (버전을 올릴 때 `ui/manager.js`의
+`THIRD_PARTY` 배열도 함께 고칩니다).
 
 Pretendard는 **원본 그대로** 배포한다. OFL 1.1은 폰트를 소프트웨어와 함께 재배포하는
 것을 허용하되 (1) 폰트만 따로 판매하지 말 것, (2) 저작권 고지와 라이선스 전문을 함께

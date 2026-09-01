@@ -56,7 +56,8 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 ### 네이티브 ↔ 웹 브리지
 
 - 요청 `{id, method, params}` → 응답 `{id, ok, result|error}`, 네이티브 발신 이벤트 `{event, data}`.
-- 창 공통 메서드(`App::SetupCommonBridge`): `app.getState`, `settings.set`, `stickers.*`, `ollama.*`
+- 창 공통 메서드(`App::SetupCommonBridge`): `app.getState`, `app.info`, `settings.set`,
+  `stickers.*`, `ollama.*`, `app.openExternal`(https만 연다)
 - 스티커 전용: `sticker.load/saveContent/setColor/setTopmost/hide/delete`,
   `attachment.save/pickVideo`, `window.startDrag`
 - 목록 전용: `sticker.export`(.ssticker zip), `stickers.import`/`stickers.importPaths`
@@ -64,6 +65,29 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   `RunOnUi`로 지연시켜 재진입 문제를 피한다.
 - 이벤트(`theme.changed`, `locale.changed`, `ollama.chunk` 등)는 모든 창에 브로드캐스트하고
   웹 측에서 requestId 등으로 필터링한다.
+
+### 버전과 '정보' 탭
+
+- **버전의 단일 출처는 `CMakeLists.txt`의 `project(SuperSticker VERSION ...)` 하나다.**
+  거기서 세 갈래로 흘러간다:
+  - `src/Version.h.in` → 빌드 디렉터리의 `Version.h` (C++이 읽는 `SS_VERSION` 등)
+  - `src/app.rc.in` → 생성된 `app.rc` (exe 속성창의 파일/제품 버전)
+  - `scripts/build.ps1`이 CMakeLists에서 읽어 `ISCC /DMyAppVersion=...`으로 전달
+    (설치 파일 이름·프로그램 추가/제거 목록의 버전)
+  **함정**: 예전에는 `.iss`에만 버전이 있어 exe 리소스가 1.0.0.0에 멈춰 있었다.
+  `.iss`를 직접 ISCC로 돌리면 `#ifndef` 기본값 `0.0.0`이 쓰이므로 build.ps1을 거쳐야 한다.
+  릴리스 날짜(`SS_RELEASE_DATE`)도 같은 파일에서 버전과 함께 올린다.
+- 관리자 창의 **정보 탭**(`#aboutTab`, 트레이 메뉴 '정보…' → `OpenManager("about")`)이
+  버전·릴리스 날짜·라이선스·시스템 정보·오픈소스 고지를 보여 준다.
+  - 실행 시점의 사실(버전, 경로, OS, WebView2 런타임 버전)은 네이티브 `app.info`가 준다.
+    OS 이름은 `GetVersionEx`가 매니페스트에 따라 거짓말을 하므로 레지스트리의
+    `CurrentBuildNumber`로 판별한다(22000 이상이면 Windows 11). `ProductName`은 Windows 11에서도
+    "Windows 10"으로 남아 있어 쓰지 않는다.
+  - **서드파티 고지 목록과 MIT 전문은 표시용 데이터라 `manager.js`가 들고 있다.**
+    구성요소 버전을 올릴 때 `THIRD_PARTY` 배열도 함께 고친다.
+  - MIT는 배포본에 저작권·허가 고지를 포함할 것을 요구한다. 설치 프로그램이 `LICENSE.txt`를
+    함께 설치하고, 정보 탭에도 전문이 들어 있어 앱만 받은 사용자도 볼 수 있다.
+    Pretendard의 OFL 전문은 `ui/vendor/fonts/OFL.txt`가 그대로 설치되어 충족한다.
 
 ### 데이터 저장
 

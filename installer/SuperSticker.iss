@@ -2,7 +2,11 @@
 ; 사용자 단위 설치(권한 상승 불필요) — 데이터/자동시작이 모두 HKCU·%APPDATA% 기반
 
 #define MyAppName "Super Sticker"
-#define MyAppVersion "1.5.1"
+; 버전은 scripts/build.ps1이 CMakeLists.txt에서 읽어 /DMyAppVersion으로 넘긴다.
+; ISCC를 직접 실행하면 아래 기본값이 쓰인다(파일명이 실제 버전과 달라지므로 주의).
+#ifndef MyAppVersion
+  #define MyAppVersion "0.0.0"
+#endif
 #define MyAppExeName "SuperSticker.exe"
 
 [Setup]
@@ -44,6 +48,8 @@ Name: "autostart"; Description: "{cm:AutoStart}"; GroupDescription: "{cm:Additio
 [Files]
 Source: "..\build\release\SuperSticker.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\ui\*"; DestDir: "{app}\ui"; Flags: ignoreversion recursesubdirs createallsubdirs
+; MIT 라이선스는 배포본에 저작권·허가 고지를 포함할 것을 요구한다 (앱의 정보 탭에도 전문이 있다)
+Source: "..\LICENSE"; DestDir: "{app}"; DestName: "LICENSE.txt"; Flags: ignoreversion
 Source: "redist\MicrosoftEdgeWebView2Setup.exe"; Flags: dontcopy
 
 [Icons]

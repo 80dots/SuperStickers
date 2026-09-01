@@ -362,3 +362,125 @@ progress.indeterminate { animation: progPulse 1.2s ease-in-out infinite; }
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .prompt-text::placeholder { color: var(--muted); opacity: 0.75; }
+
+/* ---------- 정보 탭 ---------- */
+.about-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.about-logo { width: 52px; height: 52px; flex: none; }
+.about-head { flex: 1; min-width: 200px; }
+.about-head h1 { font-size: 20px; font-weight: 700; color: var(--strong); letter-spacing: -0.01em; }
+.about-tagline { font-size: 13px; color: var(--muted); margin-top: 3px; }
+.about-version {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 9px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.ver-badge {
+  background: var(--accent-soft);
+  color: var(--accent);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 700;
+}
+.about-sep { color: var(--faint); }
+.about-hero-actions { display: flex; gap: 8px; flex: none; }
+.about-hero-actions button:not(.primary) {
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  background: var(--panel-bg);
+}
+.about-hero-actions button:not(.primary):hover { background: var(--hover); }
+
+/* 이름-값 목록 */
+.about-grid {
+  display: grid;
+  grid-template-columns: 132px 1fr;
+  gap: 8px 14px;
+  font-size: 13px;
+}
+.about-grid dt { color: var(--muted); }
+.about-grid dd { color: var(--fg); word-break: break-all; }
+.about-grid dd.mono { font-family: var(--mono, ui-monospace, Consolas, monospace); font-size: 12px; }
+
+.about-note { margin: 14px 0 0; }
+
+/* 데이터 탭과 같은 보조 버튼 모양 (정보 복사 등) */
+#aboutTab .row { margin-top: 14px; }
+#aboutTab .row button {
+  padding: 7px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  background: var(--panel-bg);
+}
+#aboutTab .row button:hover { background: var(--hover); }
+.about-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--fg); }
+.about-list li { margin-bottom: 5px; }
+.about-list li:last-child { margin-bottom: 0; }
+
+.about-details summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--accent);
+  padding: 4px 0;
+  list-style: none;
+}
+.about-details summary::-webkit-details-marker { display: none; }
+.about-details summary::before { content: "▸ "; display: inline-block; }
+.about-details[open] summary::before { content: "▾ "; }
+.about-pre {
+  margin-top: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--bg);
+  color: var(--muted);
+  font-family: var(--mono, ui-monospace, Consolas, monospace);
+  font-size: 11.5px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+/* 서드파티 고지 */
+.oss-list { display: flex; flex-direction: column; gap: 2px; }
+.oss-item {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+}
+.oss-item:last-child { border-bottom: none; }
+.oss-ver { color: var(--muted); font-size: 12px; }
+.oss-lic {
+  color: var(--muted);
+  font-size: 11.5px;
+  background: var(--hover);
+  border-radius: 999px;
+  padding: 2px 9px;
+  white-space: nowrap;
+}
+
+/* 링크 버튼 — 표면 없이 글자만 */
+.link-btn {
+  color: var(--accent);
+  font-size: 13px;
+  text-align: left;
+  padding: 2px 0;
+}
+.link-btn:hover { text-decoration: underline; }
+.about-links { display: flex; flex-wrap: wrap; gap: 6px 20px; }

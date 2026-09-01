@@ -21,6 +21,7 @@
     <button class="tab" data-tab="data" data-i18n="manager.tabData"></button>
     <button class="tab" data-tab="ai" data-i18n="manager.tabAi"></button>
     <button class="tab" data-tab="settings" data-i18n="manager.tabSettings"></button>
+    <button class="tab" data-tab="about" data-i18n="manager.tabAbout"></button>
   </header>
 
   <main id="listTab" class="tabpage">
@@ -236,6 +237,107 @@
       <p class="desc" data-i18n="data.deleteAllDesc"></p>
       <div class="row">
         <button id="deleteAllBtn" class="danger" data-i18n="data.deleteAll"></button>
+      </div>
+    </section>
+  </main>
+
+  <main id="aboutTab" class="tabpage hidden">
+    <!-- 값(버전·경로·시스템)은 manager.js가 app.info로 받아 채운다 -->
+    <section class="about-hero">
+      <svg class="about-logo" viewBox="0 0 32 32" role="img" aria-hidden="true">
+        <rect x="2.5" y="6.5" width="20" height="20" rx="3" fill="#C8F0DC"
+              transform="rotate(-8 12.5 16.5)"/>
+        <path d="M9 5.5h17.5A2.5 2.5 0 0 1 29 8v11.5L20.5 28H11.5A2.5 2.5 0 0 1 9 25.5z"
+              fill="#FFF4B8"/>
+        <path d="M29 19.5 20.5 28v-6a2.5 2.5 0 0 1 2.5-2.5z" fill="#EBD277"/>
+        <g fill="#1F2328" opacity=".55">
+          <rect x="12.5" y="10.5" width="13" height="1.7" rx=".85"/>
+          <rect x="12.5" y="14.6" width="13" height="1.7" rx=".85"/>
+          <rect x="12.5" y="18.7" width="7.5" height="1.7" rx=".85"/>
+        </g>
+      </svg>
+      <div class="about-head">
+        <h1 id="aboutName">Super Sticker</h1>
+        <p class="about-tagline" data-i18n="about.tagline"></p>
+        <p class="about-version">
+          <span class="ver-badge" id="aboutVersion">—</span>
+          <span class="about-sep">·</span>
+          <span data-i18n="about.released"></span>
+          <span id="aboutReleaseDate">—</span>
+        </p>
+      </div>
+      <div class="about-hero-actions">
+        <button id="aboutReleasesBtn" class="primary" data-i18n="about.openReleases"></button>
+        <button id="aboutRepoBtn" data-i18n="about.openRepo"></button>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="about.appInfoTitle"></h2>
+      <dl class="about-grid">
+        <dt data-i18n="about.version"></dt><dd id="infoVersion">—</dd>
+        <dt data-i18n="about.releaseDate"></dt><dd id="infoReleaseDate">—</dd>
+        <dt data-i18n="about.license"></dt><dd id="infoLicense">—</dd>
+        <dt data-i18n="about.copyright"></dt><dd id="infoCopyright">—</dd>
+        <dt data-i18n="about.developer"></dt><dd id="infoDeveloper">minkyu</dd>
+      </dl>
+      <p class="desc about-note" data-i18n="about.updateNote"></p>
+    </section>
+
+    <section>
+      <h2 data-i18n="about.systemTitle"></h2>
+      <p class="desc" data-i18n="about.systemDesc"></p>
+      <dl class="about-grid">
+        <dt data-i18n="about.os"></dt><dd id="infoOs">—</dd>
+        <dt data-i18n="about.webview2"></dt><dd id="infoWebview2">—</dd>
+        <dt data-i18n="about.ollama"></dt><dd id="infoOllama">—</dd>
+        <dt data-i18n="about.exePath"></dt><dd id="infoExePath" class="mono">—</dd>
+        <dt data-i18n="about.dataDir"></dt><dd id="infoDataDir" class="mono">—</dd>
+      </dl>
+      <div class="row">
+        <button id="copyInfoBtn" data-i18n="about.copyInfo"></button>
+        <span id="copyInfoStatus" class="status"></span>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="about.privacyTitle"></h2>
+      <p class="desc" data-i18n="about.privacyDesc"></p>
+      <ul class="about-list">
+        <li data-i18n="about.privacy1"></li>
+        <li data-i18n="about.privacy2"></li>
+        <li data-i18n="about.privacy3"></li>
+      </ul>
+    </section>
+
+    <section>
+      <h2 data-i18n="about.licenseTitle"></h2>
+      <p class="desc" data-i18n="about.licenseDesc"></p>
+      <details class="about-details">
+        <summary data-i18n="about.licenseShow"></summary>
+        <pre id="licenseText" class="about-pre"></pre>
+      </details>
+    </section>
+
+    <section>
+      <h2 data-i18n="about.ossTitle"></h2>
+      <p class="desc" data-i18n="about.ossDesc"></p>
+      <div id="ossList" class="oss-list"></div>
+      <p class="desc about-note" data-i18n="about.ossNote"></p>
+    </section>
+
+    <section>
+      <h2 data-i18n="about.linksTitle"></h2>
+      <div class="about-links">
+        <button class="link-btn" data-url="https://github.com/80dots/SuperStickers"
+                data-i18n="about.linkRepo"></button>
+        <button class="link-btn" data-url="https://github.com/80dots/SuperStickers/releases"
+                data-i18n="about.linkReleases"></button>
+        <button class="link-btn" data-url="https://github.com/80dots/SuperStickers/issues"
+                data-i18n="about.linkIssues"></button>
+        <button class="link-btn"
+                data-url="https://github.com/80dots/SuperStickers/blob/main/LICENSE"
+                data-i18n="about.linkLicense"></button>
       </div>
     </section>
   </main>
