@@ -82,7 +82,7 @@ def main():
     for i, w in enumerate((30, 30, 17)):
         y = 86 + i * 11
         d.rounded_rectangle((93, y, 93 + w, y + 4), radius=2, fill=(INK[0], INK[1], INK[2]))
-    d.text((152, 76), "Super Sticker", font=font(BOLD, 34), fill=INK)
+    d.text((152, 76), "Super Stickers", font=font(BOLD, 34), fill=INK)
 
     # 제목 (형광펜 밑줄 한 줄 포함)
     f_title = font(BOLD, 62)

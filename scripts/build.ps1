@@ -1,4 +1,4 @@
-﻿# Super Sticker 빌드 스크립트
+﻿# Super Stickers 빌드 스크립트
 # 사용법:
 #   .\scripts\build.ps1              # Release 빌드
 #   .\scripts\build.ps1 -Debug      # Debug 빌드

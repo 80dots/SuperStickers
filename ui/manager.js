@@ -144,6 +144,7 @@ SOFTWARE.`;
     set('#infoReleaseDate', appInfo.releaseDate);
     set('#infoLicense', appInfo.license);
     set('#infoCopyright', appInfo.copyright);
+    set('#infoDeveloper', appInfo.developer || '');
     set('#infoOs', dash(appInfo.os) + (appInfo.arch ? ' · ' + appInfo.arch : ''));
     set('#infoWebview2', appInfo.webview2 || i18n.t('about.webview2Missing'));
     set('#infoOllama', appInfo.ollamaEndpoint || i18n.t('about.unknown'));

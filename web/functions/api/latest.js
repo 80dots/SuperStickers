@@ -3,13 +3,14 @@
 // Cloudflare 엣지 캐시(cacheEverything)로 실제 호출 횟수를 크게 줄인다.
 
 const REPO = '80dots/SuperStickers';
-const SETUP_RE = /^SuperSticker-Setup-.*\.exe$/i;
-const PORTABLE_RE = /^SuperSticker-Portable-.*\.zip$/i;
+// v1.5.3부터 자산 이름이 SuperStickers-로 바뀌었다. 예전 릴리스도 열리도록 둘 다 받는다.
+const SETUP_RE = /^SuperStickers?-Setup-.*\.exe$/i;
+const PORTABLE_RE = /^SuperStickers?-Portable-.*\.zip$/i;
 
 export async function fetchLatest() {
   const res = await fetch(`https://api.github.com/repos/${REPO}/releases/latest`, {
     headers: {
-      'User-Agent': 'SuperSticker-Site',
+      'User-Agent': 'SuperStickers-Site',
       Accept: 'application/vnd.github+json',
     },
     cf: { cacheTtl: 600, cacheEverything: true },

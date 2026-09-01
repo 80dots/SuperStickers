@@ -56,7 +56,7 @@ GroupWindow* GroupWindow::Create(HINSTANCE hinst, const GroupData& g, bool show,
 
     // backdrop: 반투명 배경 (LWA_ALPHA는 자식 없는 단순 창에서 데스크톱 투과가 안정적)
     HWND hwnd = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_LAYERED, kBackClass,
-                                L"Super Sticker Group", WS_POPUP | WS_THICKFRAME, x, y, w, h,
+                                L"Super Stickers Group", WS_POPUP | WS_THICKFRAME, x, y, w, h,
                                 nullptr, nullptr, hinst, self);
     if (!hwnd) {
         delete self;

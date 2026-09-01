@@ -29,7 +29,7 @@ ManagerWindow* ManagerWindow::Create(HINSTANCE hinst, const std::string& tab) {
     int x = (GetSystemMetrics(SM_CXSCREEN) - w) / 2;
     int y = (GetSystemMetrics(SM_CYSCREEN) - h) / 2;
 
-    HWND hwnd = CreateWindowExW(0, kClassName, L"Super Sticker", WS_OVERLAPPEDWINDOW, x, y, w, h,
+    HWND hwnd = CreateWindowExW(0, kClassName, L"Super Stickers", WS_OVERLAPPEDWINDOW, x, y, w, h,
                                 nullptr, nullptr, hinst, self);
     if (!hwnd) {
         delete self;

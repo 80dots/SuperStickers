@@ -1,4 +1,4 @@
-/* Super Sticker 랜딩 사이트 — 언어/테마 전환, 스크롤 연출, 최신 릴리스 정보 표시 */
+/* Super Stickers 랜딩 사이트 — 언어/테마 전환, 스크롤 연출, 최신 릴리스 정보 표시 */
 (function () {
   'use strict';
 

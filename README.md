@@ -1,4 +1,4 @@
-# Super Sticker
+# Super Stickers
 
 바탕화면에 스티커 메모를 붙이는 Windows 데스크톱 애플리케이션입니다.
 C++/Win32 네이티브 셸 + WebView2 하이브리드 구조로, 가볍고 빠르게 동작하면서도
@@ -134,7 +134,7 @@ C++/Win32 네이티브 셸 + WebView2 하이브리드 구조로, 가볍고 빠�
 > `SS_RELEASE_DATE`만 고치면 됩니다 — exe 버전 리소스, 앱의 정보 탭, 설치 파일 이름이
 > 모두 여기서 나옵니다.
 한국어/영어 설치 UI를 제공하며, 관리자 권한 없이 사용자 단위로 설치됩니다
-(`%LOCALAPPDATA%\Programs\Super Sticker`).
+(`%LOCALAPPDATA%\Programs\Super Stickers`).
 
 제거 시 스티커 데이터(`%APPDATA%\SuperSticker`)는 보존됩니다.
 

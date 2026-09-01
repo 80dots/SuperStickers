@@ -2,12 +2,13 @@
 // 값의 출처는 CMakeLists.txt의 project(... VERSION ...)와 SS_RELEASE_DATE 하나뿐이다.
 #pragma once
 
-#define SS_APP_NAME     "Super Sticker"
+#define SS_APP_NAME     "Super Stickers"
 #define SS_VERSION      "@PROJECT_VERSION@"
 #define SS_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
 #define SS_VERSION_MINOR @PROJECT_VERSION_MINOR@
 #define SS_VERSION_PATCH @PROJECT_VERSION_PATCH@
 #define SS_RELEASE_DATE "@SS_RELEASE_DATE@"
-#define SS_COPYRIGHT    "Copyright (c) 2026 minkyu"
+#define SS_COPYRIGHT    "Copyright (c) 2026 Minkyu Park"
+#define SS_DEVELOPER    "Minkyu Park"
 #define SS_LICENSE      "MIT License"
 #define SS_HOMEPAGE     "https://github.com/80dots/SuperStickers"

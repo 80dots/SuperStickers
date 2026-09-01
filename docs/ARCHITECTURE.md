@@ -1,4 +1,4 @@
-# Super Sticker 아키텍처
+# Super Stickers 아키텍처
 
 ## 개요
 

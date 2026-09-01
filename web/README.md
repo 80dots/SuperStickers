@@ -1,4 +1,4 @@
-# Super Sticker 랜딩 사이트
+# Super Stickers 랜딩 사이트
 
 Cloudflare Pages로 배포되는 정적 사이트입니다. 빌드 도구나 의존성이 없습니다.
 
@@ -35,7 +35,7 @@ web/
 
 ## 다운로드 링크가 동작하는 방식
 
-릴리스 에셋 파일명에 버전이 들어 있어(`SuperSticker-Setup-1.1.0.exe`) GitHub의
+릴리스 에셋 파일명에 버전이 들어 있어(`SuperStickers-Setup-1.5.3.exe`) GitHub의
 `releases/latest/download/<고정이름>` 방식을 쓸 수 없습니다. 대신 Pages Function이
 GitHub API로 최신 릴리스를 조회해 리다이렉트합니다.
 
@@ -84,7 +84,7 @@ Pages 첫 배포가 끝나면 Functions가 제대로 인식됐는지 확인합�
 curl -sI https://<프로젝트>.pages.dev/download
 ```
 
-`HTTP/2 302` 와 `location: https://github.com/.../SuperSticker-Setup-*.exe` 가 보이면 정상입니다.
+`HTTP/2 302` 와 `location: https://github.com/.../SuperStickers-Setup-*.exe` 가 보이면 정상입니다.
 `200`이 오면서 HTML이 반환되면 Functions가 인식되지 않은 것이므로,
 Pages 설정의 **Root directory가 `web`인지** 확인하세요.
 

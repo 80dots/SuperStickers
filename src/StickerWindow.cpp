@@ -207,7 +207,7 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
     util::ClampRectToWorkArea(x, y, w, h);
 
     DWORD exStyle = WS_EX_TOOLWINDOW | (d.topmost ? WS_EX_TOPMOST : 0);
-    HWND hwnd = CreateWindowExW(exStyle, kClassName, L"Super Sticker",
+    HWND hwnd = CreateWindowExW(exStyle, kClassName, L"Super Stickers",
                                 WS_POPUP | WS_THICKFRAME | WS_CLIPCHILDREN, x, y, w, h,
                                 nullptr, nullptr, hinst, self);
     if (!hwnd) {

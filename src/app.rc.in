@@ -18,13 +18,13 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "CompanyName", "SuperSticker"
-            VALUE "FileDescription", "Super Sticker - Desktop sticky notes"
+            VALUE "CompanyName", "Minkyu Park"
+            VALUE "FileDescription", "Super Stickers - Desktop sticky notes"
             VALUE "FileVersion", "@PROJECT_VERSION@.0"
             VALUE "InternalName", "SuperSticker"
-            VALUE "LegalCopyright", "Copyright (C) 2026"
+            VALUE "LegalCopyright", "Copyright (C) 2026 Minkyu Park"
             VALUE "OriginalFilename", "SuperSticker.exe"
-            VALUE "ProductName", "Super Sticker"
+            VALUE "ProductName", "Super Stickers"
             VALUE "ProductVersion", "@PROJECT_VERSION@.0"
         END
     END

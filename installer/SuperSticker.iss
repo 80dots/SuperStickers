@@ -1,7 +1,7 @@
-; Super Sticker 설치 프로그램 (Inno Setup 6)
+; Super Stickers 설치 프로그램 (Inno Setup 6)
 ; 사용자 단위 설치(권한 상승 불필요) — 데이터/자동시작이 모두 HKCU·%APPDATA% 기반
 
-#define MyAppName "Super Sticker"
+#define MyAppName "Super Stickers"
 ; 버전은 scripts/build.ps1이 CMakeLists.txt에서 읽어 /DMyAppVersion으로 넘긴다.
 ; ISCC를 직접 실행하면 아래 기본값이 쓰인다(파일명이 실제 버전과 달라지므로 주의).
 #ifndef MyAppVersion
@@ -13,13 +13,13 @@
 AppId={{8D2E7C54-1B7A-4C36-9E1D-5A9E4B7F2C10}}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-AppPublisher=SuperSticker
-DefaultDirName={autopf}\Super Sticker
+AppPublisher=Minkyu Park
+DefaultDirName={autopf}\Super Stickers
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 OutputDir=Output
-OutputBaseFilename=SuperSticker-Setup-{#MyAppVersion}
+OutputBaseFilename=SuperStickers-Setup-{#MyAppVersion}
 SetupIconFile=..\src\icons\app.ico
 Compression=lzma2
 SolidCompression=yes

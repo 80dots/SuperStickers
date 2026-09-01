@@ -70,7 +70,7 @@ bool App::Init(HINSTANCE hinst, bool startHidden) {
     ManagerWindow::RegisterWndClass(hinst);
 
     // 트레이 콜백·브로드캐스트 수신용 숨김 최상위 창 (표시하지 않음)
-    hwnd_ = CreateWindowExW(0, kAppClassName, L"Super Sticker", WS_OVERLAPPED, 0, 0, 0, 0,
+    hwnd_ = CreateWindowExW(0, kAppClassName, L"Super Stickers", WS_OVERLAPPED, 0, 0, 0, 0,
                             nullptr, nullptr, hinst, this);
     if (!hwnd_) return false;
 
@@ -82,13 +82,13 @@ bool App::Init(HINSTANCE hinst, bool startHidden) {
 
     taskbarCreatedMsg_ = RegisterWindowMessageW(L"TaskbarCreated");
     HICON icon = LoadIconW(hinst, MAKEINTRESOURCEW(IDI_APP));
-    tray_.Create(hwnd_, WM_APP_TRAY, icon, L"Super Sticker");
+    tray_.Create(hwnd_, WM_APP_TRAY, icon, L"Super Stickers");
 
     ollama.SetUiPoster([this](std::function<void()> fn) { RunOnUi(std::move(fn)); });
 
     WebViewHost::EnsureEnvironment([this, startHidden](HRESULT hr) {
         if (FAILED(hr)) {
-            MessageBoxW(hwnd_, i18n.T("error.webview2Missing").c_str(), L"Super Sticker",
+            MessageBoxW(hwnd_, i18n.T("error.webview2Missing").c_str(), L"Super Stickers",
                         MB_ICONERROR | MB_OK);
             return;
         }
@@ -138,13 +138,13 @@ bool App::ConfirmYesNoText(HWND owner, const std::wstring& msg) {
     tdc.dwFlags = TDF_POSITION_RELATIVE_TO_WINDOW | TDF_ALLOW_DIALOG_CANCELLATION |
                   TDF_SIZE_TO_CONTENT;
     tdc.dwCommonButtons = TDCBF_YES_BUTTON | TDCBF_NO_BUTTON;
-    tdc.pszWindowTitle = L"Super Sticker";
+    tdc.pszWindowTitle = L"Super Stickers";
     tdc.pszMainIcon = TD_WARNING_ICON;
     tdc.pszContent = msg.c_str();
     tdc.nDefaultButton = IDNO;
     int btn = 0;
     if (FAILED(TaskDialogIndirect(&tdc, &btn, nullptr, nullptr))) {
-        return MessageBoxW(owner, msg.c_str(), L"Super Sticker",
+        return MessageBoxW(owner, msg.c_str(), L"Super Stickers",
                            MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2 | MB_TOPMOST |
                                MB_SETFOREGROUND) == IDYES;
     }
@@ -260,7 +260,7 @@ void App::RestoreTrashSticker(const std::string& id) {
 void App::EmptyTrashInteractive(HWND owner) {
     int count = store.CountTrash();
     if (count == 0) {
-        MessageBoxW(owner, i18n.T("trash.emptyNone").c_str(), L"Super Sticker",
+        MessageBoxW(owner, i18n.T("trash.emptyNone").c_str(), L"Super Stickers",
                     MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
         return;
     }
@@ -310,7 +310,7 @@ int App::ImportStickerFiles(const std::vector<std::wstring>& paths,
 void App::DeleteAllDataInteractive(HWND owner) {
     int count = store.CountAllData();
     if (count == 0) {
-        MessageBoxW(owner, i18n.T("data.deleteAllNone").c_str(), L"Super Sticker",
+        MessageBoxW(owner, i18n.T("data.deleteAllNone").c_str(), L"Super Stickers",
                     MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
         return;
     }
@@ -329,7 +329,7 @@ void App::DeleteAllDataInteractive(HWND owner) {
 
     BroadcastEvent("data.cleared", json::object());
     BroadcastEvent("trash.changed", {{"count", 0}});
-    MessageBoxW(owner, i18n.T("data.deleteAllDone").c_str(), L"Super Sticker",
+    MessageBoxW(owner, i18n.T("data.deleteAllDone").c_str(), L"Super Stickers",
                 MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
 }
 
@@ -1313,6 +1313,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
                     {"version", SS_VERSION},
                     {"releaseDate", SS_RELEASE_DATE},
                     {"copyright", SS_COPYRIGHT},
+                    {"developer", SS_DEVELOPER},
                     {"license", SS_LICENSE},
                     {"homepage", SS_HOMEPAGE},
                     {"exePath", util::WideToUtf8(exe)},
@@ -1486,7 +1487,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
             return json{{"started", false}};
         std::wstring dest = destOverride;
         if (dest.empty()) {
-            COMDLG_FILTERSPEC filters[] = {{L"Super Sticker", L"*.ssticker"}};
+            COMDLG_FILTERSPEC filters[] = {{L"Super Stickers", L"*.ssticker"}};
             dlg->SetFileTypes(1, filters);
             dlg->SetDefaultExtension(L"ssticker");
             dlg->SetFileName((name + L".ssticker").c_str());
@@ -1521,7 +1522,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
         DWORD opts = 0;
         dlg->GetOptions(&opts);
         dlg->SetOptions(opts | FOS_ALLOWMULTISELECT | FOS_FORCEFILESYSTEM);
-        COMDLG_FILTERSPEC filters[] = {{L"Super Sticker", L"*.ssticker"}};
+        COMDLG_FILTERSPEC filters[] = {{L"Super Stickers", L"*.ssticker"}};
         dlg->SetFileTypes(1, filters);
         if (FAILED(dlg->Show(owner))) return json{{"count", 0}};
         wil::com_ptr<IShellItemArray> items;
@@ -1662,7 +1663,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
         std::wstring curPrefix = cur + L"\\";
         if (dir.size() > curPrefix.size() &&
             _wcsnicmp(dir.c_str(), curPrefix.c_str(), curPrefix.size()) == 0) {
-            MessageBoxW(owner, i18n.T("data.changeFailed").c_str(), L"Super Sticker",
+            MessageBoxW(owner, i18n.T("data.changeFailed").c_str(), L"Super Stickers",
                         MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
             return json{{"changed", false}};
         }
@@ -1672,11 +1673,11 @@ void App::SetupCommonBridge(WebViewHost& host) {
         RunOnUiDelayed(600, [this, dir, cur, owner]() {
             bool ok = util::CopyDirRecursive(cur, dir) && store.SetCustomDataDir(dir);
             if (!ok) {
-                MessageBoxW(owner, i18n.T("data.changeFailed").c_str(), L"Super Sticker",
+                MessageBoxW(owner, i18n.T("data.changeFailed").c_str(), L"Super Stickers",
                             MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
                 return;
             }
-            MessageBoxW(owner, i18n.T("data.changeDone").c_str(), L"Super Sticker",
+            MessageBoxW(owner, i18n.T("data.changeDone").c_str(), L"Super Stickers",
                         MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
             // 단일 인스턴스 뮤텍스와 겹치지 않게 2초 지연 후 재시작
             wchar_t exe[MAX_PATH]{};
@@ -1707,7 +1708,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
         SYSTEMTIME st{};
         GetLocalTime(&st);
         wchar_t name[64];
-        swprintf_s(name, L"SuperSticker-Backup-%04u%02u%02u-%02u%02u%02u.zip", st.wYear,
+        swprintf_s(name, L"SuperStickers-Backup-%04u%02u%02u-%02u%02u%02u.zip", st.wYear,
                    st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
         std::wstring zipPath = dir + L"\\" + name;
         std::wstring dataDir = store.AppDir();
