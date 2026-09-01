@@ -3,6 +3,7 @@
 #include <objbase.h>
 #include <shlobj.h>
 #include <wincrypt.h>
+#include <winhttp.h>
 
 #include <fstream>
 
@@ -164,6 +165,126 @@ bool UnzipDir(const std::wstring& zipPath, const std::wstring& destDir) {
                        L"-Path '" + PsQuote(zipPath) + L"' -DestinationPath '" +
                        PsQuote(destDir) + L"' -Force\"";
     return RunProcessWait(cmd, 10 * 60 * 1000);
+}
+
+// URL을 파일로 내려받는다. filePath가 비면 outBody에 담는다.
+// onData(받은 바이트, 전체 바이트)로 진행률을 알리고, abort가 서면 중단한다.
+// WinHTTP 기본 정책상 리다이렉트는 따라간다 (Hugging Face는 CDN으로 302를 준다).
+bool HttpGetToFile(const std::wstring& url, const std::wstring& filePath, std::string* outBody,
+                   std::function<void(uint64_t, uint64_t)> onData,
+                   std::atomic<bool>* abort) {
+    URL_COMPONENTS c{};
+    c.dwStructSize = sizeof(c);
+    wchar_t host[256]{};
+    wchar_t path[1024]{};
+    c.lpszHostName = host;
+    c.dwHostNameLength = 255;
+    c.lpszUrlPath = path;
+    c.dwUrlPathLength = 1023;
+    if (!WinHttpCrackUrl(url.c_str(), (DWORD)url.size(), 0, &c)) return false;
+
+    HINTERNET session = WinHttpOpen(L"SuperStickers/1.0",
+                                    WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
+                                    WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!session) return false;
+    WinHttpSetTimeouts(session, 15000, 15000, 60000, 60000);
+    HINTERNET connect = WinHttpConnect(session, host, c.nPort, 0);
+    HINTERNET request =
+        connect ? WinHttpOpenRequest(connect, L"GET", path, nullptr, WINHTTP_NO_REFERER,
+                                     WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE)
+                : nullptr;
+    bool ok = false;
+    HANDLE file = INVALID_HANDLE_VALUE;
+    if (request && WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                      WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
+        WinHttpReceiveResponse(request, nullptr)) {
+        DWORD status = 0, size = sizeof(status);
+        WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                            WINHTTP_HEADER_NAME_BY_INDEX, &status, &size,
+                            WINHTTP_NO_HEADER_INDEX);
+        if (status == 200) {
+            uint64_t total = 0;
+            wchar_t lenBuf[32]{};
+            DWORD lenSize = sizeof(lenBuf);
+            if (WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH,
+                                    WINHTTP_HEADER_NAME_BY_INDEX, lenBuf, &lenSize,
+                                    WINHTTP_NO_HEADER_INDEX))
+                total = _wtoi64(lenBuf);
+            if (!filePath.empty()) {
+                file = CreateFileW(filePath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
+                                   FILE_ATTRIBUTE_NORMAL, nullptr);
+                if (file == INVALID_HANDLE_VALUE) status = 0;
+            }
+            if (status == 200) {
+                uint64_t received = 0;
+                ok = true;
+                for (;;) {
+                    if (abort && abort->load()) { ok = false; break; }
+                    DWORD avail = 0;
+                    if (!WinHttpQueryDataAvailable(request, &avail)) { ok = false; break; }
+                    if (avail == 0) break;
+                    std::vector<char> buf(avail < 65536 ? avail : 65536);
+                    DWORD read = 0;
+                    if (!WinHttpReadData(request, buf.data(), (DWORD)buf.size(), &read) ||
+                        read == 0) {
+                        if (read == 0) break;
+                        ok = false;
+                        break;
+                    }
+                    received += read;
+                    if (file != INVALID_HANDLE_VALUE) {
+                        DWORD written = 0;
+                        if (!WriteFile(file, buf.data(), read, &written, nullptr)) {
+                            ok = false;
+                            break;
+                        }
+                    } else if (outBody) {
+                        outBody->append(buf.data(), read);
+                    }
+                    if (onData) onData(received, total);
+                }
+            }
+        }
+    }
+    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
+    if (request) WinHttpCloseHandle(request);
+    if (connect) WinHttpCloseHandle(connect);
+    if (session) WinHttpCloseHandle(session);
+    return ok;
+}
+
+// CryptoAPI로 SHA-256 (bcrypt를 새로 링크하지 않으려고 advapi32/crypt32 조합을 쓴다).
+// 4GB 모델 파일도 다루므로 스트리밍으로 읽는다.
+std::string Sha256File(const std::wstring& path) {
+    HANDLE file = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                              FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+    if (file == INVALID_HANDLE_VALUE) return "";
+
+    HCRYPTPROV prov = 0;
+    HCRYPTHASH hash = 0;
+    std::string out;
+    if (CryptAcquireContextW(&prov, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT) &&
+        CryptCreateHash(prov, CALG_SHA_256, 0, 0, &hash)) {
+        std::vector<BYTE> buf(1 << 20);
+        DWORD read = 0;
+        bool ok = true;
+        while (ReadFile(file, buf.data(), (DWORD)buf.size(), &read, nullptr) && read > 0) {
+            if (!CryptHashData(hash, buf.data(), read, 0)) { ok = false; break; }
+        }
+        BYTE digest[32]{};
+        DWORD len = sizeof(digest);
+        if (ok && CryptGetHashParam(hash, HP_HASHVAL, digest, &len, 0)) {
+            static const char* kHex = "0123456789abcdef";
+            for (DWORD i = 0; i < len; ++i) {
+                out += kHex[digest[i] >> 4];
+                out += kHex[digest[i] & 0xF];
+            }
+        }
+    }
+    if (hash) CryptDestroyHash(hash);
+    if (prov) CryptReleaseContext(prov, 0);
+    CloseHandle(file);
+    return out;
 }
 
 bool WriteFileAtomic(const std::wstring& path, const std::string& data) {

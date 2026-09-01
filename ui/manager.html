@@ -159,7 +159,62 @@
   </main>
 
   <main id="aiTab" class="tabpage hidden">
+    <!-- 백엔드 선택: 자체 모델(앱이 llama-server를 띄움) vs Ollama(외부 서버) -->
     <section>
+      <h2 data-i18n="ai.backendTitle"></h2>
+      <p class="desc" data-i18n="ai.backendDesc"></p>
+      <div class="row">
+        <label data-i18n="ai.backend"></label>
+        <div class="seg" id="providerSeg">
+          <button data-provider="builtin" data-i18n="ai.backendBuiltin"></button>
+          <button data-provider="ollama" data-i18n="ai.backendOllama"></button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 자체 모델 -->
+    <section id="builtinSection">
+      <h2 data-i18n="ai.builtinTitle"></h2>
+      <p class="desc" data-i18n="ai.builtinDesc"></p>
+
+      <div class="row">
+        <label data-i18n="ai.engine"></label>
+        <span id="engineStatus" class="status"></span>
+        <button id="installEngineBtn" data-i18n="ai.installEngine"></button>
+      </div>
+      <div class="row hidden" id="engineProgressRow">
+        <progress id="engineProgress" max="100" value="0"></progress>
+        <span id="enginePct" class="status"></span>
+      </div>
+
+      <div id="modelCards"></div>
+
+      <div class="row">
+        <label data-i18n="ai.contextSize"></label>
+        <select id="ctxSelect">
+          <option value="2048">2048</option>
+          <option value="4096">4096</option>
+          <option value="8192">8192</option>
+          <option value="16384">16384</option>
+        </select>
+        <span class="status" data-i18n="ai.contextHint"></span>
+      </div>
+      <div class="row">
+        <label class="check-label">
+          <input type="checkbox" id="autoLoadCheck">
+          <span data-i18n="ai.autoLoad"></span>
+        </label>
+        <span class="status" data-i18n="ai.autoLoadHint"></span>
+      </div>
+      <div class="row">
+        <button id="startServerBtn" data-i18n="ai.startServer"></button>
+        <button id="stopServerBtn" data-i18n="ai.stopServer"></button>
+        <span id="serverStatus" class="status"></span>
+      </div>
+      <p class="desc about-note" data-i18n="ai.builtinNote"></p>
+    </section>
+
+    <section id="ollamaSection">
       <h2 data-i18n="settings.ollama"></h2>
       <p class="desc" data-i18n="settings.ollamaDesc"></p>
       <div class="row">

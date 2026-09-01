@@ -1,4 +1,4 @@
-#include "OllamaClient.h"
+#include "AiClient.h"
 
 #include <thread>
 #include <vector>
@@ -7,7 +7,7 @@
 
 using json = nlohmann::json;
 
-OllamaClient::Url OllamaClient::ParseEndpoint(const std::string& endpoint) {
+AiClient::Url AiClient::ParseEndpoint(const std::string& endpoint) {
     Url u;
     std::wstring w = util::Utf8ToWide(endpoint);
     URL_COMPONENTS c{};
@@ -35,9 +35,9 @@ struct Session {
 };
 
 // 요청 핸들 열기까지 공통 처리. 실패 시 request == nullptr.
-void OpenRequest(Session& s, const OllamaClient::Url& u, const wchar_t* verb,
+void OpenRequest(Session& s, const AiClient::Url& u, const wchar_t* verb,
                  const wchar_t* path) {
-    s.session = WinHttpOpen(L"SuperSticker/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
+    s.session = WinHttpOpen(L"SuperStickers/1.0", WINHTTP_ACCESS_TYPE_NO_PROXY,
                             WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (!s.session) return;
     // 로컬 LLM 응답은 느릴 수 있으므로 수신 타임아웃을 넉넉히 (10분)
@@ -72,7 +72,7 @@ DWORD StatusCode(HINTERNET request) {
 
 }  // namespace
 
-void OllamaClient::ListModels(
+void AiClient::ListModels(
     const std::string& endpoint,
     std::function<void(bool, std::vector<std::string>, std::string)> done) {
     Url u = ParseEndpoint(endpoint);
@@ -101,17 +101,17 @@ void OllamaClient::ListModels(
     }).detach();
 }
 
-void OllamaClient::Chat(const std::string& requestId, const std::string& endpoint,
-                        const std::string& model, const json& messages,
-                        std::function<void(std::string)> onChunk,
-                        std::function<void(bool, std::string)> onDone, bool jsonFormat) {
+void AiClient::Chat(const std::string& requestId, const std::string& endpoint,
+                    const std::string& model, const json& messages, const ChatOptions& opts,
+                    std::function<void(std::string)> onChunk,
+                    std::function<void(bool, std::string)> onDone) {
     Url u = ParseEndpoint(endpoint);
     auto aborted = std::make_shared<std::atomic<bool>>(false);
     {
         std::lock_guard<std::mutex> lock(mutex_);
         activeRequests_[requestId] = aborted;
     }
-    std::thread([this, requestId, u, model, messages, onChunk, onDone, aborted, jsonFormat]() {
+    std::thread([this, requestId, u, model, messages, onChunk, onDone, aborted, opts]() {
         auto finish = [&](bool ok, const std::string& err) {
             {
                 std::lock_guard<std::mutex> lock(mutex_);
@@ -121,12 +121,23 @@ void OllamaClient::Chat(const std::string& requestId, const std::string& endpoin
         };
         if (!u.valid) return finish(false, "invalid endpoint");
 
+        const bool sse = opts.protocol == Protocol::OpenAiSse;
         Session s;
-        OpenRequest(s, u, L"POST", L"/api/chat");
+        OpenRequest(s, u, L"POST", sse ? L"/v1/chat/completions" : L"/api/chat");
         if (!s.request) return finish(false, "connection failed");
 
         json bodyJson = {{"model", model}, {"messages", messages}, {"stream", true}};
-        if (jsonFormat) bodyJson["format"] = "json";
+        if (sse) {
+            // llama-server는 OpenAI 규격을 따른다
+            if (opts.jsonFormat) bodyJson["response_format"] = {{"type", "json_object"}};
+            // Qwen3 같은 하이브리드 추론 모델은 이걸 끄지 않으면 reasoning_content만 내보내고
+            // content가 비어서 결과가 통째로 사라진다 (실측). 템플릿이 모르는 키는 무시된다.
+            if (opts.disableThinking) {
+                bodyJson["chat_template_kwargs"] = {{"enable_thinking", false}};
+            }
+        } else if (opts.jsonFormat) {
+            bodyJson["format"] = "json";
+        }
         std::string body = bodyJson.dump();
         bool sent = WinHttpSendRequest(s.request, L"Content-Type: application/json\r\n", (DWORD)-1,
                                        (LPVOID)body.data(), (DWORD)body.size(), (DWORD)body.size(),
@@ -137,7 +148,7 @@ void OllamaClient::Chat(const std::string& requestId, const std::string& endpoin
             return finish(false, "http " + std::to_string(StatusCode(s.request)));
         }
 
-        // NDJSON 스트림: 라인 단위 파싱. 청크 사이마다 중단 플래그 확인.
+        // 두 프로토콜 모두 라인 단위다 (NDJSON / SSE). 청크 사이마다 중단 플래그를 본다.
         std::string pending;
         bool doneFlag = false;
         std::string errMsg;
@@ -163,21 +174,52 @@ void OllamaClient::Chat(const std::string& requestId, const std::string& endpoin
             while ((nl = pending.find('\n')) != std::string::npos) {
                 std::string line = pending.substr(0, nl);
                 pending.erase(0, nl + 1);
+                if (!line.empty() && line.back() == '\r') line.pop_back();  // SSE는 CRLF
                 if (line.empty()) continue;
-                json j = json::parse(line, nullptr, false);
+
+                std::string payload = line;
+                if (sse) {
+                    if (line.rfind("data:", 0) != 0) continue;  // 주석·이벤트 줄은 버린다
+                    payload = line.substr(5);
+                    if (!payload.empty() && payload.front() == ' ') payload.erase(0, 1);
+                    if (payload == "[DONE]") {
+                        doneFlag = true;
+                        break;
+                    }
+                }
+
+                json j = json::parse(payload, nullptr, false);
                 if (j.is_discarded()) continue;
                 if (j.contains("error")) {
-                    errMsg = j["error"].is_string() ? j["error"].get<std::string>() : "error";
+                    const json& e = j["error"];
+                    if (e.is_string()) errMsg = e.get<std::string>();
+                    else if (e.is_object() && e.contains("message") && e["message"].is_string())
+                        errMsg = e["message"].get<std::string>();
+                    else errMsg = "error";
                     doneFlag = true;
                     break;
                 }
-                if (j.contains("message") && j["message"].contains("content")) {
-                    std::string delta = j["message"]["content"].get<std::string>();
-                    if (!delta.empty() && !aborted->load()) {
-                        PostUi([onChunk, delta]() { onChunk(delta); });
+
+                std::string delta;
+                if (sse) {
+                    // reasoning_content(추론 과정)는 본문이 아니므로 버린다
+                    if (j.contains("choices") && j["choices"].is_array() &&
+                        !j["choices"].empty()) {
+                        const json& ch = j["choices"][0];
+                        if (ch.contains("delta") && ch["delta"].contains("content") &&
+                            ch["delta"]["content"].is_string()) {
+                            delta = ch["delta"]["content"].get<std::string>();
+                        }
                     }
+                } else {
+                    if (j.contains("message") && j["message"].contains("content")) {
+                        delta = j["message"]["content"].get<std::string>();
+                    }
+                    if (j.value("done", false)) doneFlag = true;
                 }
-                if (j.value("done", false)) doneFlag = true;
+                if (!delta.empty() && !aborted->load()) {
+                    PostUi([onChunk, delta]() { onChunk(delta); });
+                }
             }
             if (doneFlag) break;
         }
@@ -186,7 +228,7 @@ void OllamaClient::Chat(const std::string& requestId, const std::string& endpoin
     }).detach();
 }
 
-void OllamaClient::Pull(const std::string& requestId, const std::string& endpoint,
+void AiClient::Pull(const std::string& requestId, const std::string& endpoint,
                         const std::string& model,
                         std::function<void(std::string, uint64_t, uint64_t)> onProgress,
                         std::function<void(bool, std::string)> onDone) {
@@ -277,7 +319,7 @@ void OllamaClient::Pull(const std::string& requestId, const std::string& endpoin
     }).detach();
 }
 
-void OllamaClient::Abort(const std::string& requestId) {
+void AiClient::Abort(const std::string& requestId) {
     std::lock_guard<std::mutex> lock(mutex_);
     auto it = activeRequests_.find(requestId);
     if (it != activeRequests_.end()) it->second->store(true);

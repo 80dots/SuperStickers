@@ -10,8 +10,9 @@
 
 #include <json.hpp>
 
+#include "AiClient.h"
 #include "I18n.h"
-#include "OllamaClient.h"
+#include "LocalAi.h"
 #include "Store.h"
 #include "TrayIcon.h"
 
@@ -33,7 +34,8 @@ public:
     Settings settings;
     Store store;
     I18n i18n;
-    OllamaClient ollama;
+    AiClient ai;      // Ollama·내장 공통 HTTP 클라이언트
+    LocalAi localAi;  // 내장 백엔드(llama-server) 관리
 
     std::string EffectiveTheme() const;  // "light" | "dark"
     // 삭제 확인 네이티브 대화상자. 그룹 콘텐츠 창은 SetWindowRgn으로 잘려 있어
@@ -109,6 +111,10 @@ public:
     // Ollama 공식 설치 프로그램을 내려받아 무인 설치 (워커 스레드).
     // 진행: ollama.installProgress {stage, total, received} / 완료: ollama.installDone.
     void InstallOllama();
+    // 설정의 "auto"를 실제 엔진 변형으로 푼다 ("cpu" | "vulkan")
+    std::string ResolvedEngineVariant() const;
+    // 시작 시 자동 로드 (설정이 켜져 있고 엔진·모델이 준비된 경우에만)
+    void MaybeAutoLoadModel();
     static bool IsOllamaInstalled();
     // 설정 창을 닫을 때: 진행 중인 설치/모델 다운로드 확인·중단
     bool HasActiveOllamaTasks() const;

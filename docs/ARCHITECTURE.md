@@ -66,6 +66,45 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - 이벤트(`theme.changed`, `locale.changed`, `ollama.chunk` 등)는 모든 창에 브로드캐스트하고
   웹 측에서 requestId 등으로 필터링한다.
 
+### AI 백엔드 (Ollama / 자체 모델)
+
+`settings.aiProvider`가 `"ollama"`인지 `"builtin"`인지에 따라 갈린다. **페이지는 어느
+쪽인지 모른다** — `ai.chat`만 부르고 `ai.chunk`/`ai.done`을 듣는다. 라우팅은 App이 한다.
+
+- **AiClient**(구 OllamaClient)가 두 프로토콜을 모두 다룬다. 스트리밍 루프는 하나이고
+  파싱만 갈린다:
+  - Ollama: `POST /api/chat`, NDJSON 한 줄에 `message.content`, 끝은 `done:true`
+  - 자체 모델: `POST /v1/chat/completions`, SSE `data: {...}`에 `choices[0].delta.content`,
+    끝은 `data: [DONE]`. JSON 강제는 `response_format:{type:"json_object"}`
+- **함정 — 추론 모델의 본문이 빈다**: Qwen3 계열은 `reasoning_content`로 사고 과정을 먼저
+  쏟아낸다. 그대로 두면 토큰 예산을 사고에 다 쓰고 `content`가 빈 채 끝난다(실측: 요약이
+  통째로 사라졌다). 그래서 `chat_template_kwargs:{enable_thinking:false}`를 함께 보내고
+  (`ModelInfo::disableThinking`), 파서는 `reasoning_content`를 버린다.
+
+#### 자체 모델 (`LocalAi`)
+
+- **llama.cpp의 `llama-server`를 자식 프로세스로 띄운다.** 추론 라이브러리를 앱에 정적
+  링크하면 GPU 백엔드까지 우리가 떠안아야 한다. 공식 배포본을 그대로 쓰면 모델 로딩 중
+  크래시도 앱과 분리되고, 통신은 이미 있는 HTTP 스트리밍 코드를 재사용한다.
+- **엔진은 필요할 때 내려받는다**(설치본을 키우지 않기 위해). 자산 이름은
+  `llama-<build>-bin-win-<cpu|vulkan>-x64.zip`이고, **빌드 번호와 sha256을 코드에 고정**한다
+  (`kEngineBuild`, `Engines()`). llama.cpp는 하루에도 여러 번 배포되므로 `latest`를 따라가면
+  사용자마다 다른 빌드를 받게 된다. 받은 뒤 sha256이 다르면 버린다.
+- **엔진 변형**: `cpu`(17MB)와 `vulkan`(33MB). 두 패키지 모두 자체 완결형이다(vulkan 쪽에도
+  ggml-cpu가 다 들어 있다). `auto`는 `vulkan-1.dll`이 있고 그 엔진이 설치돼 있으면 vulkan,
+  아니면 cpu로 떨어진다 — **없는 엔진을 고르면 기동이 그냥 실패**하므로 설치 여부까지 본다.
+- **모델**은 Hugging Face에서 단일 파일 Q4_K_M GGUF를 받는다. `.part`로 받아 GGUF 매직과
+  크기를 확인한 뒤에야 정본 이름으로 옮긴다 — 받다 만 파일이 정본 자리에 있으면 다음
+  실행에서 멀쩡한 모델로 오인한다. 카탈로그(`Catalog()`)에는 라이선스도 함께 두고 UI에
+  그대로 노출한다(EXAONE은 비상업 라이선스다).
+- **서버 수명**: 포트는 바인드해 보고 비어 있는 것을 고른다. 자식 프로세스는
+  `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` 잡에 넣어 **앱이 비정상 종료해도 남지 않게** 한다
+  (모델 하나가 수 GB를 문다). 기동 완료는 `/health`가 200을 줄 때까지 폴링해서 판단하고
+  (로딩 중에는 503), 모델·엔진·컨텍스트가 바뀌면 내렸다 다시 띄운다. 종료·백엔드 전환·
+  모델 삭제에서도 내린다.
+- 첫 요청은 모델 로딩(수십 초)이 앞에 붙으므로 `ai.status {state:"loading"}`를 먼저 보내
+  메모창이 "모델을 올리는 중"을 표시한다.
+
 ### 버전과 '정보' 탭
 
 - **버전의 단일 출처는 `CMakeLists.txt`의 `project(SuperSticker VERSION ...)` 하나다.**

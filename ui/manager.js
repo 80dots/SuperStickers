@@ -94,6 +94,8 @@
       url: 'https://github.com/microsoft/wil' },
     { name: 'nlohmann/json', version: '3.11.3', license: 'MIT',
       url: 'https://github.com/nlohmann/json' },
+    { name: 'llama.cpp (llama-server)', version: 'b10738', license: 'MIT',
+      url: 'https://github.com/ggml-org/llama.cpp' },
     { name: 'marked', version: '15.0.12', license: 'MIT', url: 'https://marked.js.org/' },
     { name: 'three.js', version: 'r147', license: 'MIT', url: 'https://threejs.org/' },
     { name: 'Pretendard', version: 'Variable', license: 'SIL Open Font License 1.1',
@@ -230,7 +232,9 @@ SOFTWARE.`;
     if (name === 'data') refreshDataPath();
     if (name === 'settings') refreshTrashCount();
     if (name === 'ai') {
-      runConnectTest();  // Ollama 상태 자동 확인 (미설치면 설치 버튼 노출)
+      // 쓰는 백엔드 쪽만 확인한다 (Ollama를 안 쓰는데 연결 실패를 띄우면 혼란스럽다)
+      refreshBuiltin();
+      if (state.settings.aiProvider !== 'builtin') runConnectTest();
       renderPrompts();
     }
     if (name === 'about') renderAbout();
@@ -709,6 +713,286 @@ SOFTWARE.`;
   bridge.on('trash.changed', (d) => {
     $('#trashCount').textContent = i18n.t('settings.trashCount').replace('{n}', d.count);
     if (!$('#trashTab').classList.contains('hidden')) refreshTrash();
+  });
+
+  // ---------- 자체 모델(내장 백엔드) ----------
+  // 화면의 단일 출처는 네이티브의 ai.getConfig다 — 카탈로그·설치 여부·서버 상태를 한 번에 받는다.
+  let aiConfig = null;
+  let dlModelId = null;   // 내려받는 중인 모델
+  let engineBusy = false;
+
+  const fmtSize = (bytes) => (bytes / 1073741824).toFixed(1) + ' GB';
+
+  async function refreshBuiltin() {
+    try {
+      aiConfig = await bridge.call('ai.getConfig');
+    } catch (e) {
+      console.error(e);
+      return;
+    }
+    applyProviderUi(aiConfig.provider);
+
+    // 엔진 상태
+    const resolved = aiConfig.builtin.resolvedEngine;
+    const engine = (aiConfig.engines || []).find((e) => e.id === resolved);
+    const installed = engine && engine.installed;
+    const st = $('#engineStatus');
+    st.className = 'status' + (installed ? ' ok' : '');
+    st.textContent = installed
+      ? i18n.t('ai.engineReady').replace('{variant}', resolved)
+      : i18n.t('ai.engineMissing')
+          .replace('{variant}', resolved)
+          .replace('{size}', engine ? Math.round(engine.sizeBytes / 1048576) + ' MB' : '');
+    $('#installEngineBtn').classList.toggle('hidden', !!installed || engineBusy);
+
+    // 컨텍스트 길이 · 자동 로드
+    $('#ctxSelect').value = String(aiConfig.builtin.contextSize);
+    $('#autoLoadCheck').checked = !!aiConfig.builtin.autoLoad;
+
+    // 서버 상태
+    const running = aiConfig.builtin.serverRunning;
+    $('#startServerBtn').classList.toggle('hidden', running);
+    $('#stopServerBtn').classList.toggle('hidden', !running);
+    const ss = $('#serverStatus');
+    ss.className = 'status' + (running ? ' ok' : '');
+    ss.textContent = running
+      ? i18n.t('ai.serverRunning').replace('{model}', aiConfig.builtin.runningModel)
+      : i18n.t('ai.serverStopped');
+
+    renderModelCards();
+  }
+
+  function renderModelCards() {
+    const host = $('#modelCards');
+    if (!host || !aiConfig) return;
+    host.innerHTML = '';
+    aiConfig.models.forEach((m) => {
+      const selected = aiConfig.builtin.modelId === m.id;
+      const card = document.createElement('div');
+      card.className = 'model-card' + (selected ? ' on' : '');
+
+      const head = document.createElement('div');
+      head.className = 'model-head';
+
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'builtinModel';
+      radio.checked = selected;
+      radio.disabled = !m.installed;   // 받지 않은 모델은 고를 수 없다
+      radio.addEventListener('change', () => selectModel(m.id));
+      head.appendChild(radio);
+
+      const name = document.createElement('span');
+      name.className = 'model-name';
+      name.textContent = m.name;
+      head.appendChild(name);
+
+      if (m.recommended) {
+        const rec = document.createElement('span');
+        rec.className = 'model-badge';
+        rec.textContent = i18n.t('ai.recommended');
+        head.appendChild(rec);
+      }
+
+      const size = document.createElement('span');
+      size.className = 'model-size';
+      size.textContent = fmtSize(m.sizeBytes);
+      head.appendChild(size);
+
+      const act = document.createElement('button');
+      act.className = 'model-action';
+      if (m.installed) {
+        act.textContent = i18n.t('ai.deleteModel');
+        act.classList.add('danger-text');
+        act.addEventListener('click', () => deleteModel(m.id));
+      } else {
+        act.textContent = i18n.t('ai.download');
+        act.addEventListener('click', () => downloadModel(m.id));
+      }
+      act.disabled = dlModelId !== null || engineBusy;
+      head.appendChild(act);
+      card.appendChild(head);
+
+      const meta = document.createElement('div');
+      meta.className = 'model-meta';
+      meta.textContent = `${m.params} · ${m.license} · ${m.repo}`;
+      card.appendChild(meta);
+
+      // 진행률은 내려받는 중인 카드에만 붙인다
+      if (dlModelId === m.id) {
+        const bar = document.createElement('progress');
+        bar.id = 'modelProgress';
+        bar.max = 100;
+        bar.value = 0;
+        card.appendChild(bar);
+        const pct = document.createElement('span');
+        pct.id = 'modelPct';
+        pct.className = 'status';
+        card.appendChild(pct);
+        const cancel = document.createElement('button');
+        cancel.className = 'model-action';
+        cancel.textContent = i18n.t('ai.cancel');
+        cancel.addEventListener('click', () => bridge.call('ai.cancelDownload').catch(() => {}));
+        card.appendChild(cancel);
+      }
+      host.appendChild(card);
+    });
+  }
+
+  function selectModel(id) {
+    if (!aiConfig) return;
+    aiConfig.builtin.modelId = id;
+    bridge.call('settings.set', { builtin: { modelId: id } }).catch(console.error);
+    renderModelCards();
+  }
+
+  async function downloadModel(id) {
+    // 엔진이 없으면 모델만 받아도 못 돌린다 — 엔진부터 받도록 안내한다
+    const resolved = aiConfig.builtin.resolvedEngine;
+    const engine = (aiConfig.engines || []).find((e) => e.id === resolved);
+    if (!engine || !engine.installed) {
+      $('#engineStatus').className = 'status err';
+      $('#engineStatus').textContent = i18n.t('ai.engineFirst');
+      return;
+    }
+    dlModelId = id;
+    renderModelCards();
+    try {
+      await bridge.call('ai.downloadModel', { id });
+    } catch (e) {
+      dlModelId = null;
+      renderModelCards();
+      console.error(e);
+    }
+  }
+
+  async function deleteModel(id) {
+    try {
+      await bridge.call('ai.deleteModel', { id });
+    } catch (e) { console.error(e); }
+    refreshBuiltin();
+  }
+
+  bridge.on('ai.modelProgress', (d) => {
+    if (d.id !== dlModelId) return;
+    const bar = $('#modelProgress');
+    const pct = $('#modelPct');
+    if (!bar || !pct) return;
+    if (d.stage === 'verify') {
+      pct.textContent = i18n.t('ai.verifying');
+      return;
+    }
+    if (d.total > 0) {
+      bar.value = Math.round((d.received / d.total) * 100);
+      pct.textContent = `${bar.value}% (${fmtSize(d.received)} / ${fmtSize(d.total)})`;
+    }
+  });
+
+  bridge.on('ai.modelDone', (d) => {
+    dlModelId = null;
+    if (d.ok) {
+      // 받은 모델이 처음이면 바로 선택해 준다 (한 번 더 누르게 하지 않는다)
+      if (aiConfig && !aiConfig.builtin.modelId) selectModel(d.id);
+    } else if (d.error !== 'aborted') {
+      $('#engineStatus').className = 'status err';
+      $('#engineStatus').textContent = `${i18n.t('ai.downloadFailed')}: ${d.error}`;
+    }
+    refreshBuiltin();
+  });
+
+  $('#installEngineBtn').addEventListener('click', async () => {
+    engineBusy = true;
+    $('#installEngineBtn').classList.add('hidden');
+    $('#engineProgressRow').classList.remove('hidden');
+    try {
+      await bridge.call('ai.installEngine', {});
+    } catch (e) {
+      engineBusy = false;
+      console.error(e);
+      refreshBuiltin();
+    }
+  });
+
+  bridge.on('ai.engineProgress', (d) => {
+    const bar = $('#engineProgress');
+    const pct = $('#enginePct');
+    if (d.stage === 'download' && d.total > 0) {
+      bar.value = Math.round((d.received / d.total) * 100);
+      pct.textContent = `${bar.value}%`;
+    } else {
+      pct.textContent = i18n.t(d.stage === 'extract' ? 'ai.extracting' : 'ai.verifying');
+    }
+  });
+
+  bridge.on('ai.engineDone', (d) => {
+    engineBusy = false;
+    $('#engineProgressRow').classList.add('hidden');
+    if (!d.ok && d.error !== 'aborted') {
+      $('#engineStatus').className = 'status err';
+      $('#engineStatus').textContent = `${i18n.t('ai.engineFailed')}: ${d.error}`;
+      setTimeout(refreshBuiltin, 3000);
+      return;
+    }
+    refreshBuiltin();
+  });
+
+  $('#autoLoadCheck').addEventListener('change', (e) => {
+    // 켠다고 지금 올리지는 않는다 — 문구대로 '앱을 실행할 때' 올라간다
+    bridge.call('settings.set', { builtin: { autoLoad: e.target.checked } })
+      .catch(console.error);
+  });
+
+  $('#ctxSelect').addEventListener('change', (e) => {
+    bridge.call('settings.set', { builtin: { contextSize: Number(e.target.value) } })
+      .catch(console.error);
+  });
+
+  $('#startServerBtn').addEventListener('click', async () => {
+    const ss = $('#serverStatus');
+    ss.className = 'status busy';
+    ss.textContent = i18n.t('ai.serverStarting');
+    try {
+      await bridge.call('ai.startServer');
+    } catch (e) {
+      ss.className = 'status err';
+      ss.textContent = `${i18n.t('ai.serverFailed')}: ${e.message}`;
+    }
+  });
+
+  $('#stopServerBtn').addEventListener('click', async () => {
+    try { await bridge.call('ai.stopServer'); } catch (e) { console.error(e); }
+    refreshBuiltin();
+  });
+
+  bridge.on('ai.serverState', (d) => {
+    if (!d.running && d.error) {
+      const ss = $('#serverStatus');
+      ss.className = 'status err';
+      ss.textContent = `${i18n.t('ai.serverFailed')}: ${d.error}`;
+      return;
+    }
+    refreshBuiltin();
+  });
+
+  // 백엔드 전환 — 한쪽 패널만 보인다
+  function applyProviderUi(provider) {
+    document.querySelectorAll('#providerSeg button').forEach((b) =>
+      b.classList.toggle('on', b.dataset.provider === provider));
+    $('#builtinSection').classList.toggle('hidden', provider !== 'builtin');
+    $('#ollamaSection').classList.toggle('hidden', provider !== 'ollama');
+  }
+
+  document.querySelectorAll('#providerSeg button').forEach((b) => {
+    b.addEventListener('click', async () => {
+      const provider = b.dataset.provider;
+      if (aiConfig) aiConfig.provider = provider;
+      applyProviderUi(provider);
+      try {
+        await bridge.call('settings.set', { aiProvider: provider });
+      } catch (e) { console.error(e); }
+      if (provider === 'builtin') refreshBuiltin();
+      else runConnectTest();
+    });
   });
 
   $('#endpointInput').addEventListener('change', (e) => {

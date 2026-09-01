@@ -536,9 +536,9 @@
     $('#summaryText').textContent = i18n.t('review.working');
     // 리뷰 프롬프트는 prompts.js가 단일 출처 — 설정에서 편집한 값이 있으면 그것을 쓴다
     const messages = prompts.build('review', text, i18n.lang);
-    bridge.call('ollama.chat',
+    bridge.call('ai.chat',
                 { requestId: reviewRequestId, ownerId: init.stickerId, messages,
-                  format: 'json' })  // Ollama JSON 강제 — 형식 파싱 실패 방지
+                  jsonFormat: true })  // 응답을 JSON으로 강제 — 형식 파싱 실패 방지
       .catch((e) => {
       reviewRequestId = null;
       renderSummary(/no model/.test(e.message) ? i18n.t('ai.noModel')
@@ -548,10 +548,16 @@
   }
   if (isText) {
     $('#aiReviewBtn').addEventListener('click', runAiReview);
-    bridge.on('ollama.chunk', (d) => {
+    bridge.on('ai.chunk', (d) => {
       if (d.requestId === reviewRequestId) reviewBuf += d.delta;
     });
-    bridge.on('ollama.done', (d) => {
+    bridge.on('ai.status', (d) => {
+      // 내장 모델을 처음 쓸 때는 모델 로딩(수십 초)이 먼저다
+      if (d.requestId === reviewRequestId && d.state === 'loading') {
+        $('#summaryText').textContent = i18n.t('ai.loadingModel');
+      }
+    });
+    bridge.on('ai.done', (d) => {
       if (d.requestId !== reviewRequestId) return;
       reviewRequestId = null;
       if (!d.ok) {
@@ -1191,7 +1197,7 @@
       aiPanel.classList.toggle('hidden');
     });
     $('#aiCloseBtn').addEventListener('click', () => {
-      if (currentRequestId) bridge.call('ollama.abort', { requestId: currentRequestId });
+      if (currentRequestId) bridge.call('ai.abort', { requestId: currentRequestId });
       aiPanel.classList.add('hidden');
     });
     function captureSelection() {
@@ -1232,7 +1238,7 @@
       aiOutput.textContent = i18n.t('ai.working');
       aiActions.classList.remove('hidden');
       setActionsState();
-      bridge.call('ollama.chat',
+      bridge.call('ai.chat',
                   { requestId: currentRequestId, ownerId: init.stickerId, messages })
         .catch((e) => {
         streaming = false;
@@ -1277,14 +1283,18 @@
         runTask('ask');
       }
     });
-    bridge.on('ollama.chunk', (d) => {
+    bridge.on('ai.status', (d) => {
+      if (d.requestId !== currentRequestId || d.state !== 'loading') return;
+      aiOutput.textContent = i18n.t('ai.loadingModel');
+    });
+    bridge.on('ai.chunk', (d) => {
       if (d.requestId !== currentRequestId) return;
       if (resultText === '') aiOutput.textContent = '';
       resultText += d.delta;
       aiOutput.textContent = resultText;
       aiOutput.scrollTop = aiOutput.scrollHeight;
     });
-    bridge.on('ollama.done', (d) => {
+    bridge.on('ai.done', (d) => {
       if (d.requestId !== currentRequestId) return;
       streaming = false;
       if (!d.ok) {
@@ -1296,7 +1306,7 @@
       setActionsState();
     });
     $('#aiStopBtn').addEventListener('click', () => {
-      if (currentRequestId) bridge.call('ollama.abort', { requestId: currentRequestId });
+      if (currentRequestId) bridge.call('ai.abort', { requestId: currentRequestId });
     });
     $('#aiInsertBtn').addEventListener('click', () => {
       if (!resultText) return;

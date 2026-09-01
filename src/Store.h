@@ -10,11 +10,24 @@ struct OllamaSettings {
     std::string model;
 };
 
+// 내장 백엔드(llama-server) 설정. 모델 파일과 엔진은 데이터 폴더의 ai 하위에 둔다.
+struct BuiltinAiSettings {
+    std::string modelId;          // LocalAi::Catalog()의 id
+    std::string engine = "auto";  // "auto" | "cpu" | "vulkan" (auto = GPU 있으면 vulkan)
+    int contextSize = 4096;       // 컨텍스트 길이 (토큰)
+    // 앱이 시작될 때 선택한 모델을 미리 올려 둔다. 첫 응답의 로딩 대기를 없애는 대신
+    // 시작하자마자 모델 크기만큼 메모리를 쓰므로 기본은 꺼 둔다.
+    bool autoLoad = false;
+};
+
 struct Settings {
     std::string theme = "system";  // "light" | "dark" | "system"
     std::string language;          // "ko" | "en" (빈 값이면 OS 언어로 결정)
     bool autostart = false;
+    // AI 백엔드: "ollama"(외부 Ollama 서버) | "builtin"(앱이 띄우는 llama-server)
+    std::string aiProvider = "ollama";
     OllamaSettings ollama;
+    BuiltinAiSettings builtin;
     bool trashEnabled = true;      // false면 삭제 시 즉시 완전 삭제
     int trashRetentionDays = 30;   // 휴지통 보관 일수, 0 = 자동 삭제하지 않음
     double uiScale = 1.0;          // 전체 UI 배율 (0.3 ~ 2.0, 1.0 = 100%)

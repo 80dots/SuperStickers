@@ -81,6 +81,18 @@ Settings Store::LoadSettings() {
             s.ollama.endpoint = j["ollama"].value("endpoint", s.ollama.endpoint);
             s.ollama.model = j["ollama"].value("model", s.ollama.model);
         }
+        s.aiProvider = j.value("aiProvider", s.aiProvider);
+        if (s.aiProvider != "builtin") s.aiProvider = "ollama";
+        if (j.contains("builtin") && j["builtin"].is_object()) {
+            s.builtin.modelId = j["builtin"].value("modelId", s.builtin.modelId);
+            s.builtin.engine = j["builtin"].value("engine", s.builtin.engine);
+            if (s.builtin.engine != "cpu" && s.builtin.engine != "vulkan")
+                s.builtin.engine = "auto";
+            s.builtin.autoLoad = j["builtin"].value("autoLoad", s.builtin.autoLoad);
+            s.builtin.contextSize = j["builtin"].value("contextSize", s.builtin.contextSize);
+            if (s.builtin.contextSize < 1024) s.builtin.contextSize = 1024;
+            if (s.builtin.contextSize > 32768) s.builtin.contextSize = 32768;
+        }
         if (j.contains("trash") && j["trash"].is_object()) {
             s.trashEnabled = j["trash"].value("enabled", s.trashEnabled);
             s.trashRetentionDays = j["trash"].value("retentionDays", s.trashRetentionDays);
@@ -123,6 +135,12 @@ void Store::SaveSettings(const Settings& s) {
         {"language", s.language},
         {"autostart", s.autostart},
         {"ollama", {{"endpoint", s.ollama.endpoint}, {"model", s.ollama.model}}},
+        {"aiProvider", s.aiProvider},
+        {"builtin",
+         {{"modelId", s.builtin.modelId},
+          {"engine", s.builtin.engine},
+          {"contextSize", s.builtin.contextSize},
+          {"autoLoad", s.builtin.autoLoad}}},
         {"trash", {{"enabled", s.trashEnabled}, {"retentionDays", s.trashRetentionDays}}},
         {"uiScale", s.uiScale},
         {"autoHideUi", s.autoHideUi},

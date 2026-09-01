@@ -19,6 +19,7 @@
 #include "ManagerWindow.h"
 #include "StickerWindow.h"
 #include "Theme.h"
+#include "LocalAi.h"
 #include "Utils.h"
 #include "Version.h"  // 빌드 시 CMake가 생성 (원본: src/Version.h.in)
 #include "WebViewHost.h"
@@ -84,7 +85,9 @@ bool App::Init(HINSTANCE hinst, bool startHidden) {
     HICON icon = LoadIconW(hinst, MAKEINTRESOURCEW(IDI_APP));
     tray_.Create(hwnd_, WM_APP_TRAY, icon, L"Super Stickers");
 
-    ollama.SetUiPoster([this](std::function<void()> fn) { RunOnUi(std::move(fn)); });
+    ai.SetUiPoster([this](std::function<void()> fn) { RunOnUi(std::move(fn)); });
+    localAi.Init([this](std::function<void()> fn) { RunOnUi(std::move(fn)); },
+                 store.AppDir());
 
     WebViewHost::EnsureEnvironment([this, startHidden](HRESULT hr) {
         if (FAILED(hr)) {
@@ -120,6 +123,28 @@ void App::OnEnvironmentReady(bool startHidden) {
         }
     }
     if (all.empty() && allGroups.empty() && !startHidden) NewSticker();
+
+    MaybeAutoLoadModel();
+}
+
+// 자체 모델을 쓰고 자동 로드가 켜져 있으면 시작할 때 미리 올려 둔다.
+// 엔진이나 모델이 아직 없으면 조용히 넘어간다 — 시작할 때 오류 팝업을 띄우지 않는다.
+void App::MaybeAutoLoadModel() {
+    if (settings.aiProvider != "builtin" || !settings.builtin.autoLoad) return;
+    if (settings.builtin.modelId.empty()) return;
+    const LocalAi::ModelInfo* m = LocalAi::FindModel(settings.builtin.modelId);
+    if (!m || !localAi.ModelInstalled(*m)) return;
+    std::string variant = ResolvedEngineVariant();
+    if (!localAi.EngineInstalled(variant)) return;
+
+    localAi.EnsureServer(settings.builtin.modelId, variant, settings.builtin.contextSize,
+                         [this](bool ok, const std::string& endpoint, const std::string& err) {
+                             // 설정 화면이 열려 있으면 상태를 갱신해 준다
+                             SendEventToManager("ai.serverState",
+                                                {{"running", ok},
+                                                 {"endpoint", endpoint},
+                                                 {"error", err}});
+                         });
 }
 
 std::string App::EffectiveTheme() const { return theme::Effective(settings.theme); }
@@ -422,90 +447,6 @@ std::wstring OllamaAppExePath() {
     return exe;
 }
 
-// 외부 https GET. onData(수신 누적, 전체 크기 — 모르면 0). abort가 켜지면 중단.
-bool HttpGetToFile(const std::wstring& url, const std::wstring& filePath, std::string* outBody,
-                   std::function<void(uint64_t, uint64_t)> onData,
-                   std::atomic<bool>* abort = nullptr) {
-    URL_COMPONENTS c{};
-    c.dwStructSize = sizeof(c);
-    wchar_t host[256]{};
-    wchar_t path[1024]{};
-    c.lpszHostName = host;
-    c.dwHostNameLength = 255;
-    c.lpszUrlPath = path;
-    c.dwUrlPathLength = 1023;
-    if (!WinHttpCrackUrl(url.c_str(), (DWORD)url.size(), 0, &c)) return false;
-
-    HINTERNET session = WinHttpOpen(L"SuperSticker/1.0",
-                                    WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY, WINHTTP_NO_PROXY_NAME,
-                                    WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!session) return false;
-    WinHttpSetTimeouts(session, 15000, 15000, 60000, 60000);
-    HINTERNET connect = WinHttpConnect(session, host, c.nPort, 0);
-    HINTERNET request =
-        connect ? WinHttpOpenRequest(connect, L"GET", path, nullptr, WINHTTP_NO_REFERER,
-                                     WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE)
-                : nullptr;
-    bool ok = false;
-    HANDLE file = INVALID_HANDLE_VALUE;
-    if (request && WinHttpSendRequest(request, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                                      WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
-        WinHttpReceiveResponse(request, nullptr)) {
-        DWORD status = 0, size = sizeof(status);
-        WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
-                            WINHTTP_HEADER_NAME_BY_INDEX, &status, &size,
-                            WINHTTP_NO_HEADER_INDEX);
-        if (status == 200) {
-            uint64_t total = 0;
-            wchar_t lenBuf[32]{};
-            DWORD lenSize = sizeof(lenBuf);
-            if (WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH,
-                                    WINHTTP_HEADER_NAME_BY_INDEX, lenBuf, &lenSize,
-                                    WINHTTP_NO_HEADER_INDEX))
-                total = _wtoi64(lenBuf);
-            if (!filePath.empty()) {
-                file = CreateFileW(filePath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS,
-                                   FILE_ATTRIBUTE_NORMAL, nullptr);
-                if (file == INVALID_HANDLE_VALUE) status = 0;
-            }
-            if (status == 200) {
-                uint64_t received = 0;
-                ok = true;
-                for (;;) {
-                    if (abort && abort->load()) { ok = false; break; }
-                    DWORD avail = 0;
-                    if (!WinHttpQueryDataAvailable(request, &avail)) { ok = false; break; }
-                    if (avail == 0) break;
-                    std::vector<char> buf(avail < 65536 ? avail : 65536);
-                    DWORD read = 0;
-                    if (!WinHttpReadData(request, buf.data(), (DWORD)buf.size(), &read) ||
-                        read == 0) {
-                        if (read == 0) break;
-                        ok = false;
-                        break;
-                    }
-                    received += read;
-                    if (file != INVALID_HANDLE_VALUE) {
-                        DWORD written = 0;
-                        if (!WriteFile(file, buf.data(), read, &written, nullptr)) {
-                            ok = false;
-                            break;
-                        }
-                    } else if (outBody) {
-                        outBody->append(buf.data(), read);
-                    }
-                    if (onData) onData(received, total);
-                }
-            }
-        }
-    }
-    if (file != INVALID_HANDLE_VALUE) CloseHandle(file);
-    if (request) WinHttpCloseHandle(request);
-    if (connect) WinHttpCloseHandle(connect);
-    if (session) WinHttpCloseHandle(session);
-    return ok;
-}
-
 // 폴더 선택 대화상자 (취소 시 빈 문자열)
 std::wstring PickFolder(HWND owner) {
     wil::com_ptr<IFileOpenDialog> dlg;
@@ -525,6 +466,16 @@ std::wstring PickFolder(HWND owner) {
 
 }  // namespace
 
+std::string App::ResolvedEngineVariant() const {
+    if (settings.builtin.engine == "cpu" || settings.builtin.engine == "vulkan")
+        return settings.builtin.engine;
+    // auto: Vulkan 드라이버가 있고 그 엔진이 설치돼 있으면 GPU 쪽을 쓴다.
+    // 설치돼 있지 않으면 cpu로 떨어져야 한다 — 없는 엔진으로 띄우면 그냥 실패한다.
+    if (LocalAi::HasVulkanCapableGpu() && localAi.EngineInstalled("vulkan")) return "vulkan";
+    if (localAi.EngineInstalled("cpu")) return "cpu";
+    return LocalAi::HasVulkanCapableGpu() ? "vulkan" : "cpu";
+}
+
 bool App::IsOllamaInstalled() {
     std::wstring exe = OllamaAppExePath();
     if (!exe.empty() && GetFileAttributesW(exe.c_str()) != INVALID_FILE_ATTRIBUTES) return true;
@@ -533,12 +484,13 @@ bool App::IsOllamaInstalled() {
 }
 
 bool App::HasActiveOllamaTasks() const {
-    return installingOllama_.load() || !activePulls_.empty();
+    return installingOllama_.load() || !activePulls_.empty() || localAi.Busy();
 }
 
 void App::AbortOllamaTasks() {
     installAbort_ = true;  // 설치 다운로드 단계 중단 (설치 프로그램 실행 중이면 완주)
-    for (auto& id : activePulls_) ollama.Abort(id);
+    for (auto& id : activePulls_) ai.Abort(id);
+    localAi.CancelDownloads();
 }
 
 void App::InstallOllama() {
@@ -580,7 +532,7 @@ void App::InstallOllama() {
         GetTempPathW(MAX_PATH, tmpDir);
         std::wstring setupPath = std::wstring(tmpDir) + L"OllamaSetup.exe";
         ULONGLONG lastPost = 0;
-        bool downloaded = HttpGetToFile(
+        bool downloaded = util::HttpGetToFile(
             L"https://ollama.com/download/OllamaSetup.exe", setupPath, nullptr,
             [&](uint64_t received, uint64_t total) {
                 ULONGLONG now = GetTickCount64();
@@ -638,7 +590,7 @@ void App::AbortOllamaByOwner(const std::string& ownerId) {
     if (ownerId.empty()) return;
     for (auto it = ollamaOwners_.begin(); it != ollamaOwners_.end();) {
         if (it->second == ownerId) {
-            ollama.Abort(it->first);
+            ai.Abort(it->first);
             it = ollamaOwners_.erase(it);
         } else {
             ++it;
@@ -1054,6 +1006,46 @@ void App::OnManagerDestroyed() { manager_ = nullptr; }
 void App::ApplySettingsPatch(const json& patch) {
     bool themeChanged = false, langChanged = false;
 
+    if (patch.contains("aiProvider") && patch["aiProvider"].is_string()) {
+        std::string v = patch["aiProvider"];
+        if (v == "ollama" || v == "builtin") {
+            if (v != settings.aiProvider) {
+                settings.aiProvider = v;
+                // 백엔드를 바꾸면 떠 있는 서버는 쓸모가 없다 — 메모리를 바로 돌려준다
+                if (v != "builtin") localAi.StopServer();
+            }
+        }
+    }
+    if (patch.contains("builtin") && patch["builtin"].is_object()) {
+        const json& bi = patch["builtin"];
+        if (bi.contains("modelId") && bi["modelId"].is_string()) {
+            std::string v = bi["modelId"];
+            if (v != settings.builtin.modelId) {
+                settings.builtin.modelId = v;
+                localAi.StopServer();  // 다른 모델이 떠 있으면 내린다
+            }
+        }
+        if (bi.contains("engine") && bi["engine"].is_string()) {
+            std::string v = bi["engine"];
+            if (v == "auto" || v == "cpu" || v == "vulkan") {
+                if (v != settings.builtin.engine) {
+                    settings.builtin.engine = v;
+                    localAi.StopServer();
+                }
+            }
+        }
+        if (bi.contains("autoLoad") && bi["autoLoad"].is_boolean()) {
+            settings.builtin.autoLoad = bi["autoLoad"];
+        }
+        if (bi.contains("contextSize") && bi["contextSize"].is_number_integer()) {
+            int v = bi["contextSize"];
+            v = v < 1024 ? 1024 : (v > 32768 ? 32768 : v);
+            if (v != settings.builtin.contextSize) {
+                settings.builtin.contextSize = v;
+                localAi.StopServer();
+            }
+        }
+    }
     if (patch.contains("theme") && patch["theme"].is_string()) {
         std::string v = patch["theme"];
         if (v != settings.theme) {
@@ -1329,9 +1321,15 @@ void App::SetupCommonBridge(WebViewHost& host) {
                      {{"theme", settings.theme},
                       {"language", settings.language},
                       {"autostart", settings.autostart},
+                      {"aiProvider", settings.aiProvider},
                       {"ollama",
                        {{"endpoint", settings.ollama.endpoint},
                         {"model", settings.ollama.model}}},
+                      {"builtin",
+                       {{"modelId", settings.builtin.modelId},
+                        {"engine", settings.builtin.engine},
+                        {"contextSize", settings.builtin.contextSize},
+                        {"autoLoad", settings.builtin.autoLoad}}},
                       {"trash",
                        {{"enabled", settings.trashEnabled},
                         {"retentionDays", settings.trashRetentionDays}}},
@@ -1568,7 +1566,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
     b.Register("ollama.listModels", [this](const json& p) {
         std::string requestId = p.value("requestId", "");
         std::string endpoint = p.value("endpoint", settings.ollama.endpoint);
-        ollama.ListModels(endpoint, [this, requestId](bool ok, std::vector<std::string> models,
+        ai.ListModels(endpoint, [this, requestId](bool ok, std::vector<std::string> models,
                                                       std::string err) {
             SendEventToManager("ollama.models",
                            {{"requestId", requestId}, {"ok", ok}, {"models", models},
@@ -1577,33 +1575,171 @@ void App::SetupCommonBridge(WebViewHost& host) {
         return json::object();
     });
 
-    b.Register("ollama.chat", [this](const json& p) {
-        std::string requestId = p.value("requestId", "");
-        std::string model = p.value("model", settings.ollama.model);
-        if (model.empty()) throw std::runtime_error("no model selected");
-        if (!p.contains("messages") || !p["messages"].is_array())
-            throw std::runtime_error("messages required");
-        // ownerId(스티커 id)가 오면 기록 — 창 파괴 시 AbortOllamaByOwner로 취소
-        std::string ownerId = p.value("ownerId", "");
-        if (!ownerId.empty()) ollamaOwners_[requestId] = ownerId;
-        bool jsonFormat = p.value("format", "") == "json";
-        ollama.Chat(
-            requestId, settings.ollama.endpoint, model, p["messages"],
-            [this, requestId, ownerId](std::string delta) {
-                SendEventToSticker(ownerId, "ollama.chunk",
-                                   {{"requestId", requestId}, {"delta", delta}});
+    // ---- 내장 백엔드(자체 모델) 관리 ----
+    // 카탈로그·설치 상태·서버 상태를 한 번에 준다. 설정 화면이 이걸로 화면을 그린다.
+    b.Register("ai.getConfig", [this](const json&) {
+        json models = json::array();
+        for (const auto& m : LocalAi::Catalog()) {
+            models.push_back({{"id", m.id},
+                              {"name", m.name},
+                              {"params", m.params},
+                              {"repo", m.repo},
+                              {"license", m.license},
+                              {"sizeBytes", m.sizeBytes},
+                              {"recommended", m.recommended},
+                              {"installed", localAi.ModelInstalled(m)}});
+        }
+        json engines = json::array();
+        for (const auto& e : LocalAi::Engines()) {
+            engines.push_back({{"id", e.id},
+                               {"sizeBytes", e.sizeBytes},
+                               {"installed", localAi.EngineInstalled(e.id)}});
+        }
+        return json{{"provider", settings.aiProvider},
+                    {"builtin",
+                     {{"modelId", settings.builtin.modelId},
+                      {"engine", settings.builtin.engine},
+                      {"resolvedEngine", ResolvedEngineVariant()},
+                      {"contextSize", settings.builtin.contextSize},
+                      {"autoLoad", settings.builtin.autoLoad},
+                      {"hasGpu", LocalAi::HasVulkanCapableGpu()},
+                      {"serverRunning", localAi.ServerRunning()},
+                      {"runningModel", localAi.RunningModel()},
+                      {"busy", localAi.Busy()},
+                      {"dir", util::WideToUtf8(localAi.AiDir())}}},
+                    {"models", models},
+                    {"engines", engines}};
+    });
+
+    b.Register("ai.installEngine", [this](const json& p) {
+        std::string variant = p.value("variant", ResolvedEngineVariant());
+        localAi.InstallEngine(
+            variant,
+            [this, variant](const std::string& stage, uint64_t recv, uint64_t total) {
+                SendEventToManager("ai.engineProgress", {{"variant", variant},
+                                                         {"stage", stage},
+                                                         {"received", recv},
+                                                         {"total", total}});
             },
-            [this, requestId, ownerId](bool ok, std::string err) {
-                ollamaOwners_.erase(requestId);  // UI 스레드 콜백 (SetUiPoster)
-                SendEventToSticker(ownerId, "ollama.done",
-                                   {{"requestId", requestId}, {"ok", ok}, {"error", err}});
+            [this, variant](bool ok, const std::string& err) {
+                SendEventToManager("ai.engineDone",
+                                   {{"variant", variant}, {"ok", ok}, {"error", err}});
+            });
+        return json{{"started", true}};
+    });
+
+    b.Register("ai.downloadModel", [this](const json& p) {
+        std::string id = p.value("id", "");
+        localAi.DownloadModel(
+            id,
+            [this, id](const std::string& stage, uint64_t recv, uint64_t total) {
+                SendEventToManager("ai.modelProgress", {{"id", id},
+                                                        {"stage", stage},
+                                                        {"received", recv},
+                                                        {"total", total}});
             },
-            jsonFormat);
+            [this, id](bool ok, const std::string& err) {
+                SendEventToManager("ai.modelDone", {{"id", id}, {"ok", ok}, {"error", err}});
+            });
+        return json{{"started", true}};
+    });
+
+    b.Register("ai.cancelDownload", [this](const json&) {
+        localAi.CancelDownloads();
         return json::object();
     });
 
-    b.Register("ollama.abort", [this](const json& p) {
-        ollama.Abort(p.value("requestId", ""));
+    b.Register("ai.deleteModel", [this](const json& p) {
+        std::string id = p.value("id", "");
+        bool ok = localAi.DeleteModel(id);
+        if (ok && settings.builtin.modelId == id) {
+            settings.builtin.modelId.clear();
+            store.SaveSettings(settings);
+        }
+        return json{{"ok", ok}};
+    });
+
+    // 서버를 미리 띄워 둔다 (설정 화면의 '지금 시작'). 첫 응답 지연을 사용자가 통제할 수 있다.
+    b.Register("ai.startServer", [this](const json&) {
+        if (settings.builtin.modelId.empty()) throw std::runtime_error("no model selected");
+        localAi.EnsureServer(settings.builtin.modelId, ResolvedEngineVariant(),
+                             settings.builtin.contextSize,
+                             [this](bool ok, const std::string& endpoint, const std::string& err) {
+                                 SendEventToManager("ai.serverState",
+                                                    {{"running", ok},
+                                                     {"endpoint", endpoint},
+                                                     {"error", err}});
+                             });
+        return json{{"starting", true}};
+    });
+
+    b.Register("ai.stopServer", [this](const json&) {
+        localAi.StopServer();
+        SendEventToManager("ai.serverState", {{"running", false}, {"endpoint", ""}, {"error", ""}});
+        return json::object();
+    });
+
+    // 채팅은 백엔드를 감춘다 — 페이지는 provider를 모른 채 ai.chat만 부른다.
+    // 내장 백엔드면 요청 시점에 llama-server를 띄우고(이미 떠 있으면 그대로) 이어서 보낸다.
+    b.Register("ai.chat", [this](const json& p) {
+        std::string requestId = p.value("requestId", "");
+        std::string ownerId = p.value("ownerId", "");
+        bool jsonFormat = p.value("jsonFormat", false);
+        json messages = p["messages"];
+
+        auto send = [this, requestId, ownerId](const std::string& endpoint,
+                                               const std::string& model,
+                                               AiClient::ChatOptions opts, const json& messages) {
+            ai.Chat(
+                requestId, endpoint, model, messages, opts,
+                [this, requestId, ownerId](std::string delta) {
+                    SendEventToSticker(ownerId, "ai.chunk",
+                                       {{"requestId", requestId}, {"delta", delta}});
+                },
+                [this, requestId, ownerId](bool ok, std::string err) {
+                    SendEventToSticker(ownerId, "ai.done",
+                                       {{"requestId", requestId}, {"ok", ok}, {"error", err}});
+                });
+        };
+
+        if (settings.aiProvider == "builtin") {
+            const LocalAi::ModelInfo* m = LocalAi::FindModel(settings.builtin.modelId);
+            if (!m) throw std::runtime_error("no model selected");
+            AiClient::ChatOptions opts;
+            opts.protocol = AiClient::Protocol::OpenAiSse;
+            opts.jsonFormat = jsonFormat;
+            opts.disableThinking = m->disableThinking;
+            std::string variant = ResolvedEngineVariant();
+            // 모델 로딩은 수십 초가 걸릴 수 있다. 준비되면 그때 요청을 보낸다.
+            SendEventToSticker(ownerId, "ai.status",
+                               {{"requestId", requestId}, {"state", "loading"}});
+            localAi.EnsureServer(
+                settings.builtin.modelId, variant, settings.builtin.contextSize,
+                [this, requestId, ownerId, opts, messages, send](
+                    bool ok, const std::string& endpoint, const std::string& err) {
+                    if (!ok) {
+                        SendEventToSticker(ownerId, "ai.done",
+                                           {{"requestId", requestId},
+                                            {"ok", false},
+                                            {"error", err.empty() ? "server failed" : err}});
+                        return;
+                    }
+                    send(endpoint, "supersticker", opts, messages);
+                });
+            return json::object();
+        }
+
+        AiClient::ChatOptions opts;
+        opts.protocol = AiClient::Protocol::OllamaNdjson;
+        opts.jsonFormat = jsonFormat;
+        std::string model = p.value("model", settings.ollama.model);
+        if (model.empty()) throw std::runtime_error("no model selected");
+        send(settings.ollama.endpoint, model, opts, messages);
+        return json::object();
+    });
+
+    b.Register("ai.abort", [this](const json& p) {
+        ai.Abort(p.value("requestId", ""));
         return json::object();
     });
 
@@ -1612,7 +1748,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
         std::string name = p.value("name", "");
         if (name.empty()) throw std::runtime_error("model name required");
         activePulls_.insert(requestId);  // 설정 창 닫기 시 중단 대상
-        ollama.Pull(
+        ai.Pull(
             requestId, settings.ollama.endpoint, name,
             [this, requestId](std::string status, uint64_t total, uint64_t completed) {
                 SendEventToManager("ollama.pullProgress",
@@ -1783,6 +1919,9 @@ void App::ShowTrayMenu() {
 void App::Quit() {
     if (quitting_) return;
     quitting_ = true;
+    // 수 GB를 물고 있는 자식 프로세스를 남기지 않는다 (잡 오브젝트는 비정상 종료용 보험)
+    localAi.CancelDownloads();
+    localAi.StopServer();
     // 웹 측 자동 저장 디바운스를 플러시할 시간을 준 뒤 종료
     BroadcastEvent("app.flush", json::object());
     SetTimer(hwnd_, kQuitTimerId, 350, nullptr);

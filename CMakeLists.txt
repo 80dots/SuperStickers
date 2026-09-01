@@ -3,8 +3,8 @@ cmake_minimum_required(VERSION 3.24)
 # ---- 버전 단일 출처 ----
 # 여기만 고치면 exe 버전 리소스, 앱의 '정보' 탭, 설치 프로그램 파일명까지 함께 따라온다
 # (설치 프로그램은 scripts/build.ps1이 ISCC에 /DMyAppVersion으로 넘긴다).
-project(SuperSticker VERSION 1.5.3 LANGUAGES CXX)
-set(SS_RELEASE_DATE "2026-09-01")  # 릴리스 날짜 — 버전과 함께 올린다
+project(SuperSticker VERSION 1.5.4 LANGUAGES CXX)
+set(SS_RELEASE_DATE "2026-09-02")  # 릴리스 날짜 — 버전과 함께 올린다
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -40,7 +40,8 @@ add_executable(SuperSticker WIN32
   src/TrayIcon.cpp
   src/Bridge.cpp
   src/Store.cpp
-  src/OllamaClient.cpp
+  src/AiClient.cpp
+  src/LocalAi.cpp
   src/Theme.cpp
   src/I18n.cpp
   src/Autostart.cpp
@@ -69,7 +70,7 @@ target_include_directories(SuperSticker PRIVATE
 
 target_link_libraries(SuperSticker PRIVATE
   ${webview2_SOURCE_DIR}/build/native/x64/WebView2LoaderStatic.lib
-  winhttp shlwapi comctl32 dwmapi shell32 ole32 user32 gdi32 gdiplus advapi32 shcore crypt32
+  winhttp ws2_32 shlwapi comctl32 dwmapi shell32 ole32 user32 gdi32 gdiplus advapi32 shcore crypt32
 )
 
 # ui 폴더를 실행 파일 옆으로 복사.
@@ -82,3 +83,18 @@ add_custom_target(copy_ui ALL
   COMMENT "ui 폴더 복사"
 )
 add_dependencies(copy_ui SuperSticker)
+
+# 스트리밍 파서 확인용 콘솔 테스트 (기본 빌드에는 들어가지 않는다)
+#   cmake --build --preset release --target ai_stream_test
+add_executable(ai_stream_test EXCLUDE_FROM_ALL
+  tests/ai_stream_test.cpp
+  src/AiClient.cpp
+  src/Utils.cpp
+)
+target_compile_definitions(ai_stream_test PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_options(ai_stream_test PRIVATE /utf-8 /W4 /EHsc)
+target_include_directories(ai_stream_test PRIVATE
+  ${CMAKE_CURRENT_SOURCE_DIR}/src
+  ${nlohmann_json_SOURCE_DIR}
+)
+target_link_libraries(ai_stream_test PRIVATE winhttp shlwapi ole32 shell32 advapi32 crypt32 shcore user32)

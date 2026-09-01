@@ -1,7 +1,10 @@
 #pragma once
 #include <windows.h>
-#include <string>
+
+#include <atomic>
+#include <functional>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -35,6 +38,15 @@ bool ZipDir(const std::wstring& srcDir, const std::wstring& zipPath);
 bool UnzipDir(const std::wstring& zipPath, const std::wstring& destDir);
 bool WriteFileAtomic(const std::wstring& path, const std::string& data);
 std::optional<std::string> ReadFileBytes(const std::wstring& path);
+
+// URL을 파일(또는 outBody)로 내려받는다. 진행률 콜백과 중단 플래그를 받는다.
+bool HttpGetToFile(const std::wstring& url, const std::wstring& filePath,
+                   std::string* outBody = nullptr,
+                   std::function<void(uint64_t received, uint64_t total)> onData = nullptr,
+                   std::atomic<bool>* abort = nullptr);
+
+// 파일의 SHA-256을 소문자 16진 문자열로 (실패 시 빈 문자열). 다운로드 검증용.
+std::string Sha256File(const std::wstring& path);
 
 std::vector<BYTE> Base64Decode(const std::string& b64);
 std::string UriDecode(const std::string& s);  // %XX 퍼센트 인코딩 해제
