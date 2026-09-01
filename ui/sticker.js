@@ -627,7 +627,9 @@
     mdSource.classList.toggle('hidden', !showSource);
     mdPreview.classList.toggle('hidden', showSource);
     $('#previewBtn').textContent = i18n.t(mdView === 'edit' ? 'md.preview' : 'md.edit');
-    document.querySelectorAll('#toolbar .fmt, #checkBtn, #imageBtn, #videoBtn').forEach((b) => {
+    document.querySelectorAll(
+      '#toolbar .fmt, #checkBtn, #imageBtn, #videoBtn, #hlBtn, #indentBtn, #outdentBtn'
+    ).forEach((b) => {
       b.disabled = !showSource && type === 'markdown';
     });
     if (!showSource) renderPreview();
@@ -661,6 +663,11 @@
   } else if (type === 'markdown') {
     $('#toolbar').classList.remove('hidden');
     $('#previewBtn').classList.remove('hidden');
+    // 형광펜(<mark>)·들여쓰기(앞 공백)는 마크다운 소스로 표현할 수 있어 함께 제공한다.
+    // 3D 임베드만 rich 전용이다 (본문이 HTML이 아니라 원본 텍스트라 담을 자리가 없다).
+    $('#hlBtn').classList.remove('hidden');
+    $('#indentBtn').classList.remove('hidden');
+    $('#outdentBtn').classList.remove('hidden');
     mdSource.placeholder = i18n.t('editor.mdPlaceholder');
     mdSource.value = data.markdown || '';
     mdTools.init(mdSource, scheduleSave);
@@ -748,6 +755,15 @@
       };
 
       const apply = (color) => {
+        // 마크다운은 원본에 <mark>를 감싼다 (프리뷰가 원시 HTML을 그대로 렌더한다).
+        // 글자색은 형광펜 색의 밝기로 정해 함께 박아 둔다 — 소스만 보고도 대비가
+        // 결정되므로 나중에 메모 색을 바꿔도 글자가 묻히지 않는다.
+        if (type === 'markdown') {
+          const fg = isDarkBg(color) ? '#FFFFFF' : '#1B2620';
+          mdTools.wrapSelection(
+            '<mark style="background:' + color + ';color:' + fg + '">', '</mark>');
+          return;
+        }
         editorCore.exec('hiliteColor', color);
         // 어두운 형광펜 위에서는 글자가 묻히므로 밝게 바꾼다. 글자색 스팬은 이 형광펜
         // 로직만 만들므로, 밝은 배경(또는 지운 자리)에서는 걷어내면 원래 색으로 돌아온다.
@@ -770,9 +786,13 @@
         } else close();
       });
 
-      // 형광펜 지우기: 배경을 투명으로 덮어쓴다
+      // 형광펜 지우기: rich는 배경을 투명으로 덮어쓰고, 마크다운은 <mark> 태그를 걷어낸다
       $('#hlClearBtn').addEventListener('mousedown', (e) => e.preventDefault());
-      $('#hlClearBtn').addEventListener('click', () => { apply('transparent'); close(); });
+      $('#hlClearBtn').addEventListener('click', () => {
+        if (type === 'markdown') mdTools.clearMarks();
+        else apply('transparent');
+        close();
+      });
 
       // ---------- 색 추가 피커 (자체 UI — 네이티브 피커의 스포이드 문제 회피) ----------
       // '+'로 펼치고, 색을 고른 뒤 '추가' 버튼을 눌러야 목록에 들어간다.
@@ -884,11 +904,17 @@
       });
     })();
 
-    // 들여쓰기/내어쓰기 (rich 전용). 목록 안에서는 중첩 목록, 일반 문단은 블록 들여쓰기.
+    // 들여쓰기/내어쓰기. rich는 execCommand(목록 안에서는 중첩 목록, 일반 문단은 블록
+    // 들여쓰기), 마크다운은 줄 앞 공백 2칸이다 (Tab/Shift+Tab과 같은 동작).
     ['indent', 'outdent'].forEach((cmd) => {
       const b = $('#' + cmd + 'Btn');
       b.addEventListener('mousedown', (e) => e.preventDefault());
-      b.addEventListener('click', () => editorCore.exec(cmd));
+      b.addEventListener('click', () => {
+        if (type === 'markdown') {
+          if (cmd === 'indent') mdTools.indentLines();
+          else mdTools.outdentLines();
+        } else editorCore.exec(cmd);
+      });
     });
 
     $('#checkBtn').addEventListener('mousedown', (e) => e.preventDefault());
@@ -1326,18 +1352,19 @@
       indent: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 2.5h12V4H2zm6 3.2h6v1.5H8zm0 3.1h6v1.5H8zM2 12h12v1.5H2zM2.6 6v4L5.5 8z"/></svg>',
       hl: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M11.3 1.7a1 1 0 0 1 1.4 0l1.6 1.6a1 1 0 0 1 0 1.4l-6.8 6.8-3.4.4a.5.5 0 0 1-.6-.6l.4-3.4zM10 4.4 5 9.4l-.2 1.8 1.8-.2 5-5zM2 13.5h12V15H2z"/></svg>',
     };
-    // rich 전용 항목은 richOnly로 표시한다 (마크다운에는 대응 문법이 없거나 툴바가 다르게 처리)
+    // 서식 툴바와 같은 10종. 마크다운에도 대응 문법이 있어 richOnly 항목은 없다
+    // (형광펜은 <mark>, 들여쓰기는 줄 앞 공백 2칸).
     const SEL_FORMATS = [
       { cmd: 'bold', title: 'tt.bold', glyph: '<b>B</b>' },
       { cmd: 'italic', title: 'tt.italic', glyph: '<i>I</i>' },
       { cmd: 'underline', title: 'tt.underline', glyph: '<u>U</u>' },
       { cmd: 'strikeThrough', title: 'tt.strike', glyph: '<s>S</s>' },
-      { cmd: 'highlight', title: 'sel.highlight', glyph: ICON.hl, richOnly: true },
+      { cmd: 'highlight', title: 'sel.highlight', glyph: ICON.hl },
       { cmd: 'insertUnorderedList', title: 'tt.ul', glyph: ICON.ul },
       { cmd: 'insertOrderedList', title: 'tt.ol', glyph: ICON.ol },
       { cmd: 'checklist', title: 'tt.check', glyph: ICON.check },
-      { cmd: 'outdent', title: 'tt.outdent', glyph: ICON.outdent, richOnly: true },
-      { cmd: 'indent', title: 'tt.indent', glyph: ICON.indent, richOnly: true },
+      { cmd: 'outdent', title: 'tt.outdent', glyph: ICON.outdent },
+      { cmd: 'indent', title: 'tt.indent', glyph: ICON.indent },
     ];
     // 마크다운은 원본을 감싸고, 리치는 execCommand를 쓴다 (서식 툴바와 같은 규칙)
     const MD_WRAP = {
@@ -1350,14 +1377,16 @@
     // 마크다운 보기 모드는 렌더된 결과라 편집할 수 없다 — 서식 줄을 감춘다
     const canFormat = () => type !== 'markdown' || mdView === 'edit';
     function applyFormat(cmd) {
+      // 형광펜은 색을 골라야 하므로 서식 툴바의 팝오버를 그대로 연다 (rich·markdown 공통)
+      if (cmd === 'highlight') { $('#hlBtn').click(); return; }
       if (type === 'markdown') {
         if (MD_WRAP[cmd]) mdTools.wrapSelection(...MD_WRAP[cmd]);
         else if (MD_PREFIX[cmd]) mdTools.prefixLines(MD_PREFIX[cmd]);
+        else if (cmd === 'indent') mdTools.indentLines();
+        else if (cmd === 'outdent') mdTools.outdentLines();
         return;
       }
       if (cmd === 'checklist') { editorCore.insertChecklist(); return; }
-      // 형광펜은 색을 골라야 하므로 서식 툴바의 팝오버를 그대로 연다
-      if (cmd === 'highlight') { $('#hlBtn').click(); return; }
       editorCore.exec(cmd);
     }
 
@@ -1427,7 +1456,6 @@
       const b = document.createElement('button');
       b.className = 'sel-fmt';
       b.dataset.cmd = f.cmd;
-      if (f.richOnly) b.dataset.richOnly = '1';
       b.innerHTML = f.glyph;
       b.title = i18n.t(f.title);
       // mousedown 기본 동작을 막아야 클릭하는 순간 선택이 풀리지 않는다
@@ -1515,10 +1543,6 @@
       if (!rect || !text.trim()) { hideSelMenu(); return; }
       const fmt = canFormat();
       fmtGrid.classList.toggle('hidden', !fmt);  // 편집할 수 없으면 격자째 감춘다
-      fmtGrid.querySelectorAll('.sel-fmt').forEach((b) => {
-        // 마크다운에 대응 문법이 없는 항목(형광펜·들여쓰기)은 rich에서만 보인다
-        b.classList.toggle('hidden', b.dataset.richOnly === '1' && type !== 'rich');
-      });
       selMenu.classList.remove('hidden');
       const mw = selMenu.offsetWidth, mh = selMenu.offsetHeight;
       let left = rect.left + rect.width / 2 - mw / 2;

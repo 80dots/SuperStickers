@@ -12,24 +12,9 @@ const mdTools = (() => {
       if (e.key === 'Tab') {
         e.preventDefault();
         const s = ta.selectionStart, en = ta.selectionEnd;
-        const lineStart = ta.value.lastIndexOf('\n', s - 1) + 1;
-        if (e.shiftKey) {
-          // 내어쓰기: 선택 줄들의 앞 공백 최대 2칸 제거
-          const block = ta.value.slice(lineStart, en);
-          const replaced = block.replace(/^ {1,2}/gm, '');
-          if (replaced !== block) {
-            ta.setRangeText(replaced, lineStart, en, 'select');
-            onChange();
-          }
-        } else if (s !== en && ta.value.slice(s, en).includes('\n')) {
-          // 여러 줄 들여쓰기: 각 줄 앞에 2칸 추가
-          const block = ta.value.slice(lineStart, en);
-          const replaced = block.replace(/^/gm, '  ');
-          ta.setRangeText(replaced, lineStart, en, 'select');
-          onChange();
-        } else {
-          insertText('  ');
-        }
+        if (e.shiftKey) outdentLines();
+        else if (s !== en && ta.value.slice(s, en).includes('\n')) indentLines();
+        else insertText('  ');  // 줄 중간에서의 Tab은 캐럿 자리에 넣는다
       }
     });
   }
@@ -47,6 +32,72 @@ const mdTools = (() => {
     const sel = value.slice(s, e);
     ta.setRangeText(before + sel + after, s, e, sel ? 'select' : 'end');
     if (!sel) ta.setSelectionRange(s + before.length, s + before.length);
+    onChange();
+  }
+
+  // 선택(또는 캐럿) 줄들의 범위 [시작, 끝)
+  function lineRange() {
+    const { selectionStart: s, selectionEnd: e, value } = ta;
+    const from = value.lastIndexOf('\n', s - 1) + 1;
+    let to = value.indexOf('\n', e);
+    if (to === -1) to = value.length;
+    return [from, to];
+  }
+
+  const LIST_LINE = /^\s*(?:[-*+]|\d+[.)])\s/;
+
+  // 들여쓰기: 줄 앞에 2칸을 더한다. 목록 줄은 그대로 중첩 목록이 된다.
+  // 목록이 아닌 줄은 앞 공백이 4칸이 되는 순간 코드 블록이 되므로 2칸까지만 허용한다.
+  function indentLines() {
+    ta.focus();
+    const [from, to] = lineRange();
+    const block = ta.value.slice(from, to);
+    const replaced = block.split('\n').map((l) => {
+      if (!LIST_LINE.test(l) && /^ {2,}/.test(l)) return l;
+      return '  ' + l;
+    }).join('\n');
+    if (replaced === block) return;
+    ta.setRangeText(replaced, from, to, 'select');
+    onChange();
+  }
+
+  // 내어쓰기: 줄 앞 공백을 최대 2칸 제거한다.
+  function outdentLines() {
+    ta.focus();
+    const [from, to] = lineRange();
+    const block = ta.value.slice(from, to);
+    const replaced = block.replace(/^ {1,2}/gm, '');
+    if (replaced === block) return;
+    ta.setRangeText(replaced, from, to, 'select');
+    onChange();
+  }
+
+  // 형광펜 지우기: 선택 안의 <mark> 태그를 걷어낸다. 선택이 형광펜 안에 통째로
+  // 들어 있으면(태그가 선택 밖에 있으면) 바깥의 짝을 찾아 지운다.
+  function clearMarks() {
+    ta.focus();
+    const { selectionStart: s, selectionEnd: e, value } = ta;
+    let from = s, to = e;
+    if (!/<\/?mark\b/i.test(value.slice(s, e))) {
+      // 선택 앞의 마지막 여는 태그와 선택 뒤의 첫 닫는 태그를 찾는다
+      // (인덱스가 어긋나지 않도록 원본 문자열에서 정규식으로 훑는다)
+      let open = null;
+      for (const m of value.slice(0, s).matchAll(/<mark\b[^>]*>/gi)) open = m;
+      const close = /<\/mark>/i.exec(value.slice(e));
+      const clean = (a, b) => !/<\/?mark\b/i.test(value.slice(a, b));
+      if (open && close) {
+        const openEnd = open.index + open[0].length;
+        const closeStart = e + close.index;
+        if (clean(openEnd, s) && clean(e, closeStart)) {
+          from = open.index;
+          to = closeStart + close[0].length;
+        }
+      }
+    }
+    const sel = value.slice(from, to);
+    const stripped = sel.replace(/<mark\b[^>]*>/gi, '').replace(/<\/mark>/gi, '');
+    if (stripped === sel) return;
+    ta.setRangeText(stripped, from, to, 'select');
     onChange();
   }
 
@@ -457,6 +508,7 @@ const mdTools = (() => {
 
   return {
     init, insertText, wrapSelection, prefixLines,
+    indentLines, outdentLines, clearMarks,
     renderHtml, renderInto, toggleTaskInSource, getAttachments,
     attachIntellisense,
     get el() { return ta; },

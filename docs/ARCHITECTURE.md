@@ -122,13 +122,18 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - **브로드캐스트는 1회 직렬화**: `BroadcastEvent`가 payload를 한 번 dump()하고
   `PostEventRaw`로 각 창에 전달한다.
 
-### 들여쓰기/내어쓰기 (rich 메모 전용)
+### 들여쓰기/내어쓰기
 
-- 서식 툴바의 두 버튼이 `execCommand('indent'/'outdent')`를 부른다. 목록 안에서는 중첩
-  목록이 되고, 일반 문단은 크로미움이 `blockquote(margin, border:none)`로 감싼다.
+- **rich**: 서식 툴바의 두 버튼이 `execCommand('indent'/'outdent')`를 부른다. 목록 안에서는
+  중첩 목록이 되고, 일반 문단은 크로미움이 `blockquote(margin, border:none)`로 감싼다.
 - 마크다운 직렬화(getMarkdown)에서 이 들여쓰기 blockquote는 **인용(`>`)이 아니라
   접두사 없이 풀어낸다** — `border:none` 스타일이 들여쓰기 산물의 표식이다.
   (마크다운에는 문단 들여쓰기 표현이 마땅치 않다)
+- **markdown**: `mdTools.indentLines()/outdentLines()`가 줄 앞 공백을 2칸씩 더하고 뺀다
+  (Tab/Shift+Tab과 같은 동작 — 키 처리도 이 함수를 쓴다). 목록 줄은 그대로 중첩 목록이 된다.
+  **함정 — 4칸은 코드 블록이다**: 목록이 아닌 줄은 앞 공백이 4칸이 되는 순간 마크다운이
+  코드 블록으로 읽으므로 2칸에서 멈춘다. 어차피 마크다운에서 문단 들여쓰기는 렌더 결과에
+  드러나지 않으니(연속 문단으로 이어 붙는다) 잃는 것이 없다.
 
 ### 태그로 본문 찾기
 
@@ -169,22 +174,30 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   재계산은 `ResizeObserver`(+window resize)가 맡고, UI 자동 숨김으로 툴바가
   `display:none`일 때는 `clientWidth`가 0이라 건너뛴 뒤 다시 보일 때 옵저버가 다시 부른다.
 
-### 형광펜 (rich 메모 전용)
+### 형광펜
 
-- 서식 툴바의 형광펜 버튼(`#hlBtn`)이 팝오버(`#hlPopover`)를 연다. **프리셋 8색은
+- 서식 툴바의 형광펜 버튼(`#hlBtn`)이 팝오버(`#hlPopover`)를 연다. rich·markdown 공통이다
+  (색 목록·피커·공유 방식이 모두 같고, **적용 방법만 다르다**). **프리셋 8색은
   sticker.js의 `HL_PRESETS`에**, 사용자 추가 색은 `settings.highlightColors`
   (`#RRGGBB` 배열, 최대 24개)에 있다. 프리셋은 삭제할 수 없고, 사용자 색에는 호버 시
   삭제 배지(×)가 뜬다.
-- 적용은 `editorCore.exec('hiliteColor', color)` — exec가 값 인자를 받도록 확장됐다.
+- **rich의 적용**은 `editorCore.exec('hiliteColor', color)` — exec가 값 인자를 받도록 확장됐다.
   지우기는 `hiliteColor`에 `transparent`를 덮어쓴다(크로미움이 기존 span을 정리한다).
   **어두운 형광펜에서는 글자를 밝게 바꾼다**: 적용 직후 에디터의 배경색 스팬을 훑어
   YIQ 밝기 128 미만이면 `color:#FFFFFF`를 넣고, 밝으면 걷어낸다. 글자색 스팬은 이
   형광펜 로직만 만들므로 걷어내면 원래 색으로 돌아온다(별도의 글자색 서식 기능이
   생기면 이 가정은 재검토).
   팝오버의 모든 버튼은 `mousedown` 기본 동작을 막아 에디터 선택이 풀리지 않게 한다
-  (텍스트 선택 메뉴와 같은 이유).
+  (텍스트 선택 메뉴와 같은 이유. textarea는 포커스를 잃어도 selectionStart/End가 남으므로
+  마크다운도 같은 방법으로 선택을 지킨다).
+- **markdown의 적용**은 원본을 `<mark style="background:…;color:…">…</mark>`로 감싼다
+  (`mdTools.wrapSelection`). 프리뷰가 원시 HTML을 그대로 렌더하므로 별도 처리가 없고,
+  `<u>` 밑줄과 같은 방식이다. 지우기는 `mdTools.clearMarks()`가 선택 안의 `<mark>` 태그를
+  걷어내고, 선택이 형광펜 **안에** 통째로 들어 있으면 바깥의 짝을 찾아 지운다.
+  **글자색을 rich처럼 상속에 맡기지 않고 소스에 박는다**: 형광펜 색의 YIQ 밝기로
+  `#FFFFFF`/`#1B2620`을 정해 style에 함께 넣으므로, 나중에 메모 색을 바꿔도 대비가 유지된다.
 - 선택 메뉴의 형광펜 항목은 이 팝오버를 그대로 연다(색을 골라야 하므로 바로 적용하지
-  않는다).
+  않는다). rich·markdown 모두 같다.
 - **모든 메모창이 색 목록을 공유한다**: 추가/삭제 시 `settings.set {highlightColors}`로
   저장하고, 네이티브 `ApplySettingsPatch`가 검증(형식·개수) 후
   `highlight.colorsChanged {colors}`를 방송해 다른 창이 즉시 반영한다. 페이지 첫 로드는
@@ -204,9 +217,11 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   들여쓰기·내어쓰기), AI 동작은 `SEL_ACTIONS`가 단일 출처이며 둘 다 마크업이 아니라
   배열에서 DOM을 만든다 — 항목을 늘리려면 해당 배열에 하나만 추가하면 된다.
 - 서식 적용은 서식 툴바와 같은 규칙이다: 리치는 `editorCore.exec`(체크리스트는
-  `insertChecklist`, 형광펜은 툴바의 색 팝오버를 그대로 연다), 마크다운은
-  `mdTools.wrapSelection`/`prefixLines`로 원본을 다룬다. 마크다운에 대응 문법이 없는
-  항목(형광펜·들여쓰기)은 `richOnly`로 표시해 rich에서만 보인다.
+  `insertChecklist`), 마크다운은 `mdTools`의 `wrapSelection`/`prefixLines`/
+  `indentLines`/`outdentLines`로 원본을 다룬다. 형광펜은 양쪽 다 툴바의 색 팝오버를
+  그대로 연다. **10종 모두 마크다운에도 대응 문법이 있어 rich 전용 항목은 없다**
+  (형광펜은 `<mark>`, 들여쓰기는 줄 앞 공백 2칸). 3D 임베드만 rich 전용인데, 이건
+  선택 메뉴가 아니라 툴바 버튼이다.
   **마크다운 보기 모드에서는 서식 격자와 구분선을 감춘다** — 렌더된 결과라 편집할 수
   없기 때문이며, AI 동작만 남는다.
 - **AI 패널 진입점은 서식 툴바 맨 오른쪽의 `#aiPanelBtn`**이다(선택 메뉴 안이 아니라

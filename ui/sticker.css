@@ -463,6 +463,9 @@ body {
   padding: 3px 9px;
 }
 #mdPreview hr { border: none; border-top: 1px solid rgba(127, 127, 127, 0.4); margin: 0.6em 0; }
+/* 형광펜: 색은 소스의 <mark style="background:…;color:…">이 정한다(둘 다 인라인이라
+   여기 규칙보다 우선한다). 손으로 쓴 <mark>는 브라우저 기본 배색을 그대로 쓴다. */
+#mdPreview mark { border-radius: 2px; padding: 0 0.1em; }
 #mdPreview img { max-width: 100%; border-radius: 6px; }
 #mdPreview video { max-width: 100%; border-radius: 6px; }
 #mdPreview a { color: var(--accent); }
