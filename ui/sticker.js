@@ -727,6 +727,8 @@
     editor.dataset.placeholder = i18n.t('editor.placeholder');
     editor.innerHTML = data.html || '';
     editorCore.init(editor, scheduleSave);
+    // 저장된 표에 조작용 장식(정렬 버튼·손잡이)을 다시 붙이고 통계를 계산한다
+    tableTools.init(editor, scheduleSave);
     // 저장돼 있던 3D 임베드에 뷰어 마운트 (UI는 Shadow DOM — 저장 HTML 미오염)
     editor.querySelectorAll('.embed3d').forEach((el) => viewer3d.mount(el, scheduleSave));
     // 본문에서 떨어진 임베드는 viewer3d가 렌더 루프·WebGL 컨텍스트를 놓는다. 되돌리기(Ctrl+Z)나
@@ -1023,6 +1025,181 @@
       scheduleSave();
     }
     window.__insertModel3d = insertModel3d;
+    // ---------- 표 ----------
+    const mdTableSource = () => {
+      const h = i18n.t('table.colName');
+      return ['| ' + h + ' 1 | ' + h + ' 2 |', '| --- | --- |', '|  |  |', '|  |  |', '', '']
+        .join(String.fromCharCode(10));
+    };
+    function insertTable() {
+      if (type === 'markdown') { mdTools.insertText(mdTableSource()); return; }
+      if (type !== 'rich') return;
+      tableTools.insert(2, 2);
+    }
+    $('#tableBtn').addEventListener('mousedown', (e) => e.preventDefault());
+    $('#tableBtn').addEventListener('click', insertTable);
+    window.__insertTable = insertTable;
+
+    // ---------- 우클릭 메뉴 ----------
+    // 표 위에서는 행·열 조작을, 빈 곳에서는 표 삽입을 준다.
+    // 글을 선택한 채로 누른 경우에는 이미 선택 메뉴가 떠 있으므로 내놓지 않는다.
+    (() => {
+      const menu = $('#ctxMenu');
+      const hide = () => menu.classList.add('hidden');
+      function open(x, y, items) {
+        menu.innerHTML = '';
+        items.forEach((it) => {
+          if (it.sep) { menu.appendChild(document.createElement('hr')); return; }
+          const b = document.createElement('button');
+          b.textContent = it.label;
+          b.addEventListener('mousedown', (e) => e.preventDefault());
+          b.addEventListener('click', () => { hide(); it.run(); });
+          menu.appendChild(b);
+        });
+        menu.classList.remove('hidden');
+        // 창 밖으로 나가지 않게 자리를 잡는다
+        const w = menu.offsetWidth, h = menu.offsetHeight;
+        menu.style.left = Math.round(Math.max(4, Math.min(x, window.innerWidth - w - 4))) + 'px';
+        menu.style.top = Math.round(Math.max(4, Math.min(y, window.innerHeight - h - 4))) + 'px';
+      }
+
+      // 새로 만든 제목·설명 칸에 커서를 둔다
+      function placeCaretIn(el) {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        range.collapse(true);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+        el.focus && el.focus();
+      }
+
+      // 표에서 지울 대상: 드래그로 고른 셀이 있으면 그것, 없으면 커서가 있는 셀
+      function targetRows(table, cell) {
+        const sel = tableTools.selectedRows(table);
+        if (sel.length) return sel;
+        const p = tableTools.cellPos(table, cell);
+        return p.row > 0 ? [p.row - 1] : [];
+      }
+      function targetCols(table, cell) {
+        const sel = tableTools.selectedCols(table);
+        return sel.length ? sel : [tableTools.cellPos(table, cell).col];
+      }
+
+      function tableItems(table, cell) {
+        const pos = tableTools.cellPos(table, cell);
+        const bodyRow = Math.max(0, pos.row - 1);
+        const after = (fn) => () => { fn(); tableTools.refresh(table); scheduleSave(); };
+        return [
+          { label: i18n.t('table.rowAbove'),
+            run: after(() => tableTools.insertRow(table, bodyRow, false)) },
+          { label: i18n.t('table.rowBelow'),
+            run: after(() => tableTools.insertRow(table, bodyRow, true)) },
+          { label: i18n.t('table.rowDelete'),
+            run: after(() => tableTools.deleteRows(table, targetRows(table, cell))) },
+          { sep: true },
+          { label: i18n.t('table.colLeft'),
+            run: after(() => tableTools.insertCol(table, pos.col, false)) },
+          { label: i18n.t('table.colRight'),
+            run: after(() => tableTools.insertCol(table, pos.col, true)) },
+          { label: i18n.t('table.colDelete'),
+            run: after(() => tableTools.deleteCols(table, targetCols(table, cell))) },
+          { sep: true },
+          { label: i18n.t(tableTools.hasRowHeader(table) ? 'table.headColOff' : 'table.headColOn'),
+            run: after(() => tableTools.toggleRowHeader(table)) },
+          { sep: true },
+          { label: i18n.t(tableTools.hasStats(table) ? 'table.statsOff' : 'table.statsOn'),
+            run: after(() => tableTools.toggleStats(table)) },
+          { label: i18n.t(tableTools.hasStatCol(table) ? 'table.statColOff' : 'table.statColOn'),
+            run: after(() => tableTools.toggleStatCol(table)) },
+          { sep: true },
+          { label: i18n.t(tableTools.hasCaption(table) ? 'table.captionOff' : 'table.captionOn'),
+            run: () => {
+              const cap = tableTools.toggleCaption(table);
+              tableTools.refresh(table);
+              if (cap) placeCaretIn(cap);   // 추가한 자리에서 바로 쓸 수 있게
+              scheduleSave();
+            } },
+          { label: i18n.t(tableTools.hasDesc(table) ? 'table.descOff' : 'table.descOn'),
+            run: () => {
+              const d = tableTools.toggleDesc(table);
+              tableTools.refresh(table);
+              if (d) placeCaretIn(d);
+              scheduleSave();
+            } },
+          { label: i18n.t('table.remove'),
+            run: () => { table.parentElement.remove(); scheduleSave(); } },
+        ];
+      }
+
+      // 동영상·이미지·3D 모델의 크기: 클래스 하나만 남긴다 (없으면 원래 크기)
+      const MEDIA_SIZES = [
+        { cls: 'media-fit', key: 'media.sizeFit' },
+        { cls: 'media-s', key: 'media.sizeS' },
+        { cls: 'media-m', key: 'media.sizeM' },
+        { cls: 'media-l', key: 'media.sizeL' },
+      ];
+      function mediaItems(el) {
+        return MEDIA_SIZES.map((s) => ({
+          label: i18n.t(s.key) + (el.classList.contains(s.cls) ? '  ✓' : ''),
+          run: () => {
+            MEDIA_SIZES.forEach((o) => el.classList.remove(o.cls));
+            el.classList.add(s.cls);
+            scheduleSave();
+          },
+        }));
+      }
+
+      // 3D 뷰어는 오른쪽 버튼 드래그가 '줌'이다 — 끌고 난 뒤에는 메뉴를 내지 않는다
+      let rightDownAt = null;
+      document.addEventListener('pointerdown', (e) => {
+        if (e.button === 2) rightDownAt = { x: e.clientX, y: e.clientY };
+      }, true);
+      const rightDragged = (e) => !!rightDownAt &&
+        Math.hypot(e.clientX - rightDownAt.x, e.clientY - rightDownAt.y) > 4;
+
+      document.addEventListener('contextmenu', (e) => {
+        if (!isText) return;
+        muteSelMenu();
+        // 3D 임베드는 Shadow DOM이지만 이벤트가 호스트로 되짚어져 closest로 잡힌다
+        const media = type === 'rich' && e.target.closest
+          ? e.target.closest('#editor video, #editor img, #editor .embed3d') : null;
+        if (media) {
+          if (media.classList.contains('embed3d') && rightDragged(e)) return;  // 줌 조작이었다
+          e.preventDefault();
+          open(e.clientX, e.clientY, mediaItems(media));
+          return;
+        }
+        const cell = type === 'rich' ? tableTools.cellOf(e.target) : null;
+        const table = cell && tableTools.tableOf(cell);
+        if (table) {
+          e.preventDefault();
+          // 고른 셀 밖을 눌렀으면 선택을 그 셀로 옮긴다 (선택 안이면 그대로 둔다 —
+          // 여러 행·열을 한 번에 지우려는 것이다)
+          if (!cell.classList.contains('tsel')) tableTools.clearSelection();
+          open(e.clientX, e.clientY, tableItems(table, cell));
+          return;
+        }
+        // 글을 고른 상태면 선택 메뉴의 몫이다
+        const picked = type === 'markdown'
+          ? mdSource.selectionStart !== mdSource.selectionEnd
+          : !window.getSelection().isCollapsed;
+        const inBody = type === 'markdown'
+          ? e.target === mdSource
+          : editor.contains(e.target);
+        if (picked || !inBody) return;
+        e.preventDefault();
+        open(e.clientX, e.clientY, [{ label: i18n.t('table.insert'), run: insertTable }]);
+      });
+      document.addEventListener('mousedown', (e) => {
+        if (!menu.contains(e.target)) hide();
+      }, true);
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hide(); });
+      window.addEventListener('blur', hide);
+      document.addEventListener('scroll', hide, true);
+    })();
+
+
     $('#model3dBtn').addEventListener('click', () => {
       if (type !== 'rich') return;
       bridge.call('model.pick')

@@ -321,6 +321,17 @@ body {
 }
 #editor img { max-width: 100%; border-radius: 6px; }
 #editor video { max-width: 100%; border-radius: 6px; }
+/* 동영상·이미지·3D 모델의 크기 — 우클릭 메뉴로 고른다. 클래스가 곧 저장되는 상태다.
+   고정 크기도 창이 좁아지면 max-width가 잡아 준다. */
+#editor img.media-fit, #editor video.media-fit { width: 100%; height: auto; }
+#editor img.media-s, #editor video.media-s { width: 240px; height: auto; }
+#editor img.media-m, #editor video.media-m { width: 400px; height: auto; }
+#editor img.media-l, #editor video.media-l { width: 560px; height: auto; }
+/* 3D는 높이가 내용으로 정해지지 않는다 — 폭에 어울리는 높이를 함께 준다 */
+.embed3d.media-fit { width: 100%; height: 260px; }
+.embed3d.media-s { width: 240px; height: 150px; }
+.embed3d.media-m { width: 400px; height: 240px; }
+.embed3d.media-l { width: 560px; height: 330px; }
 #editor ul, #editor ol { padding-left: 24px; }
 
 .yt-embed {
@@ -743,6 +754,136 @@ body > * { transition: opacity 0.18s ease; }
 body.ui-fading > * { opacity: 0 !important; }
 html.ui-collapsed #titlebar,
 html.ui-collapsed #toolbar { display: none !important; }
+
+/* ---------- 표 (리치 메모) ---------- */
+/* 저장되는 것은 table뿐이고, 정렬 버튼·손잡이는 data-chrome이 달린 장식이다
+   (editorCore.getHtml이 저장 직전에 걷어낸다). Notion처럼 평소에는 조용히 있다가
+   표에 마우스를 올리거나 커서가 들어오면 조작 손잡이가 드러난다. */
+.mtable-wrap {
+  position: relative;
+  margin: 0.5em 0;
+  padding: 0 10px 10px 0;  /* 오른쪽·아래 손잡이가 놓일 자리 */
+  width: fit-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+table.mtable {
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 1.5;
+}
+table.mtable th, table.mtable td {
+  border: 1px solid rgba(55, 53, 47, 0.22);
+  padding: 4px 8px;
+  min-width: 56px;
+  vertical-align: top;
+  text-align: left;
+}
+table.mtable th {
+  background: rgba(55, 53, 47, 0.06);
+  font-weight: 600;
+  white-space: nowrap;
+}
+/* 표 제목(caption)과 표 설명 — 둘 다 사용자가 직접 고쳐 쓰는 본문이다 */
+table.mtable > caption.mtable-caption {
+  caption-side: top;
+  text-align: left;
+  font-weight: 600;
+  font-size: 13px;
+  padding: 1px 2px 5px;
+}
+.mtable-desc {
+  font-size: 12px;
+  opacity: 0.75;
+  padding: 6px 2px 0;
+  line-height: 1.5;
+}
+table.mtable > caption.mtable-caption:empty::before,
+.mtable-desc:empty::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+}
+
+/* 타이틀 열(본문 행의 첫 머리글 칸)과 통계 열 */
+table.mtable th.mth-row {
+  background: rgba(55, 53, 47, 0.045);
+  font-weight: 600;
+  white-space: normal;
+  text-align: left;
+}
+table.mtable th[data-statcol], table.mtable td[data-statcell] {
+  background: rgba(55, 53, 47, 0.04);
+  font-size: 12px;
+  opacity: 0.9;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+table.mtable tfoot td {
+  background: rgba(55, 53, 47, 0.04);
+  font-size: 12px;
+  opacity: 0.85;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* 드래그로 고른 셀 */
+table.mtable .tsel { background: var(--accent-soft, rgba(99, 85, 224, 0.16)); }
+
+/* 머리글의 정렬 버튼 */
+.mtable-sort {
+  float: right;
+  margin-left: 6px;
+  font-size: 10px;
+  opacity: 0.35;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.mtable-sort:hover { opacity: 1; }
+th[data-sort] .mtable-sort { opacity: 1; color: var(--accent); }
+
+/* 행·열 손잡이: 왼쪽 테두리는 아래로, 아래 테두리는 오른쪽으로 끌면 늘어난다 */
+.mtable-grip {
+  position: absolute;
+  background: var(--accent);
+  border-radius: 3px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+/* 아래 손잡이는 위아래로 끌어 행을, 오른쪽 손잡이는 좌우로 끌어 열을 바꾼다.
+   자리(top/left/폭·높이)는 table.js가 표의 실제 위치에 맞춰 넣는다 — 표 제목·설명이
+   붙으면 wrap의 경계와 표의 경계가 달라지기 때문이다. */
+.mtable-grip-row { height: 5px; cursor: ns-resize; }
+.mtable-grip-col { width: 5px; cursor: ew-resize; }
+.mtable-wrap:hover .mtable-grip,
+.mtable-wrap:focus-within .mtable-grip { opacity: 0.35; }
+.mtable-grip:hover { opacity: 1 !important; }
+
+/* ---------- 우클릭 메뉴 ---------- */
+#ctxMenu {
+  position: fixed;
+  z-index: 40;
+  min-width: 150px;
+  padding: 5px;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel-bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+}
+#ctxMenu.hidden { display: none; }
+#ctxMenu button {
+  padding: 6px 9px;
+  border-radius: var(--r-sm);
+  text-align: left;
+  white-space: nowrap;
+  font-size: 12.5px;
+}
+#ctxMenu button:hover { background: var(--hover); }
+#ctxMenu hr { border: none; border-top: 1px solid var(--border); margin: 4px 2px; }
 
 /* ---------- 텍스트 선택 메뉴 ---------- */
 /* 선택 영역 위에 떠서 동작을 제안한다. 시안의 컨텍스트 메뉴와 같은 결. */

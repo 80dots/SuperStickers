@@ -189,7 +189,12 @@
     <button class="tb-btn" id="videoBtn" data-i18n-title="tt.video">
       <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M2.2 3.7h8.6v8.6H2.2z"/><path fill="currentColor" d="M11.8 7 15 4.5v7L11.8 9z"/><path fill="currentColor" d="m5.5 6 3.5 2-3.5 2z"/></svg>
     </button>
-    <button class="tb-btn" id="model3dBtn" data-i18n-title="tt.model3d">
+    <button class="tb-btn" id="tableBtn" data-i18n-title="tt.table" data-menu-i18n="menu.table">
+      <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor"
+        stroke-width="1.3" d="M2.2 3.2h11.6v9.6H2.2z"/><path fill="none" stroke="currentColor"
+        stroke-width="1.1" d="M2.2 6.4h11.6M2.2 9.6h11.6M6.4 3.2v9.6M10 3.2v9.6"/></svg>
+    </button>
+    <button class="tb-btn" id="model3dBtn" data-i18n-title="tt.model3d" data-menu-i18n="menu.model3d">
       <svg viewBox="0 0 16 16" width="14" height="14"><path fill="none" stroke="currentColor" stroke-width="1.3" d="M8 1.8 14 5v6L8 14.2 2 11V5z"/><path fill="none" stroke="currentColor" stroke-width="1.1" d="M2 5l6 3.2L14 5M8 8.2v6"/></svg>
     </button>
     <!-- 더보기: 폭이 모자라면 뒤쪽 버튼들이 여기로 접혀 들어간다 (sticker.js layoutToolbar) -->
@@ -221,6 +226,9 @@
     <button class="tb-btn wide" id="fileCopyBtn" data-i18n="file.copy"></button>
     <button class="tb-btn wide" id="fileRemoveBtn" data-i18n="file.remove"></button>
   </div>
+
+  <!-- 표·본문 우클릭 메뉴. 항목은 sticker.js가 상황에 맞게 만든다 -->
+  <div id="ctxMenu" class="hidden"></div>
 
   <!-- 텍스트를 선택하면 그 위에 뜨는 메뉴. 항목은 sticker.js의 SEL_ACTIONS로 정의한다
        (앞으로 항목이 추가될 예정이라 마크업이 아니라 배열에서 만든다) -->
@@ -257,6 +265,7 @@
   <script src="/common/color.js"></script>
   <script src="/common/prompts.js"></script>
   <script src="/editor/editor.js"></script>
+  <script src="/editor/table.js"></script>
   <script src="/editor/media.js"></script>
   <script src="/editor/viewer3d.js"></script>
   <script src="/editor/markdown.js"></script>

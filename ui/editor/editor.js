@@ -113,7 +113,17 @@ const editorCore = (() => {
 
   // ---------- 직렬화 ----------
   function getHtml() {
-    return editor ? editor.innerHTML : '';
+    if (!editor) return '';
+    // 표의 조작용 장식(정렬 버튼·손잡이)과 셀 선택 표시는 화면에만 필요하다.
+    // 그대로 저장하면 그룹 카드·AI 리뷰·내보내기까지 부스러기가 따라다닌다.
+    if (!editor.querySelector('[data-chrome], .tsel')) return editor.innerHTML;
+    const copy = editor.cloneNode(true);
+    copy.querySelectorAll('[data-chrome]').forEach((el) => el.remove());
+    copy.querySelectorAll('.tsel').forEach((el) => {
+      el.classList.remove('tsel');
+      if (!el.className) el.removeAttribute('class');
+    });
+    return copy.innerHTML;
   }
 
   // 메모 폴더 기준 상대 경로(예: "Image/xxx.png")만 추출한다
@@ -138,7 +148,18 @@ const editorCore = (() => {
   }
 
   function getPlainText() {
-    return editor ? editor.innerText.trim() : '';
+    if (!editor) return '';
+    // 표의 정렬 버튼 같은 장식은 본문이 아니다 (AI에 그대로 넘어가면 안 된다)
+    if (!editor.querySelector('[data-chrome]')) return editor.innerText.trim();
+    const copy = editor.cloneNode(true);
+    copy.querySelectorAll('[data-chrome]').forEach((el) => el.remove());
+    // innerText는 화면에 붙어 있어야 줄바꿈을 제대로 준다 — 잠깐 숨겨 붙였다 뗀다
+    copy.style.position = 'absolute';
+    copy.style.left = '-9999px';
+    document.body.appendChild(copy);
+    const text = copy.innerText.trim();
+    copy.remove();
+    return text;
   }
 
   // 리치 본문을 마크다운으로 직렬화한다.
@@ -219,10 +240,14 @@ const editorCore = (() => {
         return;
       }
       if (tag === 'hr') { out.push('---'); return; }
+      if (tag === 'table' && node.classList.contains('mtable')) {
+        tableTools.toMarkdown(node).forEach((l) => out.push(l));
+        return;
+      }
       // 일반 블록(div/p) — 자식에 블록이 섞여 있으면 재귀
       const hasBlock = [...node.childNodes].some(
         (c) => c.nodeType === Node.ELEMENT_NODE &&
-               (/^(div|p|ul|ol|h[1-6]|pre|blockquote|hr)$/i.test(c.tagName) ||
+               (/^(div|p|ul|ol|h[1-6]|pre|blockquote|hr|table)$/i.test(c.tagName) ||
                 (c.classList && c.classList.contains('check-item'))));
       if (hasBlock) {
         [...node.childNodes].forEach((c) => block(c, out, depth));

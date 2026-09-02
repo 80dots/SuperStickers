@@ -34,6 +34,15 @@ button {
 
 input, select, textarea { font-family: inherit; color: inherit; }
 
+/* 커서를 되돌리는 이유: 크로미움은 **직접 꾸민 스크롤바**에 한해 그 요소의 커서를 그대로
+   쓴다(기본 스크롤바는 언제나 화살표다). 그래서 편집 영역·텍스트 영역에서는 스크롤바
+   위에서도 글자 입력 캐럿이 보였다. 부분마다 따로 지정해야 트랙·꼭짓점까지 덮인다. */
+/* ::-webkit-resizer는 빼 둔다 — 크기 조절 손잡이는 대각선 커서가 맞다 */
+::-webkit-scrollbar,
+::-webkit-scrollbar-thumb,
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-track-piece,
+::-webkit-scrollbar-corner { cursor: default; }
 ::-webkit-scrollbar { width: 8px; height: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar); border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: var(--muted); }
