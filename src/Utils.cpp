@@ -121,8 +121,8 @@ bool MoveDirTo(const std::wstring& src, const std::wstring& dst) {
     // MOVEFILE_COPY_ALLOWED로도 폴더는 이동되지 않으므로 복사 후 원본 삭제로 폴백.
     if (MoveFileExW(src.c_str(), dst.c_str(), MOVEFILE_COPY_ALLOWED)) return true;
     if (!CopyDirRecursive(src, dst)) return false;
-    RemoveDirRecursive(src);
-    return true;
+    // 원본을 못 지우면 이동이 아니다 — 양쪽에 남은 폴더가 다음 실행에서 되살아난다
+    return RemoveDirRecursive(src);
 }
 
 bool RunProcessWait(const std::wstring& cmdLine, DWORD timeoutMs) {

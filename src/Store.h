@@ -33,6 +33,11 @@ struct Settings {
     bool autostart = false;
     // AI 백엔드: "builtin"(앱이 띄우는 llama-server) | "ollama" | "lmstudio"
     std::string aiProvider = "ollama";
+    // 자체 모델 백엔드 노출 여부. 작은 모델의 품질이 기대에 못 미쳐 2026-09-02부터 설정
+    // 화면에서 진입점을 감췄다. 코드(LocalAi·다운로드·서버)는 그대로 두었으므로 이 값을
+    // true로 바꾸면 백엔드 선택에 '자체 모델'이 다시 나타난다. 꺼져 있으면 저장된 설정의
+    // "builtin"은 읽을 때 "ollama"로 바꾸고, 설정 변경으로도 "builtin"을 받지 않는다.
+    static constexpr bool kBuiltinBackendEnabled = false;
     OllamaSettings ollama;
     LmStudioSettings lmstudio;
     BuiltinAiSettings builtin;
@@ -112,7 +117,7 @@ class Store {
 public:
     void Init();  // %APPDATA%\SuperSticker 하위 디렉터리 생성
 
-    Settings LoadSettings();
+    Settings LoadSettings();  // 손상된 파일이면 기본값 (필드 타입이 어긋나도 앱은 떠야 한다)
     void SaveSettings(const Settings& s);
 
     // hadErrors: 파싱 실패로 건너뛴 파일이 있으면 true (첨부 GC 안전장치)
@@ -175,5 +180,7 @@ public:
     static GroupData GroupFromJson(const nlohmann::json& j);
 
 private:
+    Settings LoadSettingsUnchecked();  // nlohmann type_error를 던질 수 있다
+
     std::wstring customDir_;
 };

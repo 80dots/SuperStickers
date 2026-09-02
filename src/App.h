@@ -131,7 +131,9 @@ public:
                            std::vector<std::string>* errors = nullptr);
 
     // 데이터 탭: 모든 메모·그룹·휴지통 완전 삭제 (확인 팝업 포함, 설정은 보존)
-    void DeleteAllDataInteractive(HWND owner);
+    bool DeleteAllDataInteractive(HWND owner);  // 실제로 지웠으면 true
+    // 파일 메모에 등록된 경로인지 (페이지가 준 경로를 ShellExecute하기 전의 확인)
+    bool IsRegisteredFilePath(const std::wstring& path) const;
 
     // Manager(설정/목록) 창
     void OpenManager(const std::string& tab);

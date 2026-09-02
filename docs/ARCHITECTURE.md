@@ -69,6 +69,11 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 ### AI 백엔드 (자체 모델 / Ollama / LM Studio)
 
 `settings.aiProvider`가 `"builtin"` | `"ollama"` | `"lmstudio"` 중 무엇인지에 따라 갈린다.
+**자체 모델은 2026-09-02부터 설정 화면에서 감춰져 있다**(작은 모델의 품질이 기대에 못 미쳤다).
+스위치는 `Settings::kBuiltinBackendEnabled` 하나다: 꺼져 있으면 설정 화면의 백엔드 버튼이
+숨고(`ai.getConfig`의 `builtinEnabled`), 저장돼 있던 `"builtin"`은 읽을 때 `"ollama"`로 바뀌며,
+`settings.set`도 `"builtin"`을 받지 않고, 시작 시 자동 로드도 하지 않는다. `LocalAi`와
+다운로드·서버 코드는 그대로라 스위치를 켜면 전부 되살아난다.
 **페이지는 어느 쪽인지 모른다** — `ai.chat`만 부르고 `ai.chunk`/`ai.done`을 듣는다.
 라우팅은 App이 한다. LM Studio는 OpenAI 호환 서버라 내장 백엔드와 같은 프로토콜을 쓰고
 (엔드포인트만 다르다), 모델 목록만 `/v1/models`로 조회한다(Ollama는 `/api/tags`).
@@ -77,7 +82,10 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   파싱만 갈린다:
   - Ollama: `POST /api/chat`, NDJSON 한 줄에 `message.content`, 끝은 `done:true`
   - 자체 모델: `POST /v1/chat/completions`, SSE `data: {...}`에 `choices[0].delta.content`,
-    끝은 `data: [DONE]`. JSON 강제는 `response_format:{type:"json_object"}`
+    끝은 `data: [DONE]`. JSON 강제는 `response_format:{type:"json_schema",json_schema:{schema}}`
+    — **`json_object`는 llama-server가 문법으로 강제하지 않는다**(실측: 코드 펜스·산문이
+    그대로 나온다). 스키마(`prompts.reviewSchema`)를 줘야 출력이 유효한 JSON으로 묶인다.
+    Ollama는 같은 스키마를 `format`에 그대로 받는다.
 - **함정 — 추론 모델의 본문이 빈다**: Qwen3 계열은 `reasoning_content`로 사고 과정을 먼저
   쏟아낸다. 그대로 두면 토큰 예산을 사고에 다 쓰고 `content`가 빈 채 끝난다(실측: 요약이
   통째로 사라졌다). 그래서 `chat_template_kwargs:{enable_thinking:false}`를 함께 보내고
@@ -105,7 +113,8 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   (로딩 중에는 503), 모델·엔진·컨텍스트가 바뀌면 내렸다 다시 띄운다. 종료·백엔드 전환·
   모델 삭제에서도 내린다.
 - 첫 요청은 모델 로딩(수십 초)이 앞에 붙으므로 `ai.status {state:"loading"}`를 먼저 보내
-  메모창이 "모델을 올리는 중"을 표시한다.
+  메모창이 "모델을 올리는 중"을 표시한다. **같은 모델이 이미 떠 있으면 보내지 않는다** —
+  설정에서 미리 올려 둔 뒤 리뷰를 돌리면 첫 토큰까지 "올리는 중"이 떠 있던 문제.
 
 #### 서버 상태와 동시 요청
 
@@ -122,6 +131,17 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   하고 결과를 대기자 큐(`waiters_`)에 모아 두었다가 모두에게 전달한다. 예전에는 두 번째
   요청부터 `"starting"` 오류를 돌려줘 창마다 실패로 보였다. 모델은 하나만 뜨므로
   (`KillServer` 후 기동) 메모리 중복도 없다 — 실측으로 요청 3건에 프로세스 1개를 확인했다.
+- **기동 중에 다른 모델을 요청하면**(로딩 중 설정에서 모델을 바꾼 직후) `"busy"`를 돌려주지
+  않고 `nextStart_`에 예약한다. `cancelStart_`를 세워 현재 기동을 헬스 루프에서 바로 접고,
+  끝나는 대로 예약된 모델을 이어서 띄운다. `StopServer`도 기동 중이면 같은 플래그로 접는다.
+- **워커는 상태·플래그·대기열을 한 락 안에서 함께 넘긴다.** 따로 쓰면 그 틈에 들어온
+  `EnsureServer`가 "기동 중인데 대기 모델이 없음"을 보고 실패했다.
+- **서버가 스스로 죽으면**(OOM 등) `ServerState()`가 다음 조회에서 Stopped로 바로잡고 방송한다.
+  `KillServer`의 종료 대기(최대 3초)는 락 밖에서 한다 — 락을 쥔 채 기다리면 UI 스레드가
+  상태를 묻다가 함께 멈춘다.
+- **AiClient 워커는 `this`를 만지지 않는다.** 중단 플래그 테이블은 `shared_ptr<Shared>`로
+  나눠 갖고, 워커 본문은 try/catch로 감싼다 — 서버가 예상 밖의 JSON을 보내면 nlohmann이
+  워커 스레드에서 예외를 던지고, 잡지 않으면 `std::terminate`로 앱 전체가 죽는다.
 - **함정 — 로컬 HTTP에 TLS를 켜면 안 된다**: `util::HttpGetToFile`은 원래 https 다운로드용이라
   `WINHTTP_FLAG_SECURE`를 무조건 켰다. 이 함수를 `/health` 폴링에 재사용하면서 로컬
   `http://127.0.0.1`에 TLS로 붙어 **모델이 다 올라갔는데도 영원히 '로딩 중'에 머물렀다**.
@@ -149,6 +169,36 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   - MIT는 배포본에 저작권·허가 고지를 포함할 것을 요구한다. 설치 프로그램이 `LICENSE.txt`를
     함께 설치하고, 정보 탭에도 전문이 들어 있어 앱만 받은 사용자도 볼 수 있다.
     Pretendard의 OFL 전문은 `ui/vendor/fonts/OFL.txt`가 그대로 설치되어 충족한다.
+
+### 페이지 신뢰 경계 (2026-09-02 정리)
+
+본문 HTML은 저장된 그대로 `innerHTML`로 들어가고, `.ssticker` 가져오기로 남이 만든 HTML도
+들어온다. 페이지 스크립트는 브리지 전체에 닿으므로, 본문에 섞인 스크립트가 돌면 네이티브
+핸들러가 그대로 무기가 된다. 그래서 두 겹으로 막는다.
+
+- **CSP**: 세 페이지(`sticker.html`·`group.html`·`manager.html`) 모두
+  `script-src 'self'; object-src 'none'; base-uri 'none'`. 인라인 핸들러(`onerror=`)와
+  `javascript:` URL이 막힌다. 그 때문에 테마 초기화 인라인 스크립트는 `common/early-theme.js`로
+  뺐다. 네이티브가 넣는 `__init`(AddScriptToExecuteOnDocumentCreated)과 이벤트 전달은 CSP
+  대상이 아니다. 벤더 라이브러리(three·marked)는 eval을 쓰지 않아 `'unsafe-eval'`이 필요 없다.
+- **네이티브 핸들러는 페이지가 준 값을 믿지 않는다**:
+  - `files.open`·`member.openPath`는 파일 메모에 등록된 경로만 `ShellExecute`한다
+    (`App::IsRegisteredFilePath`).
+  - `model.readFile`은 3D 자산 확장자만 읽어 준다.
+  - `attachment.save`의 `ext`는 영숫자 1~8자만(`SanitizeExt`) — 확장자에 `..\`를 넣어 임의
+    경로에 쓰는 통로였다.
+  - memo.json의 `pdfName`·`attachments`는 `<Image|Video|PDF|3D>/<이름>` 꼴만 받는다
+    (`ValidAttachmentRel`) — 가져온 파일의 값으로 메모 폴더 밖의 파일을 지울 수 있었다.
+- 설정·그룹 창의 미리보기 텍스트 추출은 `DOMParser`를 쓴다. 분리된 요소라도 `innerHTML`
+  대입은 `<img>`를 즉시 내려받고 인라인 핸들러를 실행한다.
+
+### 모달 대화상자와 창 수명
+
+브리지 핸들러가 확인창·파일 선택창을 띄우면 그 모달 루프 안에서도 타이머와 `RunOnUi` 작업이
+돈다(그룹 드롭 250ms 타이머, 설정 창의 삭제, 종료). 그 사이 창이 파괴되면 대화상자에서
+돌아온 핸들러가 해제된 `self`를 만진다. 그래서 대화상자 뒤에는 `stillAlive()`(id로 다시
+조회해 같은 포인터인지)를 확인하고, `WebViewHost`의 비동기 생성·재시도 콜백은
+`shared_ptr<bool>` 토큰(`alive_`)으로 살아 있는지 본 뒤에만 멤버를 만진다.
 
 ### 데이터 저장
 

@@ -154,14 +154,29 @@ const mdTools = (() => {
     container.querySelectorAll('a[href]').forEach((a) => a.setAttribute('target', '_blank'));
   }
 
-  // 소스에서 idx번째 체크박스 토큰("[ ]"/"[x]")을 갱신한 새 소스를 반환
+  // 소스에서 idx번째 체크박스 토큰("[ ]"/"[x]")을 갱신한 새 소스를 반환.
+  // 순번은 렌더된 체크박스와 같아야 한다: 코드 펜스 안은 렌더되지 않으므로 세지 않고,
+  // 인용(>) 안의 목록은 렌더되므로 센다. (예전에는 펜스 안의 "- [ ]"를 세어 엉뚱한 줄을 바꿨다)
   function toggleTaskInSource(mdText, idx, checked) {
-    const re = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+)\[( |x|X)\]/gm;
+    const re = /^((?:[ \t]*>)*[ \t]*(?:[-*+]|\d+[.)])[ \t]+)\[( |x|X)\]/;
+    const lines = mdText.split('\n');
     let i = 0;
-    return mdText.replace(re, (m, head) => {
-      if (i++ === idx) return head + (checked ? '[x]' : '[ ]');
-      return m;
-    });
+    let fence = null;  // 열린 펜스 문자 (` 또는 ~)
+    for (let n = 0; n < lines.length; n++) {
+      const line = lines[n];
+      const f = line.match(/^[ \t]*(`{3,}|~{3,})/);
+      if (f) {
+        if (!fence) fence = f[1][0];
+        else if (f[1][0] === fence) fence = null;
+        continue;
+      }
+      if (fence || !re.test(line)) continue;
+      if (i++ === idx) {
+        lines[n] = line.replace(re, (_, head) => head + (checked ? '[x]' : '[ ]'));
+        break;
+      }
+    }
+    return lines.join('\n');
   }
 
   function getAttachments(mdText) {

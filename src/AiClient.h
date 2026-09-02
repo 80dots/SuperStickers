@@ -27,6 +27,9 @@ public:
     struct ChatOptions {
         Protocol protocol = Protocol::OllamaNdjson;
         bool jsonFormat = false;      // 응답을 유효한 JSON으로 강제 (AI Review)
+        // JSON 스키마(선택). 있으면 문법 제약으로 넘긴다 — llama-server는 json_object만으로는
+        // 출력을 묶지 않아(실측) 스키마가 있어야 실제로 강제된다. Ollama는 format에 그대로 준다.
+        nlohmann::json jsonSchema;
         bool disableThinking = false; // Qwen3 계열: 끄지 않으면 reasoning만 내고 본문이 빈다
     };
 
@@ -54,6 +57,8 @@ public:
               std::function<void(bool ok, std::string error)> onDone);
 
     void Abort(const std::string& requestId);
+    // 진행 중인 모든 요청 중단 (앱 종료 시). 워커는 다음 청크 경계에서 빠져나온다.
+    void AbortAll();
 
     struct Url {
         std::wstring host;
@@ -69,9 +74,16 @@ private:
         if (uiPoster_) uiPoster_(std::move(fn));
     }
 
+    // 워커 스레드와 나눠 갖는 상태. **워커는 this를 만지지 않는다** — detached 스레드가
+    // 앱 종료(정적 소멸) 뒤까지 살아남아도 파괴된 멤버를 건드리지 않도록 shared_ptr로 소유한다.
+    struct Shared {
+        std::mutex mutex;
+        // requestId → 중단 플래그. 워커가 청크 사이마다 확인한다.
+        // (WinHTTP 동기 모드에서 타 스레드의 핸들 닫기는 진행 중인 호출을 취소하지 못함)
+        std::map<std::string, std::shared_ptr<std::atomic<bool>>> active;
+    };
+    std::shared_ptr<std::atomic<bool>> Track(const std::string& requestId);
+
     UiPoster uiPoster_;
-    std::mutex mutex_;
-    // requestId → 중단 플래그. 워커가 청크 사이마다 확인한다.
-    // (WinHTTP 동기 모드에서 타 스레드의 핸들 닫기는 진행 중인 호출을 취소하지 못함)
-    std::map<std::string, std::shared_ptr<std::atomic<bool>>> activeRequests_;
+    std::shared_ptr<Shared> shared_ = std::make_shared<Shared>();
 };

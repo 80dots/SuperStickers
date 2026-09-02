@@ -135,10 +135,14 @@ std::vector<std::string> LocalAi::InstalledModels() const {
 bool LocalAi::HasVulkanCapableGpu() {
     // 정확한 판별은 Vulkan 로더를 열어야 하지만, 여기서는 힌트만 필요하다.
     // vulkan-1.dll이 있으면 드라이버가 Vulkan을 깔아 둔 것이다.
-    HMODULE h = LoadLibraryW(L"vulkan-1.dll");
-    if (!h) return false;
-    FreeLibrary(h);
-    return true;
+    // 채팅 요청마다 DLL을 올렸다 내리지 않도록 한 번만 본다 (실행 중에 바뀌지 않는다).
+    static const bool cached = [] {
+        HMODULE h = LoadLibraryW(L"vulkan-1.dll");
+        if (!h) return false;
+        FreeLibrary(h);
+        return true;
+    }();
+    return cached;
 }
 
 // ---------- 다운로드 ----------
@@ -221,6 +225,8 @@ void LocalAi::DownloadModel(const std::string& modelId, ProgressFn onProgress, D
         return;
     }
     abort_ = false;
+    // 같은 모델이 떠 있으면(mmap으로 파일을 물고 있다) 정본 자리로 옮길 수 없다 — 먼저 내린다
+    if (RunningModel() == modelId) StopServer();
 
     ModelInfo m = *mi;
     std::wstring dest = ModelPath(m);
@@ -289,7 +295,7 @@ void LocalAi::DownloadModel(const std::string& modelId, ProgressFn onProgress, D
 
         DeleteFileW(dest.c_str());
         if (!MoveFileExW(part.c_str(), dest.c_str(), MOVEFILE_REPLACE_EXISTING)) {
-            DeleteFileW(part.c_str());
+            // 검사까지 통과한 수 GB 파일이다 — 지우지 않는다. 다음 다운로드가 덮어쓴다.
             return finish(false, "move failed");
         }
         finish(true, "");
@@ -308,13 +314,23 @@ bool LocalAi::DeleteModel(const std::string& modelId) {
 
 // ---------- 서버 ----------
 
-bool LocalAi::ServerRunning() const { return state_.load() == State::Ready; }
+bool LocalAi::ServerRunning() const { return ServerState() == State::Ready; }
 
 LocalAi::State LocalAi::ServerState() const {
-    // 프로세스가 죽었는데 Ready로 남아 있으면 상태를 바로잡는다
     if (state_.load() == State::Ready) {
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (!process_ || WaitForSingleObject(process_, 0) != WAIT_TIMEOUT) return State::Stopped;
+        bool alive = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            alive = process_ && WaitForSingleObject(process_, 0) == WAIT_TIMEOUT;
+        }
+        if (!alive) {
+            // 서버가 스스로 죽었다(OOM 등). Ready로 남겨 두면 설정 창은 "준비됨"을 계속
+            // 보여 주고 ai.getConfig는 running=true·state=stopped라는 모순을 돌려준다.
+            state_ = State::Stopped;
+            loadStartTick_ = 0;
+            NotifyState();
+            return State::Stopped;
+        }
     }
     return state_.load();
 }
@@ -333,7 +349,7 @@ uint64_t LocalAi::LoadingElapsedMs() const {
     return start ? GetTickCount64() - start : 0;
 }
 
-void LocalAi::NotifyState() {
+void LocalAi::NotifyState() const {
     if (!stateListener_) return;
     auto fn = stateListener_;
     PostUi([fn]() { fn(); });
@@ -354,23 +370,29 @@ std::string LocalAi::RunningModel() const {
 }
 
 void LocalAi::KillServer() {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (job_) {
-        CloseHandle(job_);  // KILL_ON_JOB_CLOSE — 자식이 함께 종료된다
-        job_ = nullptr;
-    }
-    if (process_) {
-        TerminateProcess(process_, 0);
-        WaitForSingleObject(process_, 3000);
-        CloseHandle(process_);
+    // 핸들만 락 안에서 떼어 내고, 종료 대기(최대 3초)는 락 밖에서 한다 —
+    // 그 사이 UI 스레드가 상태를 물으며(ServerState/RunningModel) 멈추지 않도록.
+    HANDLE process = nullptr, job = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        process = process_;
+        job = job_;
         process_ = nullptr;
+        job_ = nullptr;
+        port_ = 0;
+        runningModel_.clear();
+        runningVariant_.clear();
     }
-    port_ = 0;
-    runningModel_.clear();
-    runningVariant_.clear();
+    if (job) CloseHandle(job);  // KILL_ON_JOB_CLOSE — 자식이 함께 종료된다
+    if (process) {
+        TerminateProcess(process, 0);
+        WaitForSingleObject(process, 3000);
+        CloseHandle(process);
+    }
 }
 
 void LocalAi::StopServer() {
+    if (starting_.load()) cancelStart_ = true;  // 기동 스레드가 헬스 루프에서 보고 접는다
     KillServer();
     state_ = State::Stopped;
     loadStartTick_ = 0;
@@ -439,10 +461,22 @@ bool LocalAi::StartServerBlocking(const ModelInfo& m, const std::string& variant
     }
 
     // 준비될 때까지 /health를 두드린다. 로딩 중에는 503, 다 되면 200이다.
-    // 큰 모델은 첫 로딩이 오래 걸려 넉넉히 기다린다.
+    // 큰 모델을 느린 디스크에서 처음 올리면 몇 분이 걸릴 수 있다 — 프로세스가 살아 있는 한
+    // 넉넉히(10분) 기다린다. 90초쯤에서 끊으면 거의 다 올라간 서버를 죽이게 된다.
+    // 핸들은 매번 멤버에서 다시 읽는다: 그 사이 StopServer가 닫았을 수 있다.
     std::wstring health = L"http://127.0.0.1:" + std::to_wstring(port) + L"/health";
-    for (int i = 0; i < 180; ++i) {
-        if (WaitForSingleObject(pi.hProcess, 0) != WAIT_TIMEOUT) {
+    for (int i = 0; i < 1200; ++i) {
+        HANDLE h = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            h = process_;
+        }
+        if (!h || cancelStart_.load()) {
+            error = "stopped";  // 사용자가 중지했거나 다른 모델로 바꿨다
+            KillServer();
+            return false;
+        }
+        if (WaitForSingleObject(h, 0) != WAIT_TIMEOUT) {
             error = "server exited";  // 모델 로딩 실패 등 — server.log에 이유가 남는다
             KillServer();
             return false;
@@ -457,7 +491,7 @@ bool LocalAi::StartServerBlocking(const ModelInfo& m, const std::string& variant
 }
 
 void LocalAi::EnsureServer(const std::string& modelId, const std::string& variant, int ctxSize,
-                           std::function<void(bool, const std::string&, const std::string&)> done) {
+                           ServerDoneFn done) {
     const ModelInfo* mi = FindModel(modelId);
     if (!mi) {
         PostUi([done]() { done(false, "", "unknown model"); });
@@ -465,13 +499,13 @@ void LocalAi::EnsureServer(const std::string& modelId, const std::string& varian
     }
     // 이미 같은 모델·변형으로 준비돼 있으면 그대로 쓴다
     if (ServerState() == State::Ready) {
-        std::string ep = Endpoint();
-        bool same = false;
+        std::string ep;
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            same = (runningModel_ == modelId && runningVariant_ == variant && !ep.empty());
+            if (runningModel_ == modelId && runningVariant_ == variant && process_ && port_ != 0)
+                ep = "http://127.0.0.1:" + std::to_string(port_);
         }
-        if (same) {
+        if (!ep.empty()) {
             PostUi([done, ep]() { done(true, ep, ""); });
             return;
         }
@@ -486,11 +520,20 @@ void LocalAi::EnsureServer(const std::string& modelId, const std::string& varian
                 waiters_.push_back(done);
                 return;
             }
-            // 다른 모델을 올리는 중이면 그 기동이 끝난 뒤에 다시 시도해야 한다
-            PostUi([done]() { done(false, "", "busy"); });
+            // 다른 모델을 올리는 중 — 현재 기동은 접고, 끝나는 대로 이 모델을 띄운다.
+            // 이미 예약된 것이 또 다른 모델이면 나중 요청이 우선이다.
+            if (nextStart_ && nextStart_->modelId != modelId) {
+                auto old = std::move(nextStart_->waiters);
+                nextStart_.reset();
+                for (auto& w : old) PostUi([w]() { w(false, "", "aborted"); });
+            }
+            if (!nextStart_) nextStart_ = PendingStart{modelId, variant, ctxSize, {}};
+            nextStart_->waiters.push_back(done);
+            cancelStart_ = true;
             return;
         }
         starting_ = true;
+        cancelStart_ = false;
         pendingModel_ = modelId;
         waiters_.push_back(done);
     }
@@ -505,18 +548,28 @@ void LocalAi::EnsureServer(const std::string& modelId, const std::string& varian
         bool ok = StartServerBlocking(m, variant, ctxSize, error);
         std::string ep = ok ? Endpoint() : "";
 
-        std::vector<std::function<void(bool, const std::string&, const std::string&)>> waiters;
+        std::vector<ServerDoneFn> waiters;
+        std::optional<PendingStart> next;
         {
+            // 상태·플래그·큐를 한 락 안에서 함께 넘긴다 — 따로 쓰면 그 틈에 들어온
+            // EnsureServer가 "기동 중인데 대기 모델은 없음"을 보고 엉뚱하게 실패한다.
             std::lock_guard<std::mutex> lock(mutex_);
             waiters.swap(waiters_);
             pendingModel_.clear();
+            next.swap(nextStart_);
+            state_ = ok ? State::Ready : State::Stopped;
+            loadStartTick_ = 0;
+            starting_ = false;
         }
-        state_ = ok ? State::Ready : State::Stopped;
-        loadStartTick_ = 0;
-        starting_ = false;
         NotifyState();
         for (auto& w : waiters) {
             PostUi([w, ok, ep, error]() { w(ok, ep, error); });
+        }
+        if (next) {
+            // 예약된 모델을 이어서 띄운다. 첫 호출이 기동을 시작하고 나머지는 대기열에 붙는다.
+            PostUi([this, n = *next]() {
+                for (auto& w : n.waiters) EnsureServer(n.modelId, n.variant, n.ctxSize, w);
+            });
         }
     }).detach();
 }

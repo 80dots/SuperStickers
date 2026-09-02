@@ -282,11 +282,15 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
         return json::object();
     });
 
-    b.Register("sticker.delete", [self](const json&) {
+    // 모달 대화상자가 떠 있는 동안에도 타이머·RunOnUi 작업은 계속 돈다(그룹 드롭 250ms 타이머,
+    // 설정 창의 삭제, 종료). 그 사이 이 창이 파괴될 수 있으므로 대화상자에서 돌아온 뒤에는
+    // self를 만지기 전에 살아 있는지 다시 확인한다.
+    const std::string selfId = self->data.id;
+    auto stillAlive = [self, selfId]() { return App::I().FindSticker(selfId) == self; };
+    b.Register("sticker.delete", [self, selfId](const json&) {
         if (!App::ConfirmYesNo(self->hwnd_, App::I().DeleteConfirmKey()))
             return json{{"deleted", false}};
-        std::string id = self->data.id;
-        App::I().RunOnUi([id]() { App::I().DeleteSticker(id); });
+        App::I().RunOnUi([selfId]() { App::I().DeleteSticker(selfId); });
         return json{{"deleted", true}};
     });
 
@@ -317,7 +321,7 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
         return json{{"name", name}, {"url", AttachmentUrl(self->data.id, name)}};
     });
 
-    b.Register("attachment.pickVideo", [self](const json&) {
+    b.Register("attachment.pickVideo", [self, stillAlive](const json&) {
         wil::com_ptr<IFileOpenDialog> dlg;
         if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
                                     IID_PPV_ARGS(&dlg))))
@@ -330,6 +334,7 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
         wil::unique_cotaskmem_string path;
         if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
             throw std::runtime_error("path failed");
+        if (!stillAlive()) return json{{"cancelled", true}};
         std::string name =
             App::I().store.ImportAttachment(self->data.id, path.get(), "video");
         if (name.empty()) throw std::runtime_error("copy failed");
@@ -473,6 +478,9 @@ void StickerWindow::LayoutWebView() {
 void StickerWindow::RegisterTypeBridges() {
     Bridge& b = host_.bridge();
     StickerWindow* self = this;
+    // 대화상자에서 돌아온 뒤 self가 아직 살아 있는지 (Create의 같은 이름 람다와 같은 이유)
+    const std::string selfId = self->data.id;
+    auto stillAlive = [self, selfId]() { return App::I().FindSticker(selfId) == self; };
 
     // ---------- 파일 메모 ----------
     auto fileList = [self]() {
@@ -508,9 +516,10 @@ void StickerWindow::RegisterTypeBridges() {
         return json::object();
     });
 
-    b.Register("files.addDialog", [self, fileList, addPaths](const json& p) {
+    b.Register("files.addDialog", [self, fileList, addPaths, stillAlive](const json& p) {
         bool folders = p.value("folders", false);
         auto picked = PickFilesOrFolders(self->hwnd_, folders);
+        if (!stillAlive()) return json::object();
         std::vector<std::string> utf8;
         for (auto& w : picked) utf8.push_back(util::WideToUtf8(w));
         addPaths(utf8);
@@ -537,8 +546,10 @@ void StickerWindow::RegisterTypeBridges() {
 
     b.Register("files.open", [](const json& p) {
         std::wstring path = BackslashPath(util::Utf8ToWide(p.value("path", "")));
-        if (!path.empty())
-            ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        // 파일 메모에 등록된 경로만 연다 — 페이지가 준 임의 경로를 ShellExecute하면 본문에
+        // 섞여 들어온 스크립트가 실행 파일을 띄우는 통로가 된다
+        if (!App::I().IsRegisteredFilePath(path)) throw std::runtime_error("not a memo file");
+        ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         return json::object();
     });
 
@@ -641,7 +652,7 @@ void StickerWindow::RegisterTypeBridges() {
                     {"title", self->data.pdfTitle}};
     };
 
-    b.Register("pdf.pick", [self, importPdf](const json&) -> json {
+    b.Register("pdf.pick", [self, importPdf, stillAlive](const json&) -> json {
         wil::com_ptr<IFileOpenDialog> dlg;
         if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
                                     IID_PPV_ARGS(&dlg))))
@@ -654,6 +665,7 @@ void StickerWindow::RegisterTypeBridges() {
         wil::unique_cotaskmem_string path;
         if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
             throw std::runtime_error("path failed");
+        if (!stillAlive()) return json{{"cancelled", true}};
         return importPdf(path.get());
     });
 
@@ -674,7 +686,7 @@ void StickerWindow::RegisterTypeBridges() {
         return path;
     };
 
-    b.Register("model.pick", [self, normalizeModelPath](const json&) -> json {
+    b.Register("model.pick", [self, normalizeModelPath, stillAlive](const json&) -> json {
         wil::com_ptr<IFileOpenDialog> dlg;
         if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
                                     IID_PPV_ARGS(&dlg))))
@@ -687,6 +699,7 @@ void StickerWindow::RegisterTypeBridges() {
         wil::unique_cotaskmem_string path;
         if (FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
             throw std::runtime_error("path failed");
+        if (!stillAlive()) return json{{"cancelled", true}};
         return json{{"path", util::WideToUtf8(normalizeModelPath(path.get()))}};
     });
 
@@ -716,6 +729,18 @@ void StickerWindow::RegisterTypeBridges() {
             path = dir.empty() ? relW : (dir + L"\\" + relW);
         }
         if (path.empty()) throw std::runtime_error("no path");
+        {
+            // 3D 모델과 그 부속(gltf의 .bin·텍스처)만. 페이지 스크립트가 임의 파일을 읽어 가는
+            // 통로가 되지 않도록 확장자를 제한한다.
+            static const wchar_t* kAllowed[] = {L".glb", L".gltf", L".obj", L".stl", L".mtl",
+                                                L".bin", L".png", L".jpg", L".jpeg", L".webp",
+                                                L".ktx2", L".hdr", L".exr", L".basis"};
+            std::wstring ext = PathFindExtensionW(path.c_str());
+            for (auto& c : ext) c = (wchar_t)towlower(c);
+            bool ok = false;
+            for (auto* a : kAllowed) ok = ok || ext == a;
+            if (!ok) throw std::runtime_error("unsupported file type");
+        }
         auto bytes = util::ReadFileBytes(path);
         if (!bytes) throw std::runtime_error("file not found");
         if (bytes->size() > 256ull * 1024 * 1024) throw std::runtime_error("file too large");

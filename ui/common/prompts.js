@@ -88,6 +88,25 @@ const prompts = (() => {
     '5. 줄바꿈과 빈 줄, 들여쓰기를 원문과 똑같이 유지한다. 줄 수가 달라지면 안 된다.\n' +
     '6. 사람이 읽는 문장만 번역한다. 기호나 구조는 절대 지우거나 바꾸지 않는다.';
 
+  // 리뷰 응답의 JSON 스키마. 프롬프트의 형식 설명과 짝이며 엔진에 문법 제약으로 넘긴다.
+  // 왜 스키마까지 보내는가: llama-server는 response_format:{type:"json_object"}를 문법으로
+  // 강제하지 않는다(실측 — 코드 펜스와 산문이 그대로 나온다). json_schema를 줘야 출력이
+  // 유효한 JSON으로 묶이고, 작은 모델이 문자열 안에 줄바꿈·따옴표를 날것으로 흘리는 일이
+  // 사라진다. 키 순서는 required 순서대로 강제된다.
+  const reviewSchema = {
+    type: 'object',
+    properties: {
+      srcLang: { type: 'string', enum: ['ko', 'en'] },
+      summary: { type: 'string' },
+      summaryEn: { type: 'string' },
+      title: { type: 'string' },
+      titleEn: { type: 'string' },
+      tags: { type: 'array', items: { type: 'string' }, maxItems: 6 },
+      translation: { type: 'string' },
+    },
+    required: ['srcLang', 'summary', 'summaryEn', 'title', 'titleEn', 'tags', 'translation'],
+  };
+
   // 설정에서 편집한 프롬프트. { task: '...' } 형태이며 값이 비었으면 기본값을 쓴다.
   let overrides = {};
   function setOverrides(map) { overrides = (map && typeof map === 'object') ? map : {}; }
@@ -118,5 +137,5 @@ const prompts = (() => {
     ];
   }
 
-  return { build, setOverrides, defaultOf, TASKS };
+  return { build, setOverrides, defaultOf, TASKS, reviewSchema };
 })();

@@ -67,8 +67,21 @@ void ServeDataRequest(ICoreWebView2WebResourceRequestedEventArgs* args) {
     wil::com_ptr<IStream> stream;
     if (!bad) {
         std::wstring full = App::I().store.AppDir() + L"\\" + rel;
-        SHCreateStreamOnFileEx(full.c_str(), STGM_READ | STGM_SHARE_DENY_WRITE, 0, FALSE,
-                               nullptr, &stream);
+        // 파일 스트림은 응답이 끝날 때까지 파일을 잠가(공유 삭제 불가) PDF 교체·휴지통 이동의
+        // 삭제/rename을 실패시켰다. 흔한 크기(이미지·PDF)는 메모리로 읽어 즉시 손을 뗀다.
+        constexpr uint64_t kMemStreamLimit = 64ull * 1024 * 1024;
+        WIN32_FILE_ATTRIBUTE_DATA fad{};
+        if (GetFileAttributesExW(full.c_str(), GetFileExInfoStandard, &fad) &&
+            !(fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) &&
+            ((uint64_t)fad.nFileSizeHigh << 32 | fad.nFileSizeLow) <= kMemStreamLimit) {
+            if (auto bytes = util::ReadFileBytes(full)) {
+                stream.attach(SHCreateMemStream((const BYTE*)bytes->data(), (UINT)bytes->size()));
+            }
+        }
+        if (!stream) {
+            SHCreateStreamOnFileEx(full.c_str(), STGM_READ | STGM_SHARE_DENY_WRITE, 0, FALSE,
+                                   nullptr, &stream);
+        }
         if (stream) {
             std::wstring headers = std::wstring(L"Content-Type: ") + MimeForPath(rel) +
                                    L"\r\nAccess-Control-Allow-Origin: *"
@@ -130,31 +143,40 @@ void WebViewHost::Create(HWND hwnd, const std::wstring& url, const json& initJso
 void WebViewHost::EnsureCreated() {
     if (controller_ || !hostHwnd_) return;
     createAttempts_ = 0;
+    if (!alive_ || !*alive_) alive_ = std::make_shared<bool>(true);
     if (g_env) {
         CreateInternal();
     } else {
-        EnsureEnvironment([this](HRESULT hr) {
-            if (SUCCEEDED(hr)) CreateInternal();
+        auto alive = alive_;
+        EnsureEnvironment([this, alive](HRESULT hr) {
+            if (*alive && SUCCEEDED(hr)) CreateInternal();
         });
     }
 }
 
 void WebViewHost::CreateInternal() {
     if (!g_env || !hostHwnd_) return;
+    if (!alive_ || !*alive_) alive_ = std::make_shared<bool>(true);
     const std::wstring url = url_;
     const json initJson = init_;
     auto onReady = onReady_;
     Options opts = opts_;
+    auto alive = alive_;
 
     g_env->CreateCoreWebView2Controller(
         hostHwnd_,
         Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
-            [this, url, initJson, onReady, opts](HRESULT hr,
-                                                 ICoreWebView2Controller* controller) -> HRESULT {
+            [this, alive, url, initJson, onReady, opts](
+                HRESULT hr, ICoreWebView2Controller* controller) -> HRESULT {
+                // 생성은 수백 ms 걸린다 — 그 사이 창이 파괴됐으면 아무것도 만지지 않는다
+                // (컨트롤러는 우리가 잡지 않으면 곧 해제된다)
+                if (!*alive) return S_OK;
                 if (FAILED(hr) || !controller) {
                     // 조용히 빈 창으로 남지 않도록 잠시 후 재시도 (최대 3회)
                     if (++createAttempts_ <= 3) {
-                        App::I().RunOnUiDelayed(700, [this]() { CreateInternal(); });
+                        App::I().RunOnUiDelayed(700, [this, alive]() {
+                            if (*alive) CreateInternal();
+                        });
                     }
                     return S_OK;
                 }
@@ -172,7 +194,7 @@ void WebViewHost::CreateInternal() {
                 EventRegistrationToken procToken{};
                 webview_->add_ProcessFailed(
                     Callback<ICoreWebView2ProcessFailedEventHandler>(
-                        [this](ICoreWebView2*,
+                        [this, alive](ICoreWebView2*,
                                ICoreWebView2ProcessFailedEventArgs* args) -> HRESULT {
                             COREWEBVIEW2_PROCESS_FAILED_KIND kind =
                                 COREWEBVIEW2_PROCESS_FAILED_KIND_RENDER_PROCESS_EXITED;
@@ -183,7 +205,9 @@ void WebViewHost::CreateInternal() {
                                 controller_ = nullptr;
                                 webview_ = nullptr;
                                 g_env = nullptr;
-                                App::I().RunOnUiDelayed(500, [this]() { EnsureCreated(); });
+                                App::I().RunOnUiDelayed(500, [this, alive]() {
+                                    if (*alive) EnsureCreated();
+                                });
                             } else if (webview_) {
                                 webview_->Reload();  // 렌더러만 죽은 경우 페이지 복구
                             }
@@ -397,6 +421,7 @@ void WebViewHost::Focus() {
 }
 
 void WebViewHost::Close() {
+    if (alive_) *alive_ = false;  // 아직 도착하지 않은 생성·재시도 콜백을 무효화
     if (controller_) {
         controller_->Close();
         controller_ = nullptr;

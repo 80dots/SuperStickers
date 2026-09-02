@@ -190,8 +190,9 @@ GroupWindow* GroupWindow::Create(HINSTANCE hinst, const GroupData& g, bool show,
         std::wstring path = util::Utf8ToWide(p.value("path", ""));
         for (auto& c : path)
             if (c == L'/') c = L'\\';
-        if (!path.empty())
-            ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        // 파일 메모에 등록된 경로만 (StickerWindow의 files.open과 같은 이유)
+        if (!App::I().IsRegisteredFilePath(path)) throw std::runtime_error("not a memo file");
+        ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
         return json::object();
     });
 
@@ -224,7 +225,7 @@ GroupWindow* GroupWindow::Create(HINSTANCE hinst, const GroupData& g, bool show,
 
 void GroupWindow::ShowWin(bool show, bool activate) {
     if (show) host_.EnsureCreated();  // 비어 버린 창 복구
-    ShowWindow(hwnd_, show ? (activate ? SW_SHOWNA : SW_SHOWNA) : SW_HIDE);
+    ShowWindow(hwnd_, show ? SW_SHOWNA : SW_HIDE);
     if (contentHwnd_) ShowWindow(contentHwnd_, show ? SW_SHOWNA : SW_HIDE);
     // 컨트롤러 가시성을 창 상태와 일치시킨다. 숨긴 창의 WebView 렌더링이 멈추고,
     // 페이지 visibilityState가 정확해져 shape 폴링 가드가 올바르게 동작한다

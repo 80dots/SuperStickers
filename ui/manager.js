@@ -62,8 +62,11 @@
       markEdited();
 
       let timer = 0;
+      let lastSaved = ta.value.trim();  // 같은 값이면 blur마다 저장·전체 방송하지 않는다
       const save = () => {
         const v = ta.value.trim();
+        if (v === lastSaved) return;
+        lastSaved = v;
         if (v) state.settings.prompts = { ...(state.settings.prompts || {}), [task]: v };
         else if (state.settings.prompts) delete state.settings.prompts[task];
         bridge.call('settings.set', { prompts: { [task]: v } }).catch(console.error);
@@ -254,9 +257,10 @@ SOFTWARE.`;
 
   // ---------- 스티커 목록 ----------
   function stripHtml(html) {
-    const div = document.createElement('div');
-    div.innerHTML = html;
-    return div.innerText.trim();
+    // innerHTML 대입은 분리된 요소라도 <img>를 즉시 내려받고 인라인 핸들러를 실행한다 —
+    // 파싱만 하는 DOMParser를 쓴다 (가져온 .ssticker의 본문이 설정 창에서 돌면 안 된다)
+    const doc = new DOMParser().parseFromString(html || '', 'text/html');
+    return (doc.body.textContent || '').trim();
   }
 
   function fmtDate(iso) {
@@ -619,8 +623,9 @@ SOFTWARE.`;
     } catch (e) { console.error(e); }
   }
 
-  function setModelOptions(models, selected) {
-    const sel = $('#modelSelect');
+  // 모델 콤보 채우기 (Ollama·LM Studio 공용). placeholder를 항상 넣는다 — 없으면 저장값이
+  // 비어 있어도 첫 모델이 선택된 것처럼 보여, 그대로 두면 채팅이 "no model selected"로 실패한다.
+  function fillModelSelect(sel, models, selected) {
     sel.innerHTML = '';
     const ph = document.createElement('option');
     ph.value = '';
@@ -634,6 +639,9 @@ SOFTWARE.`;
     });
     sel.value = selected || '';
   }
+  const setModelOptions = (models, selected) => fillModelSelect($('#modelSelect'), models, selected);
+  const setLmModelOptions = (models, selected) =>
+    fillModelSelect($('#lmModelSelect'), models, selected);
 
   document.querySelectorAll('#themeSeg button').forEach((b) =>
     b.addEventListener('click', async () => {
@@ -739,6 +747,8 @@ SOFTWARE.`;
       return;
     }
     applyProviderUi(aiConfig.provider);
+    // 자체 모델 진입점은 네이티브 스위치(Settings::kBuiltinBackendEnabled)를 따른다
+    $('#providerSeg button[data-provider="builtin"]').classList.toggle('hidden', !aiConfig.builtinEnabled);
 
     // 엔진 상태
     const resolved = aiConfig.builtin.resolvedEngine;
@@ -768,21 +778,27 @@ SOFTWARE.`;
   // 로딩은 진행률을 알 수 없다(엔진이 주지 않는다) — 무한 진행바 + 경과 시간으로 알린다.
   let loadTimer = 0;
   let loadStartedAt = 0;
+  // 마지막 기동 실패 원인. 실패 뒤에는 상태 방송(stopped)과 ai.getConfig 재조회가 연달아
+  // 오며 문구를 "중지됨"으로 되돌리므로, stopped를 그릴 때 이 값을 우선 보여 준다.
+  let serverError = '';
 
   function applyServerState(state, model, elapsedMs) {
     const loading = state === 'loading';
     const ready = state === 'ready';
+    if (ready || loading) serverError = '';  // 다시 올라가면 지난 오류는 잊는다
     $('#startServerBtn').classList.toggle('hidden', ready || loading);
     $('#stopServerBtn').classList.toggle('hidden', !ready);
     $('#loadProgressRow').classList.toggle('hidden', !loading);
 
     const ss = $('#serverStatus');
-    ss.className = 'status' + (ready ? ' ok' : loading ? ' busy' : '');
+    ss.className = 'status' + (ready ? ' ok' : loading ? ' busy' : serverError ? ' err' : '');
     ss.textContent = ready
       ? i18n.t('ai.serverRunning').replace('{model}', model || '')
       : loading
         ? i18n.t('ai.serverLoading').replace('{model}', model || '')
-        : i18n.t('ai.serverStopped');
+        : serverError
+          ? `${i18n.t('ai.serverFailed')}: ${serverError}`
+          : i18n.t('ai.serverStopped');
 
     clearInterval(loadTimer);
     loadTimer = 0;
@@ -945,6 +961,8 @@ SOFTWARE.`;
     } else if (d.error !== 'aborted') {
       $('#engineStatus').className = 'status err';
       $('#engineStatus').textContent = `${i18n.t('ai.downloadFailed')}: ${d.error}`;
+      setTimeout(refreshBuiltin, 3000);  // 곧바로 재조회하면 문구가 덮여 실패를 못 본다
+      return;
     }
     refreshBuiltin();
   });
@@ -1001,9 +1019,7 @@ SOFTWARE.`;
     try {
       await bridge.call('ai.startServer');
     } catch (e) {
-      const ss = $('#serverStatus');
-      ss.className = 'status err';
-      ss.textContent = `${i18n.t('ai.serverFailed')}: ${e.message}`;
+      serverError = e.message;
       applyServerState('stopped', '', 0);
     }
   });
@@ -1015,13 +1031,8 @@ SOFTWARE.`;
 
   bridge.on('ai.serverState', (d) => {
     if (d.error) {
-      clearInterval(loadTimer);
-      $('#loadProgressRow').classList.add('hidden');
-      const ss = $('#serverStatus');
-      ss.className = 'status err';
-      ss.textContent = `${i18n.t('ai.serverFailed')}: ${d.error}`;
-      $('#startServerBtn').classList.remove('hidden');
-      $('#stopServerBtn').classList.add('hidden');
+      serverError = d.error;
+      applyServerState('stopped', '', 0);
       return;
     }
     // 상태만 먼저 반영하고(즉시 반응), 목록·엔진 상태는 이어서 갱신한다
@@ -1042,6 +1053,7 @@ SOFTWARE.`;
     b.addEventListener('click', async () => {
       const provider = b.dataset.provider;
       if (aiConfig) aiConfig.provider = provider;
+      state.settings.aiProvider = provider;  // 탭 재진입 시 어느 백엔드를 검사할지의 근거
       applyProviderUi(provider);
       try {
         await bridge.call('settings.set', { aiProvider: provider });
@@ -1065,25 +1077,6 @@ SOFTWARE.`;
   // ---------- LM Studio ----------
   // OpenAI 호환 서버라 목록은 /v1/models, 채팅은 내장 백엔드와 같은 경로를 쓴다.
   let lmRequestId = null;
-
-  function setLmModelOptions(models, selected) {
-    const sel = $('#lmModelSelect');
-    sel.innerHTML = '';
-    if (!models.length) {
-      const o = document.createElement('option');
-      o.value = '';
-      o.textContent = i18n.t('settings.selectModel');
-      sel.appendChild(o);
-      return;
-    }
-    models.forEach((name) => {
-      const o = document.createElement('option');
-      o.value = name;
-      o.textContent = name;
-      if (name === selected) o.selected = true;
-      sel.appendChild(o);
-    });
-  }
 
   function runLmTest() {
     const status = $('#lmStatus');
@@ -1119,6 +1112,9 @@ SOFTWARE.`;
       requestId: testRequestId,
       provider: 'ollama',
       endpoint: $('#endpointInput').value.trim(),
+    }).catch((e) => {
+      status.className = 'status err';
+      status.textContent = `${i18n.t('settings.connectFailed')}: ${e.message}`;
     });
   }
   $('#testBtn').addEventListener('click', runConnectTest);
@@ -1267,16 +1263,19 @@ SOFTWARE.`;
 
   // ---------- 모델 다운로드 (ollama pull) ----------
   let pullRequestId = null;
+  let pullingName = '';  // 받는 중인 모델 — 완료 시 콤보 현재값이 아니라 이걸 쓴다
   function pullModelName() {
     return $('#pullModelSelect').value;
   }
   $('#pullBtn').addEventListener('click', () => {
     if (pullRequestId) {  // 진행 중 → 취소
-      bridge.call('ollama.abort', { requestId: pullRequestId });
+      // 채팅과 풀은 같은 요청 테이블을 쓴다 — ai.abort 하나로 중단한다 (ollama.abort는 없다)
+      bridge.call('ai.abort', { requestId: pullRequestId }).catch(console.error);
       return;
     }
     const name = pullModelName();
     if (!name) return;
+    pullingName = name;
     pullRequestId = 'pull-' + Date.now();
     $('#pullBtn').textContent = i18n.t('settings.pullCancel');
     $('#pullStatus').className = 'status';
@@ -1309,7 +1308,7 @@ SOFTWARE.`;
 
   bridge.on('ollama.pullDone', (d) => {
     if (d.requestId !== pullRequestId) return;
-    const name = pullModelName();
+    const name = pullingName;
     pullRequestId = null;
     $('#pullBtn').textContent = i18n.t('settings.pull');
     $('#pullProgressRow').classList.add('hidden');

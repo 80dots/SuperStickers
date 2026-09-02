@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -45,6 +46,8 @@ public:
     using ProgressFn = std::function<void(const std::string& stage, uint64_t received,
                                           uint64_t total)>;
     using DoneFn = std::function<void(bool ok, const std::string& error)>;
+    using ServerDoneFn =
+        std::function<void(bool ok, const std::string& endpoint, const std::string& error)>;
 
     static const std::vector<ModelInfo>& Catalog();
     static const ModelInfo* FindModel(const std::string& id);
@@ -78,10 +81,10 @@ public:
     // 요청한 모델로 서버가 떠 있게 만든다. 이미 같은 모델이면 즉시 성공.
     // 모델이 다르면 기존 서버를 내리고 다시 띄운다.
     void EnsureServer(const std::string& modelId, const std::string& variant, int ctxSize,
-                      std::function<void(bool ok, const std::string& endpoint,
-                                         const std::string& error)> done);
+                      ServerDoneFn done);
     void StopServer();
     bool ServerRunning() const;        // Ready일 때만 true
+    // 프로세스가 죽었는데 Ready로 남아 있으면(OOM 등) 여기서 Stopped로 바로잡고 방송한다
     State ServerState() const;
     const char* ServerStateName() const;  // "stopped" | "loading" | "ready"
     // 로딩을 시작한 뒤 흐른 밀리초 (Loading이 아니면 0). 엔진이 진행률을 주지 않아
@@ -100,7 +103,7 @@ private:
                              std::string& error);
     void KillServer();
 
-    void NotifyState();
+    void NotifyState() const;
 
     UiPoster uiPoster_;
     std::function<void()> stateListener_;
@@ -110,12 +113,23 @@ private:
     std::atomic<bool> busy_{false};     // 엔진/모델 다운로드 진행 중
     std::atomic<bool> abort_{false};    // 다운로드 중단 요청
     std::atomic<bool> starting_{false}; // 서버 기동 중 (중복 기동 방지)
-    std::atomic<State> state_{State::Stopped};
-    std::atomic<uint64_t> loadStartTick_{0};
+    // 기동 중 StopServer가 오거나 다른 모델로 바꾸면 세운다 — 헬스 루프가 보고 바로 접는다
+    std::atomic<bool> cancelStart_{false};
+    // mutable: ServerState()가 죽은 프로세스를 발견하면 상태를 바로잡는다
+    mutable std::atomic<State> state_{State::Stopped};
+    mutable std::atomic<uint64_t> loadStartTick_{0};
     // 기동 중에 들어온 요청들. **실패로 돌려보내면 메모창마다 오류가 뜬다** — 큐에 모아
     // 두었다가 한 번의 기동 결과를 모두에게 전달한다 (서버는 하나만 뜬다).
-    std::vector<std::function<void(bool, const std::string&, const std::string&)>> waiters_;
+    std::vector<ServerDoneFn> waiters_;
     std::string pendingModel_;
+    // 기동 중에 **다른** 모델 요청이 오면 여기 적어 두고, 현재 기동을 접은 뒤 이어서 띄운다.
+    // (예전에는 "busy" 오류를 돌려줘 로딩 중 모델을 바꾼 직후의 첫 요청이 그냥 실패했다)
+    struct PendingStart {
+        std::string modelId, variant;
+        int ctxSize = 0;
+        std::vector<ServerDoneFn> waiters;
+    };
+    std::optional<PendingStart> nextStart_;
 
     // 자식 프로세스. 잡 오브젝트에 넣어 앱이 죽어도 남지 않게 한다.
     HANDLE process_ = nullptr;

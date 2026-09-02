@@ -333,9 +333,8 @@
     else if (t === 'web') text = '🌐 ' + (m.lastUrl || m.url || '');
     else if (t === 'pdf') text = '📄 ' + (m.pdfTitle || '');
     else {
-      const div = document.createElement('div');
-      div.innerHTML = m.html || '';
-      text = div.innerText;
+      // innerHTML 대입은 <img> 요청·인라인 핸들러 실행을 유발한다 — 파싱만 하는 DOMParser
+      text = new DOMParser().parseFromString(m.html || '', 'text/html').body.textContent || '';
     }
     text = text.trim().replace(/\s+/g, ' ');
     return text.slice(0, 80) || i18n.t('manager.noText');
@@ -500,6 +499,7 @@
 
   function commitOrder() {
     const order = [...cardsEl.querySelectorAll('.gcard')].map((c) => c.dataset.id);
+    if (order.join('\n') === members.map((m) => m.id).join('\n')) return;  // 그대로면 저장 안 함
     members.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
     bridge.call('group.reorder', { memberIds: order }).catch(console.error);
   }
@@ -653,8 +653,12 @@
   });
   $('#gopacityRange').addEventListener('input', (e) => {
     group.opacity = e.target.value / 100;
+    applyAppearance();  // 끄는 동안은 화면만 — 네이티브 저장은 손을 뗄 때(change) 한 번
+  });
+  $('#gopacityRange').addEventListener('change', (e) => {
+    group.opacity = e.target.value / 100;
     applyAppearance();
-    bridge.call('group.setAppearance', { opacity: group.opacity });
+    bridge.call('group.setAppearance', { opacity: group.opacity }).catch(console.error);
   });
   $('#gcolorResetBtn').addEventListener('click', () => {
     group.color = '';
@@ -690,15 +694,13 @@
   }, true);
 
   // ---------- 네이티브 이벤트 ----------
-  bridge.on('group.membersChanged', () => {
+  bridge.on('group.membersChanged', (d) => {
+    // 모든 그룹창에 방송된다 — 내 그룹 것만 반영한다 (groupId가 없으면 전체 대상)
+    if (d && d.groupId && group && d.groupId !== group.id) return;
     flushAll();
     load().catch(console.error);
   });
-  bridge.on('group.dragHover', (d) => {
-    if (group && d.groupId === group.id) {
-      document.body.classList.toggle('drophover', !!d.active);
-    }
-  });
+  // (드롭 하이라이트는 네이티브가 GDI+로 그린다 — GroupWindow::SetDropHover. 페이지 이벤트 없음)
   // (테마 변경은 그룹창에 영향 없음 — theme.changed 무시)
   bridge.on('locale.changed', async (d) => {
     await i18n.load(d.lang);

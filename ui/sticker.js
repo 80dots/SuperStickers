@@ -193,6 +193,11 @@
   const noteText = () =>
     type === 'markdown' ? mdSource.value.trim()
     : type === 'rich' ? editorCore.getMarkdown().trim() : '';
+  // "내용이 있는가"만 볼 때는 직렬화 없이 판정한다 (키 입력마다 불린다)
+  const hasContent = () =>
+    type === 'markdown' ? !!mdSource.value.trim()
+    : type === 'rich' ? !!(editor.textContent.trim() || editor.querySelector('img,video,.embed3d'))
+    : false;
 
   function saveMeta(patch) {
     bridge.call('sticker.setMeta', patch).catch(console.error);
@@ -374,7 +379,7 @@
     const trans = viewLang() === 'ko' ? data.transKo : data.transEn;
     $('#transView').classList.toggle('hidden', !translated);
     if (translated) {
-      $('#transView').innerHTML = marked.parse(trans || '');
+      $('#transView').innerHTML = mdTools.renderHtml(trans || '');
       $('#toolbar').classList.add('hidden');
       if (type === 'rich') editor.classList.add('hidden');
       if (type === 'markdown') {
@@ -505,8 +510,17 @@
     tick();
     loadingTicker = setInterval(tick, 1000);
   }
+  // 리뷰 대기 중에 "올리는 중" 안내를 띄울지. 네이티브의 ai.status(loading)로도 오지만,
+  // 서버가 준비된 줄 알고 요청을 보냈다가 다른 이유로 다시 뜨는 경우는 상태 방송으로만 안다.
+  let loadingRender = null;
   bridge.on('ai.serverState', (d) => {
-    if (d.state !== 'loading') stopLoadingTicker();
+    if (d.state !== 'loading') {
+      // 로딩이 끝났으면 "N초 경과"를 지우고 분석 중 안내로 되돌린다 (첫 토큰까지 잠시 걸린다)
+      if (loadingTicker && loadingRender) loadingRender(i18n.t('review.working'));
+      stopLoadingTicker();
+      return;
+    }
+    if (loadingRender && !loadingTicker) startLoadingTicker(loadingRender);
   });
 
   // ---------- AI Review ----------
@@ -517,7 +531,8 @@
   // 코드 블록은 번역 대상이 아니다. 모델이 내용을 바꾸거나 글자를 흘리는 경우가 있어
   // 원문의 블록을 그대로 되돌려 넣는다. 블록 수가 다르면 짝을 확신할 수 없어 손대지 않는다.
   function restoreCodeBlocks(src, translated) {
-    const re = /^```[^\n]*\n[\s\S]*?^```/gm;
+    // 여는 펜스(```·````·~~~)와 같은 펜스로 닫는다 — 4개 백틱 안의 ```를 끝으로 오인하지 않게
+    const re = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm;
     const from = src.match(re);
     if (!from) return translated;
     const to = translated.match(re);
@@ -531,7 +546,7 @@
     btn.classList.remove('hidden');
     const busy = !!reviewRequestId;
     btn.disabled = busy;  // 항상 실행 가능 — 분석 진행 중에만 잠금(중복 방지)
-    const need = !busy && !!data.needsReview && !!noteText();
+    const need = !busy && !!data.needsReview && hasContent();
     btn.classList.toggle('need', need);  // 새 내용 입력 시에는 강조 표시 유지
     btn.classList.toggle('busy', busy);
   }
@@ -551,6 +566,7 @@
     reviewBuf = '';
     reviewSrc = text;
     reviewRequestId = 'review-' + Date.now();
+    loadingRender = (t) => { $('#summaryText').textContent = t; };
     setReviewState();
     clearSummaryErrorTimer();  // 새 리뷰 시작 — 이전 오류의 자동 소멸 예약 취소
     $('#summaryBox').classList.remove('hidden', 'error');
@@ -559,9 +575,13 @@
     const messages = prompts.build('review', text, i18n.lang);
     bridge.call('ai.chat',
                 { requestId: reviewRequestId, ownerId: init.stickerId, messages,
-                  jsonFormat: true })  // 응답을 JSON으로 강제 — 형식 파싱 실패 방지
+                  // 응답을 JSON으로 강제 — 형식 파싱 실패 방지. 스키마까지 줘야 엔진이
+                  // 문법으로 묶는다(json_object만으로는 강제되지 않는다, prompts.js 참고)
+                  jsonFormat: true, jsonSchema: prompts.reviewSchema })
       .catch((e) => {
       reviewRequestId = null;
+      stopLoadingTicker();
+      loadingRender = null;  // 남겨 두면 다른 창의 로딩 방송이 이 창의 요약을 덮는다
       renderSummary(/no model/.test(e.message) ? i18n.t('ai.noModel')
                                               : `${i18n.t('ai.error')}: ${e.message}`);
       setReviewState();
@@ -570,18 +590,24 @@
   if (isText) {
     $('#aiReviewBtn').addEventListener('click', runAiReview);
     bridge.on('ai.chunk', (d) => {
-      if (d.requestId === reviewRequestId) { stopLoadingTicker(); reviewBuf += d.delta; }
+      if (d.requestId !== reviewRequestId) return;
+      // 첫 토큰이 왔으면 로딩은 끝난 것 — 이후 상태 방송이 안내를 되살리지 않게 한다
+      stopLoadingTicker();
+      loadingRender = null;
+      reviewBuf += d.delta;
     });
     bridge.on('ai.status', (d) => {
-      // 내장 모델을 처음 쓸 때는 모델 로딩(수십 초)이 먼저다.
-      // 엔진이 진행률을 주지 않으므로 경과 시간을 세어 보여 준다.
-      if (d.requestId === reviewRequestId && d.state === 'loading') {
-        startLoadingTicker((text) => { $('#summaryText').textContent = text; });
+      // 내장 모델을 처음 쓸 때는 모델 로딩(수십 초)이 먼저다. 네이티브는 서버가 아직
+      // 준비되지 않았을 때만 이걸 보낸다. 엔진이 진행률을 주지 않으므로 경과 시간을 센다.
+      if (d.requestId === reviewRequestId && d.state === 'loading' && loadingRender) {
+        startLoadingTicker(loadingRender);
       }
     });
     bridge.on('ai.done', (d) => {
       if (d.requestId !== reviewRequestId) return;
       reviewRequestId = null;
+      stopLoadingTicker();
+      loadingRender = null;
       if (!d.ok) {
         renderSummary(d.error === 'aborted' ? i18n.t('ai.aborted')
                                             : `${i18n.t('ai.error')}: ${d.error}`);
@@ -617,7 +643,9 @@
           .filter((t) => !userSet.has(t.toLowerCase()))
           .filter((t) => body.includes(t.toLowerCase()));
       }
-      data.needsReview = false;
+      // 분석하는 동안 본문을 고쳤으면 요약·번역·태그는 옛 본문 기준이다 — 강조를 유지한다
+      const stale = noteText() !== reviewSrc;
+      data.needsReview = stale;
       renderTags();
       setReviewState();
       applyLangView();  // 세그먼트·제목·요약·본문 뷰 갱신
@@ -632,7 +660,7 @@
         viewLang: data.viewLang || '',
         tags: data.tags || [],
         aiTags: data.aiTags || [],
-        needsReview: false,
+        needsReview: stale,
       });
     });
     setReviewState();
@@ -674,6 +702,13 @@
     editorCore.init(editor, scheduleSave);
     // 저장돼 있던 3D 임베드에 뷰어 마운트 (UI는 Shadow DOM — 저장 HTML 미오염)
     editor.querySelectorAll('.embed3d').forEach((el) => viewer3d.mount(el, scheduleSave));
+    // 본문에서 떨어진 임베드는 viewer3d가 렌더 루프·WebGL 컨텍스트를 놓는다. 되돌리기(Ctrl+Z)나
+    // 드래그 이동으로 다시 들어오면 여기서 다시 붙인다.
+    new MutationObserver(() => {
+      editor.querySelectorAll('.embed3d').forEach((el) => {
+        if (!el.__mounted) viewer3d.mount(el, scheduleSave);
+      });
+    }).observe(editor, { childList: true, subtree: true });
     // 3D 파일 드롭은 미디어 드롭보다 먼저 가로챈다
     editor.addEventListener('drop', (e) => {
       const files = [...(e.dataTransfer?.files || [])];
@@ -994,6 +1029,8 @@
     const thumbCache = new Map();  // `${size}|${path}` → dataUrl
     let thumbSeq = 0;
 
+    const pendingThumbs = new Set();   // 요청했지만 아직 안 온 경로
+    const thumbReqSize = new Map();    // requestId → 요청한 썸네일 크기
     const thumbSize = () => (view === 'list' ? 32 : view === 'thumbS' ? 96 : 192);
 
     function applyViewButtons() {
@@ -1008,6 +1045,10 @@
       $('#fileEmpty').classList.toggle('hidden', items.length > 0);
       const size = thumbSize();
       const need = [];
+      const applySelection = () => {
+        fileListEl.querySelectorAll('.fitem').forEach((el) =>
+          el.classList.toggle('sel', selection.has(el.dataset.path)));
+      };
       items.forEach((f) => {
         const item = document.createElement('div');
         item.className = 'fitem' + (f.exists ? '' : ' missing') +
@@ -1023,7 +1064,7 @@
           icon.style.backgroundPosition = 'center';
         } else {
           icon.textContent = f.isDir ? '📁' : '📄';
-          if (f.exists) need.push(f.path);
+          if (f.exists && !pendingThumbs.has(f.path)) need.push(f.path);
         }
         const name = document.createElement('span');
         name.className = 'fname';
@@ -1036,21 +1077,27 @@
           if (!e.ctrlKey) selection.clear();
           if (selection.has(f.path)) selection.delete(f.path);
           else selection.add(f.path);
-          renderFiles();
+          applySelection();  // 전체 재렌더는 미도착 썸네일을 다시 요청하게 만든다
         });
         item.addEventListener('dblclick', () => bridge.call('files.open', { path: f.path }));
         fileListEl.appendChild(item);
       });
       if (need.length) {
         const requestId = 'th-' + (++thumbSeq);
-        bridge.call('files.requestThumbs', { requestId, paths: need, size }).catch(() => {});
+        need.forEach((p) => pendingThumbs.add(p));
+        thumbReqSize.set(requestId, size);  // 도착 시점의 뷰가 아니라 요청한 크기로 캐시한다
+        bridge.call('files.requestThumbs', { requestId, paths: need, size }).catch(() => {
+          need.forEach((p) => pendingThumbs.delete(p));
+        });
       }
     }
 
     bridge.on('files.thumb', (d) => {
+      pendingThumbs.delete(d.path);
       if (!d.dataUrl) return;
-      const size = thumbSize();
+      const size = thumbReqSize.has(d.requestId) ? thumbReqSize.get(d.requestId) : thumbSize();
       thumbCache.set(size + '|' + d.path, d.dataUrl);
+      if (size !== thumbSize()) return;  // 뷰가 바뀐 뒤 도착한 옛 크기 — 캐시만 한다
       const item = fileListEl.querySelector(`.fitem[data-path="${CSS.escape(d.path)}"]`);
       if (item) {
         const icon = item.querySelector('.ficon');
@@ -1253,6 +1300,11 @@
       return editorCore.getPlainText();
     }
     function startRequest(messages) {
+      // 직전 작업이 아직 흐르고 있으면 끊는다 — 두지 않으면 서버가 옛 요청을 끝까지 생성한
+      // 뒤에야 새 요청을 처리해 "작업 중"이 두 배로 길어진다
+      if (streaming && currentRequestId) {
+        bridge.call('ai.abort', { requestId: currentRequestId }).catch(() => {});
+      }
       currentRequestId = 'req-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
       resultText = '';
       streaming = true;
@@ -1894,6 +1946,7 @@
   bridge.on('locale.changed', async (d) => {
     await i18n.load(d.lang);
     i18n.apply();
+    if (isText) renderTags();  // 칩 툴팁은 만들 때 언어가 박힌다
     if (type === 'rich') editor.dataset.placeholder = i18n.t('editor.placeholder');
     if (type === 'markdown') {
       mdSource.placeholder = i18n.t('editor.mdPlaceholder');

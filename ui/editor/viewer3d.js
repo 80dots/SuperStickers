@@ -389,6 +389,13 @@ const viewer3d = (() => {
 
       let raf = 0;
       function loop() {
+        if (!el.isConnected) {
+          // 키보드 삭제(Backspace·Ctrl+X)나 본문 교체로 떨어져 나갔다 — 휴지통 버튼을 거치지
+          // 않았으므로 여기서 루프·관찰자·WebGL 컨텍스트를 놓는다 (안 놓으면 컨텍스트 한도에
+          // 걸려 이후 임베드가 "3D load failed"가 된다). 다시 들어오면 sticker.js가 재마운트한다.
+          if (el.__cleanup) el.__cleanup();
+          return;
+        }
         raf = requestAnimationFrame(loop);
         if (document.hidden) return;  // 숨긴 창은 그리지 않음
         // OrbitControls.update()는 카메라가 움직였을 때(댐핑 감쇠 중 포함) true를 반환
@@ -433,7 +440,9 @@ const viewer3d = (() => {
         clearTimeout(thumbTimer);
         thumbTimer = setTimeout(captureThumb, delay);
       }
-      scheduleThumb(700);                                  // 최초 렌더 직후
+      // 썸네일이 이미 있으면 열 때마다 새로 찍지 않는다 — 찍으면 저장이 일어나
+      // 편집하지 않은 메모의 AI Review 강조가 켜지고 PNG가 매번 새로 생긴다
+      if (!el.dataset.thumb) scheduleThumb(700);           // 최초 렌더 직후
       controls.addEventListener('end', () => scheduleThumb(1500));  // 조작 후
       shadow.querySelectorAll('.seg.mode button').forEach((b) =>
         b.addEventListener('click', () => scheduleThumb(1200)));    // 모드 변경 후
@@ -441,13 +450,17 @@ const viewer3d = (() => {
         () => scheduleThumb(1500));
 
       el.__cleanup = () => {
+        el.__cleanup = null;
+        el.__mounted = false;  // 다시 붙일 수 있게
         clearTimeout(thumbTimer);
         cancelAnimationFrame(raf);
         ro.disconnect();
+        controls.dispose();
         envCache.forEach((rt) => rt.dispose());
         pmrem.dispose();
         if (model.userData.__revoke) model.userData.__revoke();
         renderer.dispose();
+        renderer.forceContextLoss();  // dispose만으로는 컨텍스트가 GC까지 남는다
       };
     } catch (err) {
       console.error(err);

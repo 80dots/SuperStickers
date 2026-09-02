@@ -2,6 +2,7 @@
 #include <windows.h>
 
 #include <functional>
+#include <memory>
 #include <string>
 
 #include <json.hpp>
@@ -41,6 +42,7 @@ public:
     void PostEventRaw(const std::wstring& payload);
     void Focus();
     void Close();
+    ~WebViewHost() { Close(); }
     bool Ready() const { return webview_ != nullptr; }
 
     // 브라우저 모드: 페이지 이동 시 호출 (마지막 페이지 저장용)
@@ -62,4 +64,8 @@ private:
     std::function<void()> onReady_;
     Options opts_{};
     int createAttempts_ = 0;
+    // 비동기 콜백(컨트롤러 생성·재시도·환경 준비)이 도착했을 때 이 객체가 아직 살아 있는지.
+    // 창은 생성 완료 전에도 파괴될 수 있다(그룹에 드롭, 삭제, 종료) — raw this를 잡은 콜백이
+    // 해제된 메모리에 쓰지 않도록 토큰으로 확인한다. Close()가 무효화한다.
+    std::shared_ptr<bool> alive_;
 };

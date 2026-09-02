@@ -31,6 +31,12 @@ int wmain(int argc, wchar_t** argv) {
     opts.protocol = (mode == "ollama") ? AiClient::Protocol::OllamaNdjson
                                        : AiClient::Protocol::OpenAiSse;
     opts.jsonFormat = (mode == "json");
+    if (opts.jsonFormat) {
+        // 실제 앱(AI Review)과 같은 경로 — json_object가 아니라 스키마로 강제한다
+        opts.jsonSchema = {{"type", "object"},
+                           {"properties", {{"title", {{"type", "string"}}}}},
+                           {"required", {"title"}}};
+    }
     opts.disableThinking = true;  // Qwen3 계열에서 본문이 비는 것을 막는다
 
     nlohmann::json messages = nlohmann::json::array();

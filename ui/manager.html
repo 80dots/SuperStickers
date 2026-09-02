@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8">
   <title>Super Stickers</title>
-  <script>
-    (function () {
-      var init = window.__init || {};
-      document.documentElement.dataset.theme = init.theme || 'light';
-    })();
-  </script>
+  <!-- 본문 HTML(가져온 .ssticker 포함)과 AI 출력이 innerHTML로 들어간다 — 인라인 스크립트·
+       핸들러·javascript: URL을 막아 그 안의 스크립트가 브리지에 닿지 못하게 한다.
+       네이티브가 주입하는 __init과 이벤트 전달(ExecuteScript)은 CSP 대상이 아니다. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="script-src 'self'; object-src 'none'; base-uri 'none'">
+  <script src="/common/early-theme.js"></script>
   <link rel="stylesheet" href="/common/base.css">
   <link rel="stylesheet" href="/common/theme.css">
   <link rel="stylesheet" href="/manager.css">
@@ -159,14 +159,15 @@
   </main>
 
   <main id="aiTab" class="tabpage hidden">
-    <!-- 백엔드 선택: 자체 모델(앱이 llama-server를 띄움) vs Ollama(외부 서버) -->
+    <!-- 백엔드 선택: Ollama / LM Studio (외부 서버). 자체 모델(앱이 llama-server를 띄움)은
+         Settings::kBuiltinBackendEnabled가 켜졌을 때만 버튼이 나타난다 — 기본은 숨김. -->
     <section>
       <h2 data-i18n="ai.backendTitle"></h2>
       <p class="desc" data-i18n="ai.backendDesc"></p>
       <div class="row">
         <label data-i18n="ai.backend"></label>
         <div class="seg" id="providerSeg">
-          <button data-provider="builtin" data-i18n="ai.backendBuiltin"></button>
+          <button data-provider="builtin" data-i18n="ai.backendBuiltin" class="hidden"></button>
           <button data-provider="ollama" data-i18n="ai.backendOllama"></button>
           <button data-provider="lmstudio" data-i18n="ai.backendLmStudio"></button>
         </div>

@@ -112,8 +112,7 @@ bool App::Init(HINSTANCE hinst, bool startHidden) {
 void App::OnEnvironmentReady(bool startHidden) {
     PurgeExpiredTrash();  // 보관 기간 지난 휴지통 항목 정리 (GC보다 먼저)
     SetTimer(hwnd_, kTrashTimerId, kTrashPurgeIntervalMs, nullptr);
-    bool hadErrors = false;
-    auto all = store.LoadAllStickers(&hadErrors);
+    auto all = store.LoadAllStickers();
     for (auto& d : all) store.GarbageCollectMemoFiles(d);  // 메모 폴더의 미참조 첨부 정리
     auto allGroups = store.LoadAllGroups();
 
@@ -139,6 +138,7 @@ void App::OnEnvironmentReady(bool startHidden) {
 // 자체 모델을 쓰고 자동 로드가 켜져 있으면 시작할 때 미리 올려 둔다.
 // 엔진이나 모델이 아직 없으면 조용히 넘어간다 — 시작할 때 오류 팝업을 띄우지 않는다.
 void App::MaybeAutoLoadModel() {
+    if (!Settings::kBuiltinBackendEnabled) return;
     if (settings.aiProvider != "builtin" || !settings.builtin.autoLoad) return;
     if (settings.builtin.modelId.empty()) return;
     const LocalAi::ModelInfo* m = LocalAi::FindModel(settings.builtin.modelId);
@@ -341,19 +341,19 @@ int App::ImportStickerFiles(const std::vector<std::wstring>& paths,
     return count;
 }
 
-void App::DeleteAllDataInteractive(HWND owner) {
+bool App::DeleteAllDataInteractive(HWND owner) {
     int count = store.CountAllData();
     if (count == 0) {
         MessageBoxW(owner, i18n.T("data.deleteAllNone").c_str(), L"Super Stickers",
                     MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
-        return;
+        return false;
     }
     // 되돌릴 수 없는 작업이라 두 번 확인한다
     std::wstring msg = i18n.T("confirm.deleteAllData");
     size_t pos = msg.find(L"{n}");
     if (pos != std::wstring::npos) msg.replace(pos, 3, std::to_wstring(count));
-    if (!ConfirmYesNoText(owner, msg)) return;
-    if (!ConfirmYesNo(owner, "confirm.deleteAllDataFinal")) return;
+    if (!ConfirmYesNoText(owner, msg)) return false;
+    if (!ConfirmYesNo(owner, "confirm.deleteAllDataFinal")) return false;
 
     // 모든 창을 닫고 메모리 상태를 비운 뒤 파일 삭제 (설정은 보존)
     while (!stickers_.empty()) stickers_.back()->Destroy();
@@ -365,6 +365,27 @@ void App::DeleteAllDataInteractive(HWND owner) {
     BroadcastEvent("trash.changed", {{"count", 0}});
     MessageBoxW(owner, i18n.T("data.deleteAllDone").c_str(), L"Super Stickers",
                 MB_OK | MB_ICONINFORMATION | MB_SETFOREGROUND);
+    return true;
+}
+
+bool App::IsRegisteredFilePath(const std::wstring& path) const {
+    if (path.empty()) return false;
+    auto norm = [](std::wstring p) {
+        for (auto& c : p)
+            if (c == L'/') c = L'\\';
+        return p;
+    };
+    std::wstring want = norm(path);
+    auto has = [&](const StickerData& d) {
+        for (auto& f : d.files)
+            if (norm(util::Utf8ToWide(f)) == want) return true;
+        return false;
+    };
+    for (auto* w : stickers_)
+        if (has(w->data)) return true;
+    for (auto& kv : groupedStickers_)
+        if (has(kv.second)) return true;
+    return false;
 }
 
 void App::ShowSticker(const std::string& id) {
@@ -395,14 +416,20 @@ bool App::AnyStickerVisible() const {
 }
 
 void App::SetAllVisible(bool visible) {
+    // 상태가 실제로 바뀐 창만 저장한다 — 저장은 본문 전체 직렬화 + .bak 복사 + 원자적 쓰기라
+    // 메모가 많으면 트레이 토글 한 번에 파일 연산이 3N번 일어났다.
     for (auto* w : stickers_) {
-        w->data.hidden = !visible;
-        w->SaveData();
+        if (w->data.hidden != !visible) {
+            w->data.hidden = !visible;
+            w->SaveData();
+        }
         w->ShowWin(visible, false);
     }
     for (auto* g : groups_) {
-        g->data.hidden = !visible;
-        g->SaveData();
+        if (g->data.hidden != !visible) {
+            g->data.hidden = !visible;
+            g->SaveData();
+        }
         g->ShowWin(visible, false);
     }
 }
@@ -693,6 +720,8 @@ void App::PopOutStickerAt(const std::string& stickerId, int x, int y) {
             store.SaveSticker(it->second);
             target->data.memberIds.push_back(stickerId);
             target->SaveData();
+            // 그룹창은 자기 groupId의 방송만 반영한다 — 빠져나간 쪽에도 알려야 카드가 사라진다
+            if (src) BroadcastEvent("group.membersChanged", {{"groupId", src->data.id}});
             BroadcastEvent("group.membersChanged", {{"groupId", target->data.id}});
             return;
         }
@@ -1017,7 +1046,9 @@ void App::ApplySettingsPatch(const json& patch) {
 
     if (patch.contains("aiProvider") && patch["aiProvider"].is_string()) {
         std::string v = patch["aiProvider"];
-        if (v == "ollama" || v == "builtin") {
+        const bool allowed = v == "ollama" || v == "lmstudio" ||
+                             (v == "builtin" && Settings::kBuiltinBackendEnabled);
+        if (allowed) {
             if (v != settings.aiProvider) {
                 settings.aiProvider = v;
                 // 백엔드를 바꾸면 떠 있는 서버는 쓸모가 없다 — 메모리를 바로 돌려준다
@@ -1620,6 +1651,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
                                {"installed", localAi.EngineInstalled(e.id)}});
         }
         return json{{"provider", settings.aiProvider},
+                    {"builtinEnabled", Settings::kBuiltinBackendEnabled},
                     {"lmstudio",
                      {{"endpoint", settings.lmstudio.endpoint}, {"model", settings.lmstudio.model}}},
                     {"builtin",
@@ -1731,11 +1763,16 @@ void App::SetupCommonBridge(WebViewHost& host) {
         std::string requestId = p.value("requestId", "");
         std::string ownerId = p.value("ownerId", "");
         bool jsonFormat = p.value("jsonFormat", false);
-        json messages = p["messages"];
+        json jsonSchema = p.value("jsonSchema", json());
+        // const operator[]는 키가 없으면 미정의 동작이다 — 검증해서 예외로 돌려준다
+        json messages = p.value("messages", json());
+        if (!messages.is_array() || messages.empty()) throw std::runtime_error("messages required");
 
         auto send = [this, requestId, ownerId](const std::string& endpoint,
                                                const std::string& model,
                                                AiClient::ChatOptions opts, const json& messages) {
+            // 소유 창이 닫히면 AbortOllamaByOwner가 이 맵으로 요청을 찾아 중단한다
+            if (!ownerId.empty()) ollamaOwners_[requestId] = ownerId;
             ai.Chat(
                 requestId, endpoint, model, messages, opts,
                 [this, requestId, ownerId](std::string delta) {
@@ -1743,6 +1780,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
                                        {{"requestId", requestId}, {"delta", delta}});
                 },
                 [this, requestId, ownerId](bool ok, std::string err) {
+                    ollamaOwners_.erase(requestId);  // UI 스레드 콜백
                     SendEventToSticker(ownerId, "ai.done",
                                        {{"requestId", requestId}, {"ok", ok}, {"error", err}});
                 });
@@ -1754,11 +1792,18 @@ void App::SetupCommonBridge(WebViewHost& host) {
             AiClient::ChatOptions opts;
             opts.protocol = AiClient::Protocol::OpenAiSse;
             opts.jsonFormat = jsonFormat;
+            opts.jsonSchema = jsonSchema;
             opts.disableThinking = m->disableThinking;
             std::string variant = ResolvedEngineVariant();
             // 모델 로딩은 수십 초가 걸릴 수 있다. 준비되면 그때 요청을 보낸다.
-            SendEventToSticker(ownerId, "ai.status",
-                               {{"requestId", requestId}, {"state", "loading"}});
+            // 이미 같은 모델이 떠 있으면(설정에서 미리 올려 둔 경우) 로딩 안내를 보내지 않는다 —
+            // 보내면 메모창이 첫 토큰이 올 때까지 "올리는 중"을 띄워 사용자를 헷갈리게 한다.
+            const bool ready = localAi.ServerRunning() &&
+                               localAi.RunningModel() == settings.builtin.modelId;
+            if (!ready) {
+                SendEventToSticker(ownerId, "ai.status",
+                                   {{"requestId", requestId}, {"state", "loading"}});
+            }
             localAi.EnsureServer(
                 settings.builtin.modelId, variant, settings.builtin.contextSize,
                 [this, requestId, ownerId, opts, messages, send](
@@ -1777,6 +1822,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
 
         AiClient::ChatOptions opts;
         opts.jsonFormat = jsonFormat;
+        opts.jsonSchema = jsonSchema;
         if (settings.aiProvider == "lmstudio") {
             // LM Studio는 OpenAI 호환 서버다 — 내장 백엔드와 같은 경로·파싱을 쓴다
             opts.protocol = AiClient::Protocol::OpenAiSse;
@@ -1917,18 +1963,10 @@ void App::SetupCommonBridge(WebViewHost& host) {
     });
 
     // 모든 스티커 목록(관리자) 창 열기 — 스티커/그룹 타이틀바 버튼용
-    b.Register("app.openManager", [this](const json& p) {
-        std::string tab = p.value("tab", "list");
-        RunOnUi([this, tab]() { OpenManager(tab); });
-        return json::object();
-    });
-
     b.Register("data.deleteAll", [this](const json&) {
         HWND owner = manager_ ? manager_->hwnd() : nullptr;
-        int before = store.CountAllData();
-        DeleteAllDataInteractive(owner);
-        int after = store.CountAllData();
-        return json{{"deleted", before > 0 && after == 0}};
+        // 개수 세기는 모든 memo.json을 통째로 파싱한다 — 함수 안에서 한 번이면 충분하다
+        return json{{"deleted", DeleteAllDataInteractive(owner)}};
     });
 
     b.Register("app.openExternal", [](const json& p) {
@@ -1976,6 +2014,7 @@ void App::Quit() {
     // 수 GB를 물고 있는 자식 프로세스를 남기지 않는다 (잡 오브젝트는 비정상 종료용 보험)
     localAi.CancelDownloads();
     localAi.StopServer();
+    ai.AbortAll();  // 스트리밍 중인 워커가 종료 뒤까지 서버를 붙들고 있지 않도록
     // 웹 측 자동 저장 디바운스를 플러시할 시간을 준 뒤 종료
     BroadcastEvent("app.flush", json::object());
     SetTimer(hwnd_, kQuitTimerId, 350, nullptr);

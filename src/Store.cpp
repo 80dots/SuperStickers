@@ -1,6 +1,7 @@
 #include "Store.h"
 
 #include <windows.h>
+#include <shlwapi.h>
 
 #include <set>
 
@@ -67,6 +68,16 @@ static bool IsHexColor(const std::string& c) {
 }
 
 Settings Store::LoadSettings() {
+    // json::value()는 필드 타입이 어긋나면(예: "x": "100") type_error를 던진다.
+    // 설정 파일 하나가 손상됐다고 앱이 뜨지 않으면 안 된다 — 기본값으로 연다.
+    try {
+        return LoadSettingsUnchecked();
+    } catch (const std::exception&) {
+        return Settings();
+    }
+}
+
+Settings Store::LoadSettingsUnchecked() {
     Settings s;
     std::wstring path = AppDir() + L"\\settings.json";
     json j = ParseOr(ReadFileBytes(path));
@@ -87,6 +98,8 @@ Settings Store::LoadSettings() {
         }
         s.aiProvider = j.value("aiProvider", s.aiProvider);
         if (s.aiProvider != "builtin" && s.aiProvider != "lmstudio") s.aiProvider = "ollama";
+        // 자체 모델이 감춰져 있으면 예전에 골라 둔 값도 Ollama로 돌린다 (UI에서 고를 수 없다)
+        if (!Settings::kBuiltinBackendEnabled && s.aiProvider == "builtin") s.aiProvider = "ollama";
         if (j.contains("builtin") && j["builtin"].is_object()) {
             s.builtin.modelId = j["builtin"].value("modelId", s.builtin.modelId);
             s.builtin.engine = j["builtin"].value("engine", s.builtin.engine);
@@ -182,6 +195,31 @@ json Store::ToJson(const StickerData& d) {
     };
 }
 
+// 첨부 상대 경로는 "<Image|Video|PDF|3D>/<guid>.<ext>" 꼴만 허용한다. 가져온 .ssticker의
+// memo.json에서 그대로 오므로 "..\..\x"가 들어오면 삭제·서빙이 메모 폴더를 벗어난다.
+static bool ValidAttachmentRel(const std::string& rel) {
+    size_t slash = rel.find('/');
+    if (slash == std::string::npos || slash == 0 || slash + 1 >= rel.size()) return false;
+    std::string sub = rel.substr(0, slash), file = rel.substr(slash + 1);
+    if (sub != "Image" && sub != "Video" && sub != "PDF" && sub != "3D") return false;
+    if (file == "." || file == "..") return false;
+    for (unsigned char c : file) {
+        if (!(isalnum(c) || c == '.' || c == '_' || c == '-')) return false;
+    }
+    return true;
+}
+
+// 확장자는 영숫자 1~8자만. 페이지가 준 ext로 파일명을 만들므로 경로 문자를 받으면 안 된다.
+static std::wstring SanitizeExt(std::wstring ext) {
+    if (!ext.empty() && ext[0] == L'.') ext.erase(0, 1);
+    if (ext.empty() || ext.size() > 8) return L"";
+    for (wchar_t c : ext) {
+        if (!((c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9')))
+            return L"";
+    }
+    return ext;
+}
+
 StickerData Store::FromJson(const json& j) {
     StickerData d;
     d.id = j.value("id", "");
@@ -199,6 +237,7 @@ StickerData Store::FromJson(const json& j) {
     d.url = j.value("url", "");
     d.lastUrl = j.value("lastUrl", "");
     d.pdfName = j.value("pdfName", "");
+    if (!d.pdfName.empty() && !ValidAttachmentRel(d.pdfName)) d.pdfName.clear();
     d.pdfTitle = j.value("pdfTitle", "");
     d.groupId = j.value("groupId", "");
     d.color = j.value("color", d.color);
@@ -210,7 +249,8 @@ StickerData Store::FromJson(const json& j) {
     d.hidden = j.value("hidden", false);
     if (j.contains("attachments") && j["attachments"].is_array()) {
         for (auto& a : j["attachments"])
-            if (a.is_string()) d.attachments.push_back(a.get<std::string>());
+            if (a.is_string() && ValidAttachmentRel(a.get<std::string>()))
+                d.attachments.push_back(a.get<std::string>());
     }
     d.createdAt = j.value("createdAt", "");
     d.updatedAt = j.value("updatedAt", "");
@@ -254,14 +294,19 @@ static std::vector<StickerData> LoadStickersFromDir(const std::wstring& dir, boo
         std::wstring path = dir + L"\\" + name + kMemoFile;
         json j = ParseOr(ReadFileBytes(path));
         if (j.is_discarded() || !j.is_object()) j = ParseOr(ReadFileBytes(path + L".bak"));
+        bool ok = false;
         if (j.is_object()) {
-            StickerData d = Store::FromJson(j);
-            // 폴더명을 정본 id로 사용 (가져오기·수동 복사에도 어긋나지 않도록)
-            d.id = WideToUtf8(name);
-            out.push_back(std::move(d));
-        } else if (hadErrors) {
-            *hadErrors = true;
+            try {
+                StickerData d = Store::FromJson(j);
+                // 폴더명을 정본 id로 사용 (가져오기·수동 복사에도 어긋나지 않도록)
+                d.id = WideToUtf8(name);
+                out.push_back(std::move(d));
+                ok = true;
+            } catch (const std::exception&) {
+                // 필드 타입이 어긋난 항목 — 건너뛴다 (시작·휴지통 타이머에서 죽으면 안 된다)
+            }
         }
+        if (!ok && hadErrors) *hadErrors = true;
     }
     return out;
 }
@@ -288,7 +333,12 @@ void Store::MoveStickerToTrash(StickerData d) {
     SaveSticker(d);  // deletedAt 기록 후 폴더째 이동
     std::wstring dst = TrashStickerDir(d.id);
     util::RemoveDirRecursive(dst);  // 같은 id가 이미 있으면 대체
-    if (!util::MoveDirTo(StickerDir(d.id), dst)) util::RemoveDirRecursive(StickerDir(d.id));
+    if (!util::MoveDirTo(StickerDir(d.id), dst)) {
+        // 옮기지 못했다(디스크 부족·잠긴 파일). 예전에는 여기서 원본을 영구 삭제했다 —
+        // 휴지통을 켜 둔 사용자가 복구할 수 없는 손실이다. 원본을 살려 두고 표식만 되돌린다.
+        d.deletedAt.clear();
+        SaveSticker(d);
+    }
 }
 
 std::vector<StickerData> Store::LoadTrash(bool* hadErrors) {
@@ -391,7 +441,8 @@ std::string Store::SaveAttachment(const std::string& stickerId, const std::strin
     if (stickerId.empty()) return {};
     auto bytes = util::Base64Decode(base64);
     if (bytes.empty()) return {};
-    std::wstring wext = Utf8ToWide(ext);
+    std::wstring wext = SanitizeExt(Utf8ToWide(ext));
+    if (wext.empty()) return {};
     std::wstring sub = SubdirFor(kind, wext);
     std::wstring dir = StickerDir(stickerId);
     util::EnsureDir(dir);
@@ -405,8 +456,9 @@ std::string Store::SaveAttachment(const std::string& stickerId, const std::strin
 std::string Store::ImportAttachment(const std::string& stickerId, const std::wstring& srcPath,
                                     const std::string& kind) {
     if (stickerId.empty()) return {};
-    size_t dot = srcPath.find_last_of(L'.');
-    std::wstring ext = (dot == std::wstring::npos) ? L"bin" : srcPath.substr(dot + 1);
+    // 파일명 부분에서만 확장자를 찾는다 — 전체 경로의 마지막 점은 상위 폴더명("my.docs")일 수 있다
+    std::wstring ext = SanitizeExt(PathFindExtensionW(PathFindFileNameW(srcPath.c_str())));
+    if (ext.empty()) ext = L"bin";
     std::wstring sub = SubdirFor(kind, ext);
     std::wstring dir = StickerDir(stickerId);
     util::EnsureDir(dir);
@@ -524,7 +576,15 @@ StickerData Store::ImportSticker(const std::wstring& srcFile, std::string* err) 
         util::RemoveDirRecursive(work);
         return d;
     }
-    d = FromJson(j);
+    try {
+        d = FromJson(j);
+    } catch (const std::exception&) {
+        fail("parse");
+        util::RemoveDirRecursive(work);
+        d = StickerData();
+        d.id.clear();
+        return d;
+    }
     std::string oldId = d.id;
     d.id = WideToUtf8(util::NewGuid());
     d.groupId.clear();
@@ -609,8 +669,12 @@ std::vector<GroupData> Store::LoadAllGroups() {
         json j = ParseOr(ReadFileBytes(path));
         if (j.is_discarded() || !j.is_object()) j = ParseOr(ReadFileBytes(path + L".bak"));
         if (j.is_object()) {
-            GroupData g = GroupFromJson(j);
-            if (!g.id.empty()) out.push_back(std::move(g));
+            try {
+                GroupData g = GroupFromJson(j);
+                if (!g.id.empty()) out.push_back(std::move(g));
+            } catch (const std::exception&) {
+                // 손상된 그룹 파일은 건너뛴다
+            }
         }
     } while (FindNextFileW(h, &fd));
     FindClose(h);

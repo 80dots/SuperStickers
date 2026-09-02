@@ -1,13 +1,14 @@
 <!DOCTYPE html>
-<html>
+<html data-theme-fixed="light">
 <head>
   <meta charset="utf-8">
+  <!-- 본문 HTML(가져온 .ssticker 포함)과 AI 출력이 innerHTML로 들어간다 — 인라인 스크립트·
+       핸들러·javascript: URL을 막아 그 안의 스크립트가 브리지에 닿지 못하게 한다.
+       네이티브가 주입하는 __init과 이벤트 전달(ExecuteScript)은 CSP 대상이 아니다. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="script-src 'self'; object-src 'none'; base-uri 'none'">
   <title>Sticker</title>
-  <script>
-    // 메모창은 앱 테마와 무관하게 항상 라이트 스타일 고정
-    // (스티커 색이 유일한 배경 — 다크 전환 시 내부 요소가 어두워지지 않도록)
-    document.documentElement.dataset.theme = 'light';
-  </script>
+  <script src="/common/early-theme.js"></script>
   <link rel="stylesheet" href="/common/base.css">
   <link rel="stylesheet" href="/common/theme.css">
   <link rel="stylesheet" href="/sticker.css">
