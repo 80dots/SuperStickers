@@ -88,6 +88,15 @@ bool App::Init(HINSTANCE hinst, bool startHidden) {
     ai.SetUiPoster([this](std::function<void()> fn) { RunOnUi(std::move(fn)); });
     localAi.Init([this](std::function<void()> fn) { RunOnUi(std::move(fn)); },
                  store.AppDir());
+    // 로딩 → 준비 전환을 모든 창이 같이 봐야 한다. 메모창은 "올리는 중" 안내를 지우고,
+    // 설정 창은 버튼과 상태 문구를 갱신한다.
+    localAi.SetStateListener([this]() {
+        BroadcastEvent("ai.serverState",
+                       {{"state", localAi.ServerStateName()},
+                        {"running", localAi.ServerRunning()},
+                        {"model", localAi.RunningModel()},
+                        {"elapsedMs", localAi.LoadingElapsedMs()}});
+    });
 
     WebViewHost::EnsureEnvironment([this, startHidden](HRESULT hr) {
         if (FAILED(hr)) {
@@ -1016,6 +1025,13 @@ void App::ApplySettingsPatch(const json& patch) {
             }
         }
     }
+    if (patch.contains("lmstudio") && patch["lmstudio"].is_object()) {
+        const json& lm = patch["lmstudio"];
+        if (lm.contains("endpoint") && lm["endpoint"].is_string())
+            settings.lmstudio.endpoint = lm["endpoint"];
+        if (lm.contains("model") && lm["model"].is_string())
+            settings.lmstudio.model = lm["model"];
+    }
     if (patch.contains("builtin") && patch["builtin"].is_object()) {
         const json& bi = patch["builtin"];
         if (bi.contains("modelId") && bi["modelId"].is_string()) {
@@ -1322,6 +1338,9 @@ void App::SetupCommonBridge(WebViewHost& host) {
                       {"language", settings.language},
                       {"autostart", settings.autostart},
                       {"aiProvider", settings.aiProvider},
+                      {"lmstudio",
+                       {{"endpoint", settings.lmstudio.endpoint},
+                        {"model", settings.lmstudio.model}}},
                       {"ollama",
                        {{"endpoint", settings.ollama.endpoint},
                         {"model", settings.ollama.model}}},
@@ -1563,20 +1582,25 @@ void App::SetupCommonBridge(WebViewHost& host) {
         return json::object();
     });
 
-    b.Register("ollama.listModels", [this](const json& p) {
+    b.Register("ai.listModels", [this](const json& p) {
         std::string requestId = p.value("requestId", "");
-        std::string endpoint = p.value("endpoint", settings.ollama.endpoint);
-        ai.ListModels(endpoint, [this, requestId](bool ok, std::vector<std::string> models,
-                                                      std::string err) {
-            SendEventToManager("ollama.models",
-                           {{"requestId", requestId}, {"ok", ok}, {"models", models},
-                            {"error", err}});
-        });
+        std::string provider = p.value("provider", settings.aiProvider);
+        bool openai = provider == "lmstudio";
+        std::string endpoint = p.value(
+            "endpoint", openai ? settings.lmstudio.endpoint : settings.ollama.endpoint);
+        ai.ListModels(endpoint,
+                      openai ? AiClient::Protocol::OpenAiSse : AiClient::Protocol::OllamaNdjson,
+                      [this, requestId, provider](bool ok, std::vector<std::string> models,
+                                                  std::string error) {
+                          SendEventToManager("ai.models", {{"requestId", requestId},
+                                                           {"provider", provider},
+                                                           {"ok", ok},
+                                                           {"models", models},
+                                                           {"error", error}});
+                      });
         return json::object();
     });
 
-    // ---- 내장 백엔드(자체 모델) 관리 ----
-    // 카탈로그·설치 상태·서버 상태를 한 번에 준다. 설정 화면이 이걸로 화면을 그린다.
     b.Register("ai.getConfig", [this](const json&) {
         json models = json::array();
         for (const auto& m : LocalAi::Catalog()) {
@@ -1596,6 +1620,8 @@ void App::SetupCommonBridge(WebViewHost& host) {
                                {"installed", localAi.EngineInstalled(e.id)}});
         }
         return json{{"provider", settings.aiProvider},
+                    {"lmstudio",
+                     {{"endpoint", settings.lmstudio.endpoint}, {"model", settings.lmstudio.model}}},
                     {"builtin",
                      {{"modelId", settings.builtin.modelId},
                       {"engine", settings.builtin.engine},
@@ -1604,6 +1630,8 @@ void App::SetupCommonBridge(WebViewHost& host) {
                       {"autoLoad", settings.builtin.autoLoad},
                       {"hasGpu", LocalAi::HasVulkanCapableGpu()},
                       {"serverRunning", localAi.ServerRunning()},
+                      {"serverState", localAi.ServerStateName()},
+                      {"loadingMs", localAi.LoadingElapsedMs()},
                       {"runningModel", localAi.RunningModel()},
                       {"busy", localAi.Busy()},
                       {"dir", util::WideToUtf8(localAi.AiDir())}}},
@@ -1642,6 +1670,24 @@ void App::SetupCommonBridge(WebViewHost& host) {
                 SendEventToManager("ai.modelDone", {{"id", id}, {"ok", ok}, {"error", err}});
             });
         return json{{"started", true}};
+    });
+
+    b.Register("ai.openModelFolder", [this](const json& p) {
+        const LocalAi::ModelInfo* m = LocalAi::FindModel(p.value("id", ""));
+        if (!m) throw std::runtime_error("unknown model");
+        std::wstring path = localAi.ModelPath(*m);
+        if (GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            // 파일이 있으면 그 파일을 선택한 채로 연다
+            std::wstring args = L"/select,\"" + path + L"\"";
+            ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr,
+                          SW_SHOWNORMAL);
+        } else {
+            std::wstring dir = localAi.AiDir() + L"\\models";
+            util::EnsureDir(localAi.AiDir());
+            util::EnsureDir(dir);
+            ShellExecuteW(nullptr, L"open", dir.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        }
+        return json::object();
     });
 
     b.Register("ai.cancelDownload", [this](const json&) {
@@ -1730,8 +1776,16 @@ void App::SetupCommonBridge(WebViewHost& host) {
         }
 
         AiClient::ChatOptions opts;
-        opts.protocol = AiClient::Protocol::OllamaNdjson;
         opts.jsonFormat = jsonFormat;
+        if (settings.aiProvider == "lmstudio") {
+            // LM Studio는 OpenAI 호환 서버다 — 내장 백엔드와 같은 경로·파싱을 쓴다
+            opts.protocol = AiClient::Protocol::OpenAiSse;
+            std::string model = p.value("model", settings.lmstudio.model);
+            if (model.empty()) throw std::runtime_error("no model selected");
+            send(settings.lmstudio.endpoint, model, opts, messages);
+            return json::object();
+        }
+        opts.protocol = AiClient::Protocol::OllamaNdjson;
         std::string model = p.value("model", settings.ollama.model);
         if (model.empty()) throw std::runtime_error("no model selected");
         send(settings.ollama.endpoint, model, opts, messages);

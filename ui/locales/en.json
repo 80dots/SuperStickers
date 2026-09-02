@@ -298,8 +298,14 @@
   "ai.serverStopped": "Stopped — loads automatically on your first request",
   "ai.serverStarting": "Loading the model into memory…",
   "ai.serverFailed": "Could not start",
-  "ai.builtinNote": "Models are stored under the ai folder in your data directory. Each model has its own license — check it before commercial use.",
   "ai.loadingModel": "Loading the model into memory… (the first time takes a while)",
   "ai.autoLoad": "Load on app start",
-  "ai.autoLoadHint": "Loads the selected model when the app starts, so the first response has no wait. It keeps that memory in use."
+  "ai.autoLoadHint": "Loads the selected model when the app starts, so the first response has no wait. It keeps that memory in use.",
+  "ai.backendLmStudio": "LM Studio",
+  "ai.lmstudioTitle": "LM Studio",
+  "ai.lmstudioDesc": "Connects to the local server in a running LM Studio. Turn the server on in LM Studio's Developer tab first.",
+  "ai.lmstudioNote": "Only the host and port matter (default http://localhost:1234). Pick from the models LM Studio already has loaded.",
+  "ai.openFolder": "Open folder",
+  "ai.serverLoading": "Loading the model… ({model})",
+  "ai.elapsed": "{sec}s elapsed"
 }

@@ -308,10 +308,35 @@ bool LocalAi::DeleteModel(const std::string& modelId) {
 
 // ---------- 서버 ----------
 
-bool LocalAi::ServerRunning() const {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (!process_) return false;
-    return WaitForSingleObject(process_, 0) == WAIT_TIMEOUT;
+bool LocalAi::ServerRunning() const { return state_.load() == State::Ready; }
+
+LocalAi::State LocalAi::ServerState() const {
+    // 프로세스가 죽었는데 Ready로 남아 있으면 상태를 바로잡는다
+    if (state_.load() == State::Ready) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (!process_ || WaitForSingleObject(process_, 0) != WAIT_TIMEOUT) return State::Stopped;
+    }
+    return state_.load();
+}
+
+const char* LocalAi::ServerStateName() const {
+    switch (ServerState()) {
+        case State::Loading: return "loading";
+        case State::Ready: return "ready";
+        default: return "stopped";
+    }
+}
+
+uint64_t LocalAi::LoadingElapsedMs() const {
+    if (state_.load() != State::Loading) return 0;
+    uint64_t start = loadStartTick_.load();
+    return start ? GetTickCount64() - start : 0;
+}
+
+void LocalAi::NotifyState() {
+    if (!stateListener_) return;
+    auto fn = stateListener_;
+    PostUi([fn]() { fn(); });
 }
 
 std::string LocalAi::Endpoint() const {
@@ -322,6 +347,8 @@ std::string LocalAi::Endpoint() const {
 
 std::string LocalAi::RunningModel() const {
     std::lock_guard<std::mutex> lock(mutex_);
+    // 로딩 중이면 올리는 중인 모델을 알려 준다 (UI가 "무엇을 올리는 중"인지 보여야 한다)
+    if (!pendingModel_.empty()) return pendingModel_;
     if (!process_ || WaitForSingleObject(process_, 0) != WAIT_TIMEOUT) return "";
     return runningModel_;
 }
@@ -343,7 +370,12 @@ void LocalAi::KillServer() {
     runningVariant_.clear();
 }
 
-void LocalAi::StopServer() { KillServer(); }
+void LocalAi::StopServer() {
+    KillServer();
+    state_ = State::Stopped;
+    loadStartTick_ = 0;
+    NotifyState();
+}
 
 bool LocalAi::StartServerBlocking(const ModelInfo& m, const std::string& variant, int ctxSize,
                                   std::string& error) {
@@ -431,27 +463,60 @@ void LocalAi::EnsureServer(const std::string& modelId, const std::string& varian
         PostUi([done]() { done(false, "", "unknown model"); });
         return;
     }
-    // 이미 같은 모델·변형으로 떠 있으면 그대로 쓴다
-    if (RunningModel() == modelId) {
+    // 이미 같은 모델·변형으로 준비돼 있으면 그대로 쓴다
+    if (ServerState() == State::Ready) {
         std::string ep = Endpoint();
-        std::lock_guard<std::mutex> lock(mutex_);
-        if (runningVariant_ == variant && !ep.empty()) {
+        bool same = false;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            same = (runningModel_ == modelId && runningVariant_ == variant && !ep.empty());
+        }
+        if (same) {
             PostUi([done, ep]() { done(true, ep, ""); });
             return;
         }
     }
-    if (starting_.exchange(true)) {
-        PostUi([done]() { done(false, "", "starting"); });
-        return;
+
+    // **여러 메모창이 동시에 AI를 부르면 여기로 몰린다.** 기동은 한 번만 하고 결과를
+    // 모두에게 나눠 준다 — 예전처럼 "starting" 오류를 돌려주면 창마다 실패로 보인다.
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (starting_.load()) {
+            if (pendingModel_ == modelId) {
+                waiters_.push_back(done);
+                return;
+            }
+            // 다른 모델을 올리는 중이면 그 기동이 끝난 뒤에 다시 시도해야 한다
+            PostUi([done]() { done(false, "", "busy"); });
+            return;
+        }
+        starting_ = true;
+        pendingModel_ = modelId;
+        waiters_.push_back(done);
     }
+    state_ = State::Loading;
+    loadStartTick_ = GetTickCount64();
+    NotifyState();
 
     ModelInfo m = *mi;
-    std::thread([this, m, variant, ctxSize, done]() {
+    std::thread([this, m, variant, ctxSize]() {
         KillServer();  // 다른 모델이 떠 있으면 내린다 (모델 하나당 수 GB라 동시에 못 띄운다)
         std::string error;
         bool ok = StartServerBlocking(m, variant, ctxSize, error);
         std::string ep = ok ? Endpoint() : "";
+
+        std::vector<std::function<void(bool, const std::string&, const std::string&)>> waiters;
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            waiters.swap(waiters_);
+            pendingModel_.clear();
+        }
+        state_ = ok ? State::Ready : State::Stopped;
+        loadStartTick_ = 0;
         starting_ = false;
-        PostUi([done, ok, ep, error]() { done(ok, ep, error); });
+        NotifyState();
+        for (auto& w : waiters) {
+            PostUi([w, ok, ep, error]() { w(ok, ep, error); });
+        }
     }).detach();
 }

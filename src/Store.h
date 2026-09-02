@@ -10,6 +10,13 @@ struct OllamaSettings {
     std::string model;
 };
 
+// LM Studio의 로컬 서버. OpenAI 호환이라 내장 백엔드와 같은 프로토콜을 쓴다.
+// 엔드포인트는 호스트·포트만 의미가 있다(경로는 클라이언트가 붙인다).
+struct LmStudioSettings {
+    std::string endpoint = "http://localhost:1234";
+    std::string model;
+};
+
 // 내장 백엔드(llama-server) 설정. 모델 파일과 엔진은 데이터 폴더의 ai 하위에 둔다.
 struct BuiltinAiSettings {
     std::string modelId;          // LocalAi::Catalog()의 id
@@ -24,9 +31,10 @@ struct Settings {
     std::string theme = "system";  // "light" | "dark" | "system"
     std::string language;          // "ko" | "en" (빈 값이면 OS 언어로 결정)
     bool autostart = false;
-    // AI 백엔드: "ollama"(외부 Ollama 서버) | "builtin"(앱이 띄우는 llama-server)
+    // AI 백엔드: "builtin"(앱이 띄우는 llama-server) | "ollama" | "lmstudio"
     std::string aiProvider = "ollama";
     OllamaSettings ollama;
+    LmStudioSettings lmstudio;
     BuiltinAiSettings builtin;
     bool trashEnabled = true;      // false면 삭제 시 즉시 완전 삭제
     int trashRetentionDays = 30;   // 휴지통 보관 일수, 0 = 자동 삭제하지 않음

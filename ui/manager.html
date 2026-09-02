@@ -168,6 +168,7 @@
         <div class="seg" id="providerSeg">
           <button data-provider="builtin" data-i18n="ai.backendBuiltin"></button>
           <button data-provider="ollama" data-i18n="ai.backendOllama"></button>
+          <button data-provider="lmstudio" data-i18n="ai.backendLmStudio"></button>
         </div>
       </div>
     </section>
@@ -211,7 +212,30 @@
         <button id="stopServerBtn" data-i18n="ai.stopServer"></button>
         <span id="serverStatus" class="status"></span>
       </div>
-      <p class="desc about-note" data-i18n="ai.builtinNote"></p>
+      <!-- 엔진이 로드 진행률을 주지 않는다 — 진행 중 표시와 경과 시간으로 알린다 -->
+      <div class="row hidden" id="loadProgressRow">
+        <progress id="loadProgress"></progress>
+        <span id="loadElapsed" class="status"></span>
+      </div>
+    </section>
+
+    <section id="lmstudioSection">
+      <h2 data-i18n="ai.lmstudioTitle"></h2>
+      <p class="desc" data-i18n="ai.lmstudioDesc"></p>
+      <div class="row">
+        <label data-i18n="settings.endpoint"></label>
+        <input type="text" id="lmEndpointInput" spellcheck="false">
+        <button id="lmTestBtn" data-i18n="settings.test"></button>
+      </div>
+      <div class="row">
+        <label></label>
+        <span id="lmStatus" class="status"></span>
+      </div>
+      <div class="row">
+        <label data-i18n="settings.model"></label>
+        <select id="lmModelSelect"></select>
+      </div>
+      <p class="desc about-note" data-i18n="ai.lmstudioNote"></p>
     </section>
 
     <section id="ollamaSection">

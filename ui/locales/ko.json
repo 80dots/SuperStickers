@@ -298,8 +298,14 @@
   "ai.serverStopped": "중지됨 — 처음 요청할 때 자동으로 올라갑니다",
   "ai.serverStarting": "모델을 메모리에 올리는 중…",
   "ai.serverFailed": "실행 실패",
-  "ai.builtinNote": "모델은 데이터 폴더의 ai 하위에 저장됩니다. 모델마다 라이선스가 다르니 상업적 이용 전에는 각 모델의 라이선스를 확인해 주세요.",
   "ai.loadingModel": "모델을 메모리에 올리는 중… (처음 한 번은 시간이 걸립니다)",
   "ai.autoLoad": "앱 실행 시 자동 로드",
-  "ai.autoLoadHint": "앱을 시작할 때 선택한 모델을 미리 올려 첫 응답을 기다리지 않습니다. 그만큼 메모리를 계속 씁니다."
+  "ai.autoLoadHint": "앱을 시작할 때 선택한 모델을 미리 올려 첫 응답을 기다리지 않습니다. 그만큼 메모리를 계속 씁니다.",
+  "ai.backendLmStudio": "LM Studio",
+  "ai.lmstudioTitle": "LM Studio",
+  "ai.lmstudioDesc": "실행 중인 LM Studio의 로컬 서버에 연결해 씁니다. LM Studio에서 Developer(개발자) 탭의 서버를 켜 두어야 합니다.",
+  "ai.lmstudioNote": "주소는 호스트와 포트만 쓰면 됩니다(기본 http://localhost:1234). 모델은 LM Studio에 이미 올려 둔 것 중에서 고릅니다.",
+  "ai.openFolder": "폴더 열기",
+  "ai.serverLoading": "모델을 올리는 중… ({model})",
+  "ai.elapsed": "{sec}초 경과"
 }

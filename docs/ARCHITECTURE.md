@@ -66,10 +66,12 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - 이벤트(`theme.changed`, `locale.changed`, `ollama.chunk` 등)는 모든 창에 브로드캐스트하고
   웹 측에서 requestId 등으로 필터링한다.
 
-### AI 백엔드 (Ollama / 자체 모델)
+### AI 백엔드 (자체 모델 / Ollama / LM Studio)
 
-`settings.aiProvider`가 `"ollama"`인지 `"builtin"`인지에 따라 갈린다. **페이지는 어느
-쪽인지 모른다** — `ai.chat`만 부르고 `ai.chunk`/`ai.done`을 듣는다. 라우팅은 App이 한다.
+`settings.aiProvider`가 `"builtin"` | `"ollama"` | `"lmstudio"` 중 무엇인지에 따라 갈린다.
+**페이지는 어느 쪽인지 모른다** — `ai.chat`만 부르고 `ai.chunk`/`ai.done`을 듣는다.
+라우팅은 App이 한다. LM Studio는 OpenAI 호환 서버라 내장 백엔드와 같은 프로토콜을 쓰고
+(엔드포인트만 다르다), 모델 목록만 `/v1/models`로 조회한다(Ollama는 `/api/tags`).
 
 - **AiClient**(구 OllamaClient)가 두 프로토콜을 모두 다룬다. 스트리밍 루프는 하나이고
   파싱만 갈린다:
@@ -104,6 +106,26 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   모델 삭제에서도 내린다.
 - 첫 요청은 모델 로딩(수십 초)이 앞에 붙으므로 `ai.status {state:"loading"}`를 먼저 보내
   메모창이 "모델을 올리는 중"을 표시한다.
+
+#### 서버 상태와 동시 요청
+
+- **상태는 Stopped / Loading / Ready 셋이다.** "프로세스가 살아 있다"와 "쓸 수 있다"는
+  다르다 — 모델 로딩 동안 프로세스는 이미 떠 있다. 예전에는 `ServerRunning()`이 프로세스
+  존재만 봐서, 메모창은 "올리는 중"인데 설정 창은 "실행 중"으로 보이는 어긋남이 있었다.
+  이제 Ready(=`/health` 200)만 실행 중이고, 상태가 바뀔 때마다 `ai.serverState`를 **모든
+  창에 방송**해 두 화면이 같은 것을 본다.
+- **로드 진행률은 얻을 수 없다.** llama-server는 `/health`에서 준비 전까지 503만 주고
+  (본문도 "Loading model" 한 줄), verbose 로그에도 진행률 라인이 없다(실측). 그래서 UI는
+  퍼센트 대신 **진행 중 표시 + 경과 시간**을 보여 준다. 나중에 엔진이 진행률을 노출하면
+  `LoadingElapsedMs` 자리를 바꾸면 된다.
+- **여러 메모창이 동시에 AI를 부르면** 요청이 한꺼번에 `EnsureServer`로 몰린다. 기동은 한 번만
+  하고 결과를 대기자 큐(`waiters_`)에 모아 두었다가 모두에게 전달한다. 예전에는 두 번째
+  요청부터 `"starting"` 오류를 돌려줘 창마다 실패로 보였다. 모델은 하나만 뜨므로
+  (`KillServer` 후 기동) 메모리 중복도 없다 — 실측으로 요청 3건에 프로세스 1개를 확인했다.
+- **함정 — 로컬 HTTP에 TLS를 켜면 안 된다**: `util::HttpGetToFile`은 원래 https 다운로드용이라
+  `WINHTTP_FLAG_SECURE`를 무조건 켰다. 이 함수를 `/health` 폴링에 재사용하면서 로컬
+  `http://127.0.0.1`에 TLS로 붙어 **모델이 다 올라갔는데도 영원히 '로딩 중'에 머물렀다**.
+  지금은 URL 스킴을 보고 플래그를 정한다.
 
 ### 버전과 '정보' 탭
 

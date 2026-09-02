@@ -81,8 +81,12 @@ Settings Store::LoadSettings() {
             s.ollama.endpoint = j["ollama"].value("endpoint", s.ollama.endpoint);
             s.ollama.model = j["ollama"].value("model", s.ollama.model);
         }
+        if (j.contains("lmstudio") && j["lmstudio"].is_object()) {
+            s.lmstudio.endpoint = j["lmstudio"].value("endpoint", s.lmstudio.endpoint);
+            s.lmstudio.model = j["lmstudio"].value("model", s.lmstudio.model);
+        }
         s.aiProvider = j.value("aiProvider", s.aiProvider);
-        if (s.aiProvider != "builtin") s.aiProvider = "ollama";
+        if (s.aiProvider != "builtin" && s.aiProvider != "lmstudio") s.aiProvider = "ollama";
         if (j.contains("builtin") && j["builtin"].is_object()) {
             s.builtin.modelId = j["builtin"].value("modelId", s.builtin.modelId);
             s.builtin.engine = j["builtin"].value("engine", s.builtin.engine);
@@ -135,6 +139,7 @@ void Store::SaveSettings(const Settings& s) {
         {"language", s.language},
         {"autostart", s.autostart},
         {"ollama", {{"endpoint", s.ollama.endpoint}, {"model", s.ollama.model}}},
+        {"lmstudio", {{"endpoint", s.lmstudio.endpoint}, {"model", s.lmstudio.model}}},
         {"aiProvider", s.aiProvider},
         {"builtin",
          {{"modelId", s.builtin.modelId},

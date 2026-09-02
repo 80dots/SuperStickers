@@ -34,8 +34,10 @@ public:
 
     void SetUiPoster(UiPoster p) { uiPoster_ = std::move(p); }
 
-    // GET /api/tags → 모델 이름 목록 (Ollama 전용. 연결 테스트 겸용)
-    void ListModels(const std::string& endpoint,
+    // 모델 이름 목록 (연결 테스트 겸용). 프로토콜에 따라 경로와 응답 형태가 다르다:
+    //   Ollama     : GET /api/tags   → models[].name
+    //   OpenAI 호환: GET /v1/models  → data[].id   (LM Studio·llama-server)
+    void ListModels(const std::string& endpoint, Protocol protocol,
                     std::function<void(bool ok, std::vector<std::string> models,
                                        std::string error)> done);
 

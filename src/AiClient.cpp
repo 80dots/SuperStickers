@@ -73,17 +73,18 @@ DWORD StatusCode(HINTERNET request) {
 }  // namespace
 
 void AiClient::ListModels(
-    const std::string& endpoint,
+    const std::string& endpoint, Protocol protocol,
     std::function<void(bool, std::vector<std::string>, std::string)> done) {
     Url u = ParseEndpoint(endpoint);
-    std::thread([this, u, done]() {
+    const bool openai = protocol == Protocol::OpenAiSse;
+    std::thread([this, u, done, openai]() {
         auto fail = [&](const std::string& err) {
             PostUi([done, err]() { done(false, {}, err); });
         };
         if (!u.valid) return fail("invalid endpoint");
 
         Session s;
-        OpenRequest(s, u, L"GET", L"/api/tags");
+        OpenRequest(s, u, L"GET", openai ? L"/v1/models" : L"/api/tags");
         if (!s.request || !WinHttpSendRequest(s.request, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
                                               WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
             !WinHttpReceiveResponse(s.request, nullptr)) {
@@ -92,10 +93,19 @@ void AiClient::ListModels(
         if (StatusCode(s.request) != 200) return fail("http " + std::to_string(StatusCode(s.request)));
 
         json j = json::parse(ReadAll(s.request), nullptr, false);
-        if (j.is_discarded() || !j.contains("models")) return fail("unexpected response");
         std::vector<std::string> models;
-        for (auto& m : j["models"]) {
-            if (m.contains("name")) models.push_back(m["name"].get<std::string>());
+        if (j.is_discarded()) return fail("unexpected response");
+        if (openai) {
+            if (!j.contains("data") || !j["data"].is_array()) return fail("unexpected response");
+            for (auto& m : j["data"]) {
+                if (m.contains("id") && m["id"].is_string())
+                    models.push_back(m["id"].get<std::string>());
+            }
+        } else {
+            if (!j.contains("models")) return fail("unexpected response");
+            for (auto& m : j["models"]) {
+                if (m.contains("name")) models.push_back(m["name"].get<std::string>());
+            }
         }
         PostUi([done, models]() { done(true, models, ""); });
     }).detach();

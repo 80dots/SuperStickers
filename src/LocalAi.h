@@ -37,6 +37,10 @@ public:
         uint64_t sizeBytes = 0;
     };
 
+    // 서버 상태. **프로세스가 살아 있는 것과 쓸 수 있는 것은 다르다** — 모델 로딩에
+    // 수십 초가 걸리는 동안 프로세스는 이미 떠 있다. 그 구간이 Loading이다.
+    enum class State { Stopped, Loading, Ready };
+
     using UiPoster = std::function<void(std::function<void()>)>;
     using ProgressFn = std::function<void(const std::string& stage, uint64_t received,
                                           uint64_t total)>;
@@ -77,9 +81,16 @@ public:
                       std::function<void(bool ok, const std::string& endpoint,
                                          const std::string& error)> done);
     void StopServer();
-    bool ServerRunning() const;
+    bool ServerRunning() const;        // Ready일 때만 true
+    State ServerState() const;
+    const char* ServerStateName() const;  // "stopped" | "loading" | "ready"
+    // 로딩을 시작한 뒤 흐른 밀리초 (Loading이 아니면 0). 엔진이 진행률을 주지 않아
+    // UI는 경과 시간으로 대신 보여 준다.
+    uint64_t LoadingElapsedMs() const;
     std::string Endpoint() const;      // "http://127.0.0.1:<port>"
-    std::string RunningModel() const;  // 떠 있는 모델 id (없으면 빈 문자열)
+    std::string RunningModel() const;  // 떠 있거나 올리는 중인 모델 id
+    // 상태가 바뀔 때마다 불린다 (모든 창에 방송하기 위해). UI 스레드에서 호출된다.
+    void SetStateListener(std::function<void()> fn) { stateListener_ = std::move(fn); }
 
 private:
     void PostUi(std::function<void()> fn) const {
@@ -89,13 +100,22 @@ private:
                              std::string& error);
     void KillServer();
 
+    void NotifyState();
+
     UiPoster uiPoster_;
+    std::function<void()> stateListener_;
     std::wstring dataDir_;
 
     mutable std::mutex mutex_;
     std::atomic<bool> busy_{false};     // 엔진/모델 다운로드 진행 중
     std::atomic<bool> abort_{false};    // 다운로드 중단 요청
     std::atomic<bool> starting_{false}; // 서버 기동 중 (중복 기동 방지)
+    std::atomic<State> state_{State::Stopped};
+    std::atomic<uint64_t> loadStartTick_{0};
+    // 기동 중에 들어온 요청들. **실패로 돌려보내면 메모창마다 오류가 뜬다** — 큐에 모아
+    // 두었다가 한 번의 기동 결과를 모두에게 전달한다 (서버는 하나만 뜬다).
+    std::vector<std::function<void(bool, const std::string&, const std::string&)>> waiters_;
+    std::string pendingModel_;
 
     // 자식 프로세스. 잡 오브젝트에 넣어 앱이 죽어도 남지 않게 한다.
     HANDLE process_ = nullptr;

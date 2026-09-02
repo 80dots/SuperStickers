@@ -16,6 +16,9 @@
                           trash: { enabled: true, retentionDays: 30 } } };
   }
   if (!state.settings.trash) state.settings.trash = { enabled: true, retentionDays: 30 };
+  // 네이티브 조회가 실패했을 때의 폴백 상태에는 이 필드들이 없다
+  if (!state.settings.lmstudio) state.settings.lmstudio = { endpoint: 'http://localhost:1234', model: '' };
+  if (!state.settings.builtin) state.settings.builtin = { modelId: '', engine: 'auto', contextSize: 4096, autoLoad: false };
 
   // ---------- AI 프롬프트 편집 ----------
   // 각 작업의 시스템 프롬프트를 직접 고칠 수 있다. 비워 두면 기본값(prompts.js)을 쓰므로
@@ -234,7 +237,8 @@ SOFTWARE.`;
     if (name === 'ai') {
       // 쓰는 백엔드 쪽만 확인한다 (Ollama를 안 쓰는데 연결 실패를 띄우면 혼란스럽다)
       refreshBuiltin();
-      if (state.settings.aiProvider !== 'builtin') runConnectTest();
+      if (state.settings.aiProvider === 'ollama') runConnectTest();
+      if (state.settings.aiProvider === 'lmstudio') runLmTest();
       renderPrompts();
     }
     if (name === 'about') renderAbout();
@@ -584,6 +588,10 @@ SOFTWARE.`;
     $('#magnetGapSelect').disabled = !magnetOn;
     $('#magnetGapRow').classList.toggle('disabled', !magnetOn);
     $('#endpointInput').value = s.ollama.endpoint;
+    if (s.lmstudio) {
+      $('#lmEndpointInput').value = s.lmstudio.endpoint;
+      setLmModelOptions(s.lmstudio.model ? [s.lmstudio.model] : [], s.lmstudio.model);
+    }
     setModelOptions(s.ollama.model ? [s.ollama.model] : [], s.ollama.model);
 
     const t = s.trash;
@@ -749,17 +757,43 @@ SOFTWARE.`;
     $('#ctxSelect').value = String(aiConfig.builtin.contextSize);
     $('#autoLoadCheck').checked = !!aiConfig.builtin.autoLoad;
 
-    // 서버 상태
-    const running = aiConfig.builtin.serverRunning;
-    $('#startServerBtn').classList.toggle('hidden', running);
-    $('#stopServerBtn').classList.toggle('hidden', !running);
-    const ss = $('#serverStatus');
-    ss.className = 'status' + (running ? ' ok' : '');
-    ss.textContent = running
-      ? i18n.t('ai.serverRunning').replace('{model}', aiConfig.builtin.runningModel)
-      : i18n.t('ai.serverStopped');
+    // 서버 상태 — 로딩 중을 별도 상태로 다룬다.
+    // (예전엔 프로세스가 뜨자마자 '실행 중'으로 보여 메모창의 "올리는 중"과 어긋났다)
+    applyServerState(aiConfig.builtin.serverState || (aiConfig.builtin.serverRunning ? 'ready' : 'stopped'),
+                     aiConfig.builtin.runningModel, aiConfig.builtin.loadingMs || 0);
 
     renderModelCards();
+  }
+
+  // 로딩은 진행률을 알 수 없다(엔진이 주지 않는다) — 무한 진행바 + 경과 시간으로 알린다.
+  let loadTimer = 0;
+  let loadStartedAt = 0;
+
+  function applyServerState(state, model, elapsedMs) {
+    const loading = state === 'loading';
+    const ready = state === 'ready';
+    $('#startServerBtn').classList.toggle('hidden', ready || loading);
+    $('#stopServerBtn').classList.toggle('hidden', !ready);
+    $('#loadProgressRow').classList.toggle('hidden', !loading);
+
+    const ss = $('#serverStatus');
+    ss.className = 'status' + (ready ? ' ok' : loading ? ' busy' : '');
+    ss.textContent = ready
+      ? i18n.t('ai.serverRunning').replace('{model}', model || '')
+      : loading
+        ? i18n.t('ai.serverLoading').replace('{model}', model || '')
+        : i18n.t('ai.serverStopped');
+
+    clearInterval(loadTimer);
+    loadTimer = 0;
+    if (!loading) return;
+    loadStartedAt = Date.now() - (elapsedMs || 0);
+    const tick = () => {
+      const sec = Math.floor((Date.now() - loadStartedAt) / 1000);
+      $('#loadElapsed').textContent = i18n.t('ai.elapsed').replace('{sec}', sec);
+    };
+    tick();
+    loadTimer = setInterval(tick, 1000);
   }
 
   function renderModelCards() {
@@ -799,6 +833,16 @@ SOFTWARE.`;
       size.textContent = fmtSize(m.sizeBytes);
       head.appendChild(size);
 
+      // 받은 모델은 파일 위치를 바로 열어 볼 수 있게 한다
+      if (m.installed) {
+        const open = document.createElement('button');
+        open.className = 'model-action';
+        open.textContent = i18n.t('ai.openFolder');
+        open.addEventListener('click', () =>
+          bridge.call('ai.openModelFolder', { id: m.id }).catch(console.error));
+        head.appendChild(open);
+      }
+
       const act = document.createElement('button');
       act.className = 'model-action';
       if (m.installed) {
@@ -818,22 +862,27 @@ SOFTWARE.`;
       meta.textContent = `${m.params} · ${m.license} · ${m.repo}`;
       card.appendChild(meta);
 
-      // 진행률은 내려받는 중인 카드에만 붙인다
+      // 진행률은 내려받는 중인 카드에만 붙인다.
+      // 막대·텍스트·취소를 한 줄(flex)로 묶어야 세로 가운데가 맞는다 — 그냥 나열하면
+      // progress가 baseline에 걸려 글자보다 내려앉는다.
       if (dlModelId === m.id) {
+        const row = document.createElement('div');
+        row.className = 'dl-progress';
         const bar = document.createElement('progress');
         bar.id = 'modelProgress';
         bar.max = 100;
         bar.value = 0;
-        card.appendChild(bar);
+        row.appendChild(bar);
         const pct = document.createElement('span');
         pct.id = 'modelPct';
         pct.className = 'status';
-        card.appendChild(pct);
+        row.appendChild(pct);
         const cancel = document.createElement('button');
         cancel.className = 'model-action';
         cancel.textContent = i18n.t('ai.cancel');
         cancel.addEventListener('click', () => bridge.call('ai.cancelDownload').catch(() => {}));
-        card.appendChild(cancel);
+        row.appendChild(cancel);
+        card.appendChild(row);
       }
       host.appendChild(card);
     });
@@ -948,14 +997,14 @@ SOFTWARE.`;
   });
 
   $('#startServerBtn').addEventListener('click', async () => {
-    const ss = $('#serverStatus');
-    ss.className = 'status busy';
-    ss.textContent = i18n.t('ai.serverStarting');
+    applyServerState('loading', aiConfig ? aiConfig.builtin.modelId : '', 0);
     try {
       await bridge.call('ai.startServer');
     } catch (e) {
+      const ss = $('#serverStatus');
       ss.className = 'status err';
       ss.textContent = `${i18n.t('ai.serverFailed')}: ${e.message}`;
+      applyServerState('stopped', '', 0);
     }
   });
 
@@ -965,12 +1014,18 @@ SOFTWARE.`;
   });
 
   bridge.on('ai.serverState', (d) => {
-    if (!d.running && d.error) {
+    if (d.error) {
+      clearInterval(loadTimer);
+      $('#loadProgressRow').classList.add('hidden');
       const ss = $('#serverStatus');
       ss.className = 'status err';
       ss.textContent = `${i18n.t('ai.serverFailed')}: ${d.error}`;
+      $('#startServerBtn').classList.remove('hidden');
+      $('#stopServerBtn').classList.add('hidden');
       return;
     }
+    // 상태만 먼저 반영하고(즉시 반응), 목록·엔진 상태는 이어서 갱신한다
+    if (d.state) applyServerState(d.state, d.model, d.elapsedMs || 0);
     refreshBuiltin();
   });
 
@@ -980,6 +1035,7 @@ SOFTWARE.`;
       b.classList.toggle('on', b.dataset.provider === provider));
     $('#builtinSection').classList.toggle('hidden', provider !== 'builtin');
     $('#ollamaSection').classList.toggle('hidden', provider !== 'ollama');
+    $('#lmstudioSection').classList.toggle('hidden', provider !== 'lmstudio');
   }
 
   document.querySelectorAll('#providerSeg button').forEach((b) => {
@@ -991,6 +1047,7 @@ SOFTWARE.`;
         await bridge.call('settings.set', { aiProvider: provider });
       } catch (e) { console.error(e); }
       if (provider === 'builtin') refreshBuiltin();
+      else if (provider === 'lmstudio') runLmTest();
       else runConnectTest();
     });
   });
@@ -1005,6 +1062,52 @@ SOFTWARE.`;
     bridge.call('settings.set', { ollama: { model: e.target.value } });
   });
 
+  // ---------- LM Studio ----------
+  // OpenAI 호환 서버라 목록은 /v1/models, 채팅은 내장 백엔드와 같은 경로를 쓴다.
+  let lmRequestId = null;
+
+  function setLmModelOptions(models, selected) {
+    const sel = $('#lmModelSelect');
+    sel.innerHTML = '';
+    if (!models.length) {
+      const o = document.createElement('option');
+      o.value = '';
+      o.textContent = i18n.t('settings.selectModel');
+      sel.appendChild(o);
+      return;
+    }
+    models.forEach((name) => {
+      const o = document.createElement('option');
+      o.value = name;
+      o.textContent = name;
+      if (name === selected) o.selected = true;
+      sel.appendChild(o);
+    });
+  }
+
+  function runLmTest() {
+    const status = $('#lmStatus');
+    status.className = 'status busy';
+    status.textContent = i18n.t('settings.testing');
+    lmRequestId = 'lm-' + Date.now();
+    bridge.call('ai.listModels', {
+      requestId: lmRequestId,
+      provider: 'lmstudio',
+      endpoint: $('#lmEndpointInput').value.trim(),
+    }).catch(console.error);
+  }
+  $('#lmTestBtn').addEventListener('click', runLmTest);
+
+  $('#lmEndpointInput').addEventListener('change', (e) => {
+    state.settings.lmstudio.endpoint = e.target.value.trim();
+    bridge.call('settings.set', { lmstudio: { endpoint: e.target.value.trim() } })
+      .catch(console.error);
+  });
+  $('#lmModelSelect').addEventListener('change', (e) => {
+    state.settings.lmstudio.model = e.target.value;
+    bridge.call('settings.set', { lmstudio: { model: e.target.value } }).catch(console.error);
+  });
+
   // 연결 테스트 → 모델 목록 로드
   let testRequestId = null;
   function runConnectTest() {
@@ -1012,14 +1115,30 @@ SOFTWARE.`;
     status.className = 'status busy';  // 결과 도착 시 ok/err로 교체되며 스피너가 사라진다
     status.textContent = i18n.t('settings.testing');
     testRequestId = 'test-' + Date.now();
-    bridge.call('ollama.listModels', {
+    bridge.call('ai.listModels', {
       requestId: testRequestId,
+      provider: 'ollama',
       endpoint: $('#endpointInput').value.trim(),
     });
   }
   $('#testBtn').addEventListener('click', runConnectTest);
 
-  bridge.on('ollama.models', (d) => {
+  bridge.on('ai.models', (d) => {
+    if (d.requestId === lmRequestId) {
+      const status = $('#lmStatus');
+      if (d.ok) {
+        status.className = 'status' + (d.models.length ? ' ok' : ' err');
+        status.textContent = d.models.length
+          ? `${i18n.t('settings.connected')} (${d.models.length})`
+          : i18n.t('settings.noModels');
+        const cur = state.settings.lmstudio.model;
+        setLmModelOptions(d.models, d.models.includes(cur) ? cur : '');
+      } else {
+        status.className = 'status err';
+        status.textContent = `${i18n.t('settings.connectFailed')}: ${d.error}`;
+      }
+      return;
+    }
     if (d.requestId !== testRequestId) return;
     const status = $('#ollamaStatus');
     if (d.ok) {

@@ -488,6 +488,27 @@
   renderSummary();
   renderLangSeg();
 
+  // 모델 로딩 안내 + 경과 시간. llama-server가 진행률을 주지 않아 초 단위로만 알린다.
+  // 로딩이 끝나는 시점은 네이티브의 ai.serverState(state:"ready") 방송으로 안다.
+  let loadingTicker = 0;
+  function stopLoadingTicker() {
+    clearInterval(loadingTicker);
+    loadingTicker = 0;
+  }
+  function startLoadingTicker(render) {
+    stopLoadingTicker();
+    const started = Date.now();
+    const tick = () => {
+      const sec = Math.floor((Date.now() - started) / 1000);
+      render(i18n.t('ai.loadingModel') + ' ' + i18n.t('ai.elapsed').replace('{sec}', sec));
+    };
+    tick();
+    loadingTicker = setInterval(tick, 1000);
+  }
+  bridge.on('ai.serverState', (d) => {
+    if (d.state !== 'loading') stopLoadingTicker();
+  });
+
   // ---------- AI Review ----------
   let reviewRequestId = null;
   let reviewBuf = '';
@@ -549,12 +570,13 @@
   if (isText) {
     $('#aiReviewBtn').addEventListener('click', runAiReview);
     bridge.on('ai.chunk', (d) => {
-      if (d.requestId === reviewRequestId) reviewBuf += d.delta;
+      if (d.requestId === reviewRequestId) { stopLoadingTicker(); reviewBuf += d.delta; }
     });
     bridge.on('ai.status', (d) => {
-      // 내장 모델을 처음 쓸 때는 모델 로딩(수십 초)이 먼저다
+      // 내장 모델을 처음 쓸 때는 모델 로딩(수십 초)이 먼저다.
+      // 엔진이 진행률을 주지 않으므로 경과 시간을 세어 보여 준다.
       if (d.requestId === reviewRequestId && d.state === 'loading') {
-        $('#summaryText').textContent = i18n.t('ai.loadingModel');
+        startLoadingTicker((text) => { $('#summaryText').textContent = text; });
       }
     });
     bridge.on('ai.done', (d) => {
@@ -1285,10 +1307,11 @@
     });
     bridge.on('ai.status', (d) => {
       if (d.requestId !== currentRequestId || d.state !== 'loading') return;
-      aiOutput.textContent = i18n.t('ai.loadingModel');
+      startLoadingTicker((text) => { aiOutput.textContent = text; });
     });
     bridge.on('ai.chunk', (d) => {
       if (d.requestId !== currentRequestId) return;
+      stopLoadingTicker();
       if (resultText === '') aiOutput.textContent = '';
       resultText += d.delta;
       aiOutput.textContent = resultText;

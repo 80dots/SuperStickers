@@ -189,9 +189,13 @@ bool HttpGetToFile(const std::wstring& url, const std::wstring& filePath, std::s
     if (!session) return false;
     WinHttpSetTimeouts(session, 15000, 15000, 60000, 60000);
     HINTERNET connect = WinHttpConnect(session, host, c.nPort, 0);
+    // 스킴을 그대로 따른다. 예전에는 TLS를 무조건 켰는데, 그러면 로컬 서버의
+    // http://127.0.0.1 상태 확인이 영영 실패한다(실측: 모델이 다 올라갔는데도 '로딩 중'에서
+    // 멈췄다). 다운로드용 https 주소에는 영향이 없다.
+    DWORD flags = (c.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
     HINTERNET request =
         connect ? WinHttpOpenRequest(connect, L"GET", path, nullptr, WINHTTP_NO_REFERER,
-                                     WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE)
+                                     WINHTTP_DEFAULT_ACCEPT_TYPES, flags)
                 : nullptr;
     bool ok = false;
     HANDLE file = INVALID_HANDLE_VALUE;
