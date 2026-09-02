@@ -179,6 +179,64 @@ void AiClient::ListModels(
     }).detach();
 }
 
+void AiClient::ModelLoaded(const std::string& endpoint, Protocol protocol,
+                           const std::string& model,
+                           std::function<void(bool, bool)> done) {
+    Url u = ParseEndpoint(endpoint);
+    const bool openai = protocol == Protocol::OpenAiSse;
+    UiPoster post = uiPoster_;
+    std::thread([u, model, openai, post, done]() {
+        auto reply = [&](bool known, bool loaded) {
+            if (post) post([done, known, loaded]() { done(known, loaded); });
+        };
+        try {
+            if (!u.valid || model.empty()) return reply(false, false);
+            Session s;
+            OpenRequest(s, u, L"GET", openai ? L"/api/v0/models" : L"/api/ps");
+            if (!s.request ||
+                !WinHttpSendRequest(s.request, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                                    WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+                !WinHttpReceiveResponse(s.request, nullptr) || StatusCode(s.request) != 200) {
+                return reply(false, false);  // 이 경로가 없는 버전일 수 있다 — 모르면 침묵한다
+            }
+            json j = json::parse(ReadAll(s.request), nullptr, false);
+            if (!j.is_object()) return reply(false, false);
+
+            if (openai) {
+                if (!j.contains("data") || !j["data"].is_array()) return reply(false, false);
+                for (auto& m : j["data"]) {
+                    if (!m.is_object() || !m.contains("id") || !m["id"].is_string()) continue;
+                    if (m["id"].get<std::string>() != model) continue;
+                    if (!m.contains("state") || !m["state"].is_string()) return reply(false, false);
+                    return reply(true, m["state"].get<std::string>() == "loaded");
+                }
+                return reply(true, false);  // 목록에 없다 = 아직 올라와 있지 않다
+            }
+
+            if (!j.contains("models") || !j["models"].is_array()) return reply(false, false);
+            // "llama3"와 "llama3:latest"는 같은 모델이다
+            auto base = [](std::string n) {
+                size_t c = n.rfind(':');
+                if (c != std::string::npos && n.substr(c) == ":latest") n.erase(c);
+                return n;
+            };
+            const std::string want = base(model);
+            for (auto& m : j["models"]) {
+                if (!m.is_object()) continue;
+                for (const char* key : {"name", "model"}) {
+                    if (m.contains(key) && m[key].is_string() &&
+                        base(m[key].get<std::string>()) == want) {
+                        return reply(true, true);
+                    }
+                }
+            }
+            return reply(true, false);
+        } catch (const std::exception&) {
+            reply(false, false);
+        }
+    }).detach();
+}
+
 std::shared_ptr<std::atomic<bool>> AiClient::Track(const std::string& requestId) {
     auto aborted = std::make_shared<std::atomic<bool>>(false);
     std::lock_guard<std::mutex> lock(shared_->mutex);

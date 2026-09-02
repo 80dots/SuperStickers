@@ -1359,6 +1359,7 @@
     });
     bridge.on('ai.status', (d) => {
       if (d.requestId !== currentRequestId || d.state !== 'loading') return;
+      if (resultText !== '') return;  // 이미 응답이 오기 시작했다 — 결과를 덮지 않는다
       startLoadingTicker((text) => { aiOutput.textContent = text; });
     });
     bridge.on('ai.chunk', (d) => {

@@ -1820,6 +1820,23 @@ void App::SetupCommonBridge(WebViewHost& host) {
             return json::object();
         }
 
+        // Ollama·LM Studio도 모델이 메모리에 없으면 첫 응답까지 수십 초가 걸린다(요청을 받고
+        // 그때 올린다). 조회는 요청과 나란히 돌려 요청을 늦추지 않고, 아직 올라와 있지
+        // 않을 때만 "모델을 올리는 중"을 보낸다. 응답이 이미 끝났으면 보내지 않는다.
+        auto notifyIfLoading = [this, requestId, ownerId](const std::string& endpoint,
+                                                          AiClient::Protocol protocol,
+                                                          const std::string& model) {
+            if (ownerId.empty()) return;
+            ai.ModelLoaded(endpoint, protocol, model,
+                           [this, requestId, ownerId](bool known, bool loaded) {
+                               if (!known || loaded) return;
+                               if (!ollamaOwners_.count(requestId)) return;  // 이미 끝난 요청
+                               SendEventToSticker(
+                                   ownerId, "ai.status",
+                                   {{"requestId", requestId}, {"state", "loading"}});
+                           });
+        };
+
         AiClient::ChatOptions opts;
         opts.jsonFormat = jsonFormat;
         opts.jsonSchema = jsonSchema;
@@ -1829,12 +1846,14 @@ void App::SetupCommonBridge(WebViewHost& host) {
             std::string model = p.value("model", settings.lmstudio.model);
             if (model.empty()) throw std::runtime_error("no model selected");
             send(settings.lmstudio.endpoint, model, opts, messages);
+            notifyIfLoading(settings.lmstudio.endpoint, opts.protocol, model);
             return json::object();
         }
         opts.protocol = AiClient::Protocol::OllamaNdjson;
         std::string model = p.value("model", settings.ollama.model);
         if (model.empty()) throw std::runtime_error("no model selected");
         send(settings.ollama.endpoint, model, opts, messages);
+        notifyIfLoading(settings.ollama.endpoint, opts.protocol, model);
         return json::object();
     });
 
@@ -2148,6 +2167,13 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 delayedTasks_.erase(it);
                 fn();
             }
+            return 0;
+
+        // 바깥에서 온 종료 요청(설치 프로그램, 작업 관리자의 '작업 끝내기', 로그오프).
+        // 그냥 창을 부수면 웹 쪽 자동 저장 디바운스가 남은 채 끝나므로 Quit로 보낸다 —
+        // app.flush를 방송해 편집 중이던 내용을 저장할 시간을 준 뒤 종료한다.
+        case WM_CLOSE:
+            Quit();
             return 0;
 
         case WM_DESTROY:

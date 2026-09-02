@@ -44,6 +44,13 @@ public:
                     std::function<void(bool ok, std::vector<std::string> models,
                                        std::string error)> done);
 
+    // 모델이 이미 메모리에 올라와 있는지. 올라와 있지 않으면 첫 응답까지 수십 초가 걸리므로
+    // UI가 "모델을 올리는 중"을 띄운다. 판단할 수 없으면 known=false로 돌려준다(그때는 침묵).
+    //   Ollama     : GET /api/ps        → models[]에 있으면 로드됨
+    //   LM Studio  : GET /api/v0/models → data[].state == "loaded" (구버전에는 이 경로가 없다)
+    void ModelLoaded(const std::string& endpoint, Protocol protocol, const std::string& model,
+                     std::function<void(bool known, bool loaded)> done);
+
     // 스트리밍 채팅. 델타마다 onChunk, 종료 시 onDone. 경로와 파싱은 opts.protocol이 정한다.
     void Chat(const std::string& requestId, const std::string& endpoint, const std::string& model,
               const nlohmann::json& messages, const ChatOptions& opts,

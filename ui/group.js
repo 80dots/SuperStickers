@@ -283,6 +283,17 @@
       card.appendChild(rez);
     }
 
+    // --- 더블클릭 = 그룹에서 꺼내기 (상단 바의 ⇱ 버튼과 같은 동작) ---
+    // 편집 중인 본문(리치 카드는 contenteditable)·링크·파일 행·크기 조절 핸들에서는
+    // 낱말 선택과 열기가 먼저이므로 지나간다.
+    card.addEventListener('dblclick', (e) => {
+      if (e.target.closest('[contenteditable="true"], textarea, input, button, a, iframe,' +
+                           ' .gcard-resize, .gcard-file')) return;
+      e.preventDefault();
+      flushAll();  // 편집 중이던 내용을 먼저 저장하고 꺼낸다
+      bridge.call('group.removeMember', { id: m.id }).catch(console.error);
+    });
+
     // --- 재정렬 DnD ---
     bar.addEventListener('dragstart', (e) => {
       e.dataTransfer.effectAllowed = 'move';

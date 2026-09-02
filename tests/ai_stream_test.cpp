@@ -26,6 +26,22 @@ int wmain(int argc, wchar_t** argv) {
     // 이 테스트에는 UI 스레드가 없다 — 콜백을 그 자리에서 실행한다.
     client.SetUiPoster([](std::function<void()> fn) { fn(); });
 
+    // loaded-ollama / loaded-lmstudio: 모델이 메모리에 올라와 있는지 조회만 한다.
+    // (세 번째 인자가 모델 이름. 앱은 이 결과로 "모델을 올리는 중" 안내 여부를 정한다)
+    if (mode.rfind("loaded", 0) == 0) {
+        std::atomic<bool> got{false};
+        client.ModelLoaded(endpoint,
+                           mode == "loaded-lmstudio" ? AiClient::Protocol::OpenAiSse
+                                                     : AiClient::Protocol::OllamaNdjson,
+                           prompt, [&](bool known, bool loaded) {
+                               printf("known=%d loaded=%d\n", known ? 1 : 0, loaded ? 1 : 0);
+                               got = true;
+                           });
+        for (int i = 0; i < 100 && !got; ++i) Sleep(100);
+        if (!got) printf("timeout\n");
+        return got ? 0 : 1;
+    }
+
     AiClient::ChatOptions opts;
     // ollama 모드는 리팩터링한 NDJSON 경로가 그대로 도는지 보는 회귀 확인용이다
     opts.protocol = (mode == "ollama") ? AiClient::Protocol::OllamaNdjson

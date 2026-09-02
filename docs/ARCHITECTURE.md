@@ -115,6 +115,13 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - 첫 요청은 모델 로딩(수십 초)이 앞에 붙으므로 `ai.status {state:"loading"}`를 먼저 보내
   메모창이 "모델을 올리는 중"을 표시한다. **같은 모델이 이미 떠 있으면 보내지 않는다** —
   설정에서 미리 올려 둔 뒤 리뷰를 돌리면 첫 토큰까지 "올리는 중"이 떠 있던 문제.
+- **Ollama·LM Studio도 같은 안내를 쓴다.** 두 백엔드는 요청을 받고 나서 모델을 올리므로
+  첫 응답까지 마찬가지로 오래 걸린다. `AiClient::ModelLoaded`가 이미 올라와 있는지 묻고
+  (Ollama `GET /api/ps`의 목록, LM Studio `GET /api/v0/models`의 `state`), 아직이면
+  `ai.status`를 보낸다. **조회는 채팅 요청과 나란히 돈다** — 요청을 늦추지 않는다.
+  경로가 없는 구버전이거나 조회에 실패하면 `known=false`로 돌아와 **아무 안내도 하지 않는다**
+  (틀린 안내보다 침묵이 낫다). 응답이 이미 끝났으면(`ollamaOwners_`에 없으면) 보내지 않고,
+  페이지도 출력이 시작된 뒤에는 무시한다.
 
 #### 서버 상태와 동시 요청
 
@@ -505,7 +512,12 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   인라인 height가 CSS 기본값을 덮는다. 멤버 제거 시 높이 엔트리도 함께 정리.
   카드 재정렬은 상단 바 HTML5 DnD → DOM 순서 → `group.reorder`.
 - **분리/삭제**: 팝아웃(`PopOutStickerAt`)은 좌표 없으면 그룹 오른쪽 옆, 좌표가 있으면
-  그 지점에 플로팅 창으로 복원. 카드 상단 바를 창 밖으로 드래그하면 `dragend`의
+  그 지점에 플로팅 창으로 복원. 카드 상단 바 `⇱` 버튼과 **카드 더블클릭**이 같은 경로다
+  (`group.removeMember`, 좌표 없음). 더블클릭은 편집·조작이 먼저인 곳에서는 지나간다 —
+  `[contenteditable="true"]`(리치 카드 본문)·`textarea`(마크다운 편집)·`input`·`button`·
+  `a`·`iframe`·`.gcard-resize`·`.gcard-file`. 그래서 리치 카드는 본문에서 낱말 선택이,
+  파일 카드는 행 더블클릭으로 파일 열기가 그대로 동작하고, 제목 바나 본문 여백을 두 번
+  누르면 그룹에서 빠져나온다. 카드 상단 바를 창 밖으로 드래그하면 `dragend`의
   screen 좌표(×devicePixelRatio=물리)를 브리지로 전달 — 드롭 지점이 다른 그룹 위이면
   그 그룹으로 멤버십을 이전한다. 그룹 삭제(`DeleteGroupReleaseMembers`)는 멤버를
   삭제하지 않고 전부 분리한다.
@@ -539,6 +551,15 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 
 - 단일 인스턴스: `Local\SuperSticker.Instance` 뮤텍스. 중복 실행 시 기존 인스턴스에
   `WM_COPYDATA`를 보내 전체 표시 후 종료.
+- **바깥에서 온 종료 요청**: 숨김 창(`SuperStickerApp` 클래스)의 `WM_CLOSE`를 `Quit()`로 보낸다.
+  그냥 창을 부수면 웹 쪽 자동 저장 디바운스(800ms)가 남은 채 끝난다 — `Quit()`는 `app.flush`를
+  방송하고 350ms 뒤에 종료한다. 설치 프로그램과 작업 관리자의 '작업 끝내기'가 이 경로를 쓴다.
+- **설치 중 실행 감지**(`installer/SuperSticker.iss`의 `InitializeSetup`/`InitializeUninstall`):
+  뮤텍스로 실행 여부를 보고, 물어본 뒤(사일런트면 묻지 않고) 숨김 창에 `WM_CLOSE`를 보낸다.
+  10초 안에 뮤텍스가 풀리지 않으면 `taskkill /F`로 넘어간다. **`taskkill`을 먼저 쓰지 않는
+  이유**: 강제가 아닌 taskkill은 모든 최상위 창에 `WM_CLOSE`를 보내는데, 메모 창은 그것을
+  '숨기기'로 처리해 `hidden=true`가 저장된다 — 재설치 후 메모가 전부 사라진 것처럼 보인다.
+  Inno의 `AppMutex`는 쓰지 않는다(직접 닫으라는 안내만 하고 대신 닫아 주지 않는다).
 - 자동 시작: HKCU `...\Run`에 `"<exe>" --hidden`. 설정 화면은 레지스트리 실제 상태와 동기화.
 - **메모창 다중 선택** (세션 한정, 저장 안 함 — `App::selected_`): Shift+클릭으로 창을
   고르고, 선택된 창을 다시 Shift+클릭하면 해제된다. 페이지는 capture 단계의 mousedown을
