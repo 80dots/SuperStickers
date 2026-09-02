@@ -84,7 +84,7 @@ public:
     const std::set<std::string>& Selection() const { return selected_; }
     // 페이지의 클릭 보고: shift면 토글, 아니면 (선택되지 않은 창일 때만) 전체 해제.
     // 이미 선택된 창을 그냥 클릭하는 것은 함께 드래그하려는 동작이므로 선택을 지킨다.
-    void OnStickerClicked(const std::string& id, bool shift);
+    void OnStickerClicked(const std::string& id, bool toggle);
     void ClearSelection();
     void SyncSelectionLook();  // 선택 테두리 갱신 + selection.changed 방송
     void HideSelectedStickers();  // Delete — 선택된 창을 모두 숨김 상태로

@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.24)
 # ---- 버전 단일 출처 ----
 # 여기만 고치면 exe 버전 리소스, 앱의 '정보' 탭, 설치 프로그램 파일명까지 함께 따라온다
 # (설치 프로그램은 scripts/build.ps1이 ISCC에 /DMyAppVersion으로 넘긴다).
-project(SuperSticker VERSION 1.5.7 LANGUAGES CXX)
+project(SuperSticker VERSION 1.5.9 LANGUAGES CXX)
 set(SS_RELEASE_DATE "2026-09-02")  # 릴리스 날짜 — 버전과 함께 올린다
 
 set(CMAKE_CXX_STANDARD 20)

@@ -699,9 +699,9 @@
     await bridge.call('group.delete');
   });
 
-  // 메모창 밖(그룹창)을 Shift 없이 클릭하면 메모창 다중 선택을 해제한다
+  // 메모창 밖(그룹창)을 Ctrl 없이 클릭하면 메모창 다중 선택을 해제한다
   document.addEventListener('mousedown', (e) => {
-    if (!e.shiftKey) bridge.call('selection.clear').catch(() => {});
+    if (!e.ctrlKey) bridge.call('selection.clear').catch(() => {});
   }, true);
 
   // ---------- 네이티브 이벤트 ----------

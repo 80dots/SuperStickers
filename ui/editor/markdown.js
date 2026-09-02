@@ -154,6 +154,13 @@ const mdTools = (() => {
     container.querySelectorAll('a[href]').forEach((a) => a.setAttribute('target', '_blank'));
   }
 
+  // 읽기 전용 렌더 (AI 결과·번역 뷰). 체크박스는 손대지 않고 링크만 기본 브라우저로 연다.
+  // renderInto와 달리 체크박스를 살리지 않는다 — 되돌려 저장할 원본이 없기 때문이다.
+  function renderReadonlyInto(container, mdText) {
+    container.innerHTML = renderHtml(mdText);
+    container.querySelectorAll('a[href]').forEach((a) => a.setAttribute('target', '_blank'));
+  }
+
   // 소스에서 idx번째 체크박스 토큰("[ ]"/"[x]")을 갱신한 새 소스를 반환.
   // 순번은 렌더된 체크박스와 같아야 한다: 코드 펜스 안은 렌더되지 않으므로 세지 않고,
   // 인용(>) 안의 목록은 렌더되므로 센다. (예전에는 펜스 안의 "- [ ]"를 세어 엉뚱한 줄을 바꿨다)
@@ -524,7 +531,7 @@ const mdTools = (() => {
   return {
     init, insertText, wrapSelection, prefixLines,
     indentLines, outdentLines, clearMarks,
-    renderHtml, renderInto, toggleTaskInSource, getAttachments,
+    renderHtml, renderInto, renderReadonlyInto, toggleTaskInSource, getAttachments,
     attachIntellisense,
     get el() { return ta; },
   };

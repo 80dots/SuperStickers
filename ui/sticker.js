@@ -154,6 +154,7 @@
   // + 메뉴 (6종)
   const newMenu = $('#newMenu');
   $('#newBtn').addEventListener('click', () => {
+    muteSelMenu();  // 선택 팝업이 떠 있으면 닫는다 (두 메뉴가 겹쳐 보였다)
     newMenu.classList.toggle('hidden');
     syncSiteSuspend();
   });
@@ -211,8 +212,15 @@
   // 태그를 누를 때마다 본문에서 그 낱말의 다음 위치로 이동한다(대소문자 무시, 순환).
   // 어디까지 찾았는지는 태그별로 기억해 둔다.
   const findState = { key: '', from: 0 };
+  // 선택 메뉴를 잠시 막아 둘 때 쓰는 시각. mouseup이 예약해 둔 갱신이 클릭보다 뒤에
+  // 실행되기 때문에(그래서 뜰 때와 안 뜰 때가 갈렸다) 그 직후의 갱신 한 번을 걸러 낸다.
+  //  - 태그로 본문 이동: 옮겨 간 낱말이 선택되지만 메뉴를 띄우지 않는다
+  //  - 다른 메뉴(더보기·새 메모)를 열 때: 선택은 그대로라 메뉴가 되살아났다
+  let selMenuMuteAt = 0;
+  const muteSelMenu = () => { selMenuMuteAt = Date.now(); window.__hideSelMenu?.(); };
   function findNextInBody(term) {
     if (!term) return;
+    muteSelMenu();
     const needle = term.toLowerCase();
     // 리치/마크다운(편집)은 편집 대상에서, 마크다운 보기 모드는 렌더된 미리보기에서 찾는다
     const inPreview = type === 'markdown' && mdView !== 'edit';
@@ -364,13 +372,32 @@
     viewLang() === 'en' ? (data.summaryEn || data.summary || '')
                         : (data.summary || data.summaryEn || '');
 
+  // 툴바의 AI Review 버튼과 같은 별 아이콘 (AI가 만든 것임을 나타낸다)
+  const AI_SPARK_SVG =
+    '<svg viewBox="0 0 16 16" width="11" height="11"><path fill="currentColor" ' +
+    'd="M8 1l1.6 4.1L14 6.7l-4.4 1.6L8 12.4 6.4 8.3 2 6.7l4.4-1.6zM12.8 10.6l.8 2 2 .8-2 ' +
+    '.8-.8 2-.8-2-2-.8 2-.8z"/></svg>';
+
   function renderLangSeg() {
     const seg = $('#langSeg');
     const show = isText && hasTranslation();
     seg.classList.toggle('hidden', !show);
     if (!show) return;
-    seg.querySelectorAll('button').forEach((b) =>
-      b.classList.toggle('on', b.dataset.lang === viewLang()));
+    seg.querySelectorAll('button').forEach((b) => {
+      b.classList.toggle('on', b.dataset.lang === viewLang());
+      // 원문이 아닌 쪽이 AI가 옮긴 번역이다 — 아이콘으로 구분한다
+      const translated = !!data.srcLang && b.dataset.lang !== data.srcLang;
+      let icon = b.querySelector('.lang-ai');
+      if (translated && !icon) {
+        icon = document.createElement('span');
+        icon.className = 'lang-ai';
+        icon.innerHTML = AI_SPARK_SVG;
+        b.appendChild(icon);
+      } else if (!translated && icon) {
+        icon.remove();
+      }
+      if (icon) icon.title = i18n.t('tt.aiTranslated');
+    });
   }
 
   // 선택 언어가 원문과 다르면 본문 대신 번역 뷰 표시
@@ -379,7 +406,7 @@
     const trans = viewLang() === 'ko' ? data.transKo : data.transEn;
     $('#transView').classList.toggle('hidden', !translated);
     if (translated) {
-      $('#transView').innerHTML = mdTools.renderHtml(trans || '');
+      mdTools.renderReadonlyInto($('#transView'), trans || '');
       $('#toolbar').classList.add('hidden');
       if (type === 'rich') editor.classList.add('hidden');
       if (type === 'markdown') {
@@ -1242,7 +1269,6 @@
     let resultText = '';
     let streaming = false;
     // 자동 숨김 쪽에서 "지금 응답을 받는 중인가"를 물어본다.
-    // #aiStopBtn.disabled는 setActionsState()가 한 번이라도 돌기 전에는 false라 못 쓴다.
     window.__aiStreaming = () => streaming;
 
     function hasSelection() {
@@ -1250,7 +1276,10 @@
       return savedRange && !savedRange.collapsed;
     }
     function setActionsState() {
-      $('#aiStopBtn').disabled = !streaming;
+      // 질문의 '실행' 버튼이 응답을 받는 동안 '중단'을 겸한다 (별도 중단 버튼은 없앴다)
+      const runBtn = $('#aiRunBtn');
+      runBtn.textContent = i18n.t(streaming ? 'ai.stop' : 'ai.run');
+      runBtn.classList.toggle('ai-danger', streaming);
       const hasResult = resultText.length > 0 && !streaming;
       $('#aiInsertBtn').disabled = !hasResult;
       $('#aiCopyBtn').disabled = !hasResult;
@@ -1299,6 +1328,17 @@
       if (savedRange && !savedRange.collapsed) return savedRange.toString().trim();
       return editorCore.getPlainText();
     }
+    // 결과를 글자 그대로 보여 준다 (스트리밍 중·오류·안내 문구)
+    function showPlain(text) {
+      aiOutput.classList.remove('md-body');
+      aiOutput.textContent = text;
+    }
+    // 완성된 결과를 마크다운으로 렌더링한다. 삽입·교체·복사는 resultText(원문)를 그대로 쓴다.
+    function showRendered(text) {
+      aiOutput.classList.add('md-body');
+      mdTools.renderReadonlyInto(aiOutput, text);
+    }
+
     function startRequest(messages) {
       // 직전 작업이 아직 흐르고 있으면 끊는다 — 두지 않으면 서버가 옛 요청을 끝까지 생성한
       // 뒤에야 새 요청을 처리해 "작업 중"이 두 배로 길어진다
@@ -1309,7 +1349,7 @@
       resultText = '';
       streaming = true;
       aiOutput.classList.remove('hidden', 'error');
-      aiOutput.textContent = i18n.t('ai.working');
+      showPlain(i18n.t('ai.working'));
       aiActions.classList.remove('hidden');
       setActionsState();
       bridge.call('ai.chat',
@@ -1317,8 +1357,8 @@
         .catch((e) => {
         streaming = false;
         aiOutput.classList.add('error');
-        aiOutput.textContent =
-          /no model/.test(e.message) ? i18n.t('ai.noModel') : `${i18n.t('ai.error')}: ${e.message}`;
+        showPlain(/no model/.test(e.message) ? i18n.t('ai.noModel')
+                                             : `${i18n.t('ai.error')}: ${e.message}`);
         setActionsState();
       });
     }
@@ -1328,7 +1368,7 @@
       if (task !== 'ask' && !text) {
         aiOutput.classList.remove('hidden');
         aiOutput.classList.add('error');
-        aiOutput.textContent = i18n.t('ai.empty');
+        showPlain(i18n.t('ai.empty'));
         return;
       }
       const question = $('#aiQuestion').value.trim();
@@ -1350,7 +1390,14 @@
         }
       });
     });
-    $('#aiRunBtn').addEventListener('click', () => runTask('ask'));
+    $('#aiRunBtn').addEventListener('click', () => {
+      // 받는 중이면 같은 자리에서 중단한다
+      if (streaming) {
+        if (currentRequestId) bridge.call('ai.abort', { requestId: currentRequestId });
+        return;
+      }
+      runTask('ask');
+    });
     $('#aiQuestion').addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault();
@@ -1360,14 +1407,13 @@
     bridge.on('ai.status', (d) => {
       if (d.requestId !== currentRequestId || d.state !== 'loading') return;
       if (resultText !== '') return;  // 이미 응답이 오기 시작했다 — 결과를 덮지 않는다
-      startLoadingTicker((text) => { aiOutput.textContent = text; });
+      startLoadingTicker(showPlain);
     });
     bridge.on('ai.chunk', (d) => {
       if (d.requestId !== currentRequestId) return;
       stopLoadingTicker();
-      if (resultText === '') aiOutput.textContent = '';
       resultText += d.delta;
-      aiOutput.textContent = resultText;
+      showPlain(resultText);  // 받는 중에는 글자 그대로 (부분 마크다운은 매번 다르게 그려진다)
       aiOutput.scrollTop = aiOutput.scrollHeight;
     });
     bridge.on('ai.done', (d) => {
@@ -1377,12 +1423,11 @@
         aiOutput.classList.add('error');
         const msg =
           d.error === 'aborted' ? i18n.t('ai.aborted') : `${i18n.t('ai.error')}: ${d.error}`;
-        aiOutput.textContent = resultText ? `${resultText}\n\n[${msg}]` : msg;
+        showPlain(resultText ? `${resultText}\n\n[${msg}]` : msg);
+      } else if (resultText) {
+        showRendered(resultText);  // 다 받았으니 마크다운을 표현해 준다
       }
       setActionsState();
-    });
-    $('#aiStopBtn').addEventListener('click', () => {
-      if (currentRequestId) bridge.call('ai.abort', { requestId: currentRequestId });
     });
     $('#aiInsertBtn').addEventListener('click', () => {
       if (!resultText) return;
@@ -1572,6 +1617,7 @@
     });
 
     function hideSelMenu() { selMenu.classList.add('hidden'); }
+    window.__hideSelMenu = hideSelMenu;  // 다른 메뉴가 열릴 때 닫기 위해
 
     // 선택 영역의 화면 좌표. textarea(마크다운)는 Range API가 없어 미러 div로 잰다.
     function selectionRect() {
@@ -1622,6 +1668,9 @@
     }
 
     function updateSelMenu() {
+      // 태그 이동·다른 메뉴 열기 직후면 띄우지 않는다 (muteSelMenu 참고).
+      // 한 번 쓰면 바로 푼다 — 막아야 할 것은 그때 예약돼 있던 갱신 하나뿐이다.
+      if (Date.now() - selMenuMuteAt < 500) { selMenuMuteAt = 0; hideSelMenu(); return; }
       const rect = selectionRect();
       const text = (type === 'markdown' && mdView === 'edit')
         ? mdSource.value.slice(mdSource.selectionStart, mdSource.selectionEnd).trim()
@@ -1687,7 +1736,9 @@
         icon.className = 'tb-more-icon';
         icon.innerHTML = btn.innerHTML;
         const label = document.createElement('span');
-        label.textContent = btn.title || '';
+        // 메뉴에는 짧은 이름을, 설명은 툴팁으로 (title이 그대로 이름이 되면 너무 길다)
+        label.textContent = btn.dataset.menuI18n ? i18n.t(btn.dataset.menuI18n) : (btn.title || '');
+        if (btn.title) item.title = btn.title;
         item.appendChild(icon);
         item.appendChild(label);
         item.addEventListener('mousedown', (e) => e.preventDefault());
@@ -1743,7 +1794,10 @@
     }
 
     moreBtn.addEventListener('mousedown', (e) => e.preventDefault());
-    moreBtn.addEventListener('click', () => moreMenu.classList.toggle('hidden'));
+    moreBtn.addEventListener('click', () => {
+      muteSelMenu();  // 선택 팝업이 떠 있으면 닫는다 (두 메뉴가 겹쳐 보였다)
+      moreMenu.classList.toggle('hidden');
+    });
     document.addEventListener('mousedown', (e) => {
       if (!moreMenu.contains(e.target) && !moreBtn.contains(e.target)) closeMore();
     });
@@ -1902,20 +1956,25 @@
     setTimeout(() => { if (enabled && canHide()) hide(); }, INITIAL_DELAY_MS);
   })();
 
-  // ---------- 다중 선택 (Shift+클릭으로 고르고, 함께 옮기거나 Delete로 숨김) ----------
+  // ---------- 다중 선택 (Ctrl+클릭으로 고르고, 함께 옮기거나 Delete로 숨김) ----------
   (() => {
     let selected = false;
 
-    // 클릭을 네이티브에 알린다. Shift면 토글, 아니면 (선택 밖 창일 때) 전체 해제.
+    // 클릭을 네이티브에 알린다. Ctrl이면 토글, 아니면 (선택 밖 창일 때) 전체 해제.
     // capture 단계에서 잡아 에디터·버튼보다 먼저 처리한다.
+    // Shift가 아니라 Ctrl인 이유: Shift+클릭은 본문에서 선택 범위를 넓히는 조작이라
+    // 텍스트 편집과 부딪혔다.
     document.addEventListener('mousedown', (e) => {
-      if (e.shiftKey) {
-        // Shift+클릭은 창 선택 전용 — 본문 텍스트 선택 확장은 막는다
+      // 파일 메모의 파일 목록에서는 Ctrl+클릭이 '파일 다중 선택'이다 — 창 선택으로 가로채면
+      // 그 기능이 죽는다(preventDefault로 목록의 클릭 처리까지 막힌다).
+      const inFileList = !!(e.target.closest && e.target.closest('#fileList'));
+      const toggle = !!e.ctrlKey && !inFileList;
+      if (toggle) {
+        // Ctrl+클릭은 창 선택 전용 — 본문 캐럿 이동·링크 열기는 막는다
         e.preventDefault();
         e.stopPropagation();
       }
-      bridge.call('selection.click', { id: init.stickerId, shift: !!e.shiftKey })
-        .catch(() => {});
+      bridge.call('selection.click', { id: init.stickerId, toggle }).catch(() => {});
     }, true);
 
     bridge.on('selection.changed', (d) => {

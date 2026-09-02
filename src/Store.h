@@ -73,7 +73,8 @@ struct StickerData {
     std::string pdfName;           // pdf 메모: 메모 폴더 기준 경로 ("PDF/xxx.pdf")
     std::string pdfTitle;          // pdf 메모: 표시용 원본 파일명
     std::string groupId;           // 소속 그룹 id (빈 값 = 플로팅 창)
-    std::string color = "yellow";  // 프리셋 이름(레거시) 또는 "#RRGGBB"
+    // 새 메모의 기본 색. 프리셋 이름(레거시 "yellow" 등)도 읽을 수 있다.
+    std::string color = "#FFFFFF";
     int x = 100, y = 100, w = 510, h = 450;  // 새 메모 기본 크기
     bool topmost = false;
     bool hidden = false;

@@ -878,8 +878,8 @@ void App::ClearSelection() {
     SyncSelectionLook();
 }
 
-void App::OnStickerClicked(const std::string& id, bool shift) {
-    if (shift) {
+void App::OnStickerClicked(const std::string& id, bool toggle) {
+    if (toggle) {
         if (!selected_.insert(id).second) selected_.erase(id);  // 이미 있으면 해제
     } else if (!selected_.count(id)) {
         // 선택에 없는 창을 그냥 클릭 = 다른 작업으로 넘어감 → 전체 해제.
@@ -1482,11 +1482,11 @@ void App::SetupCommonBridge(WebViewHost& host) {
         return json{{"deleted", true}};
     });
 
-    // ---------- 다중 선택 (Shift+클릭 / Delete) ----------
+    // ---------- 다중 선택 (Ctrl+클릭 / Delete) ----------
     b.Register("selection.click", [this](const json& p) {
         std::string id = p.value("id", "");
-        bool shift = p.value("shift", false);
-        if (!id.empty()) OnStickerClicked(id, shift);
+        bool toggle = p.value("toggle", false);
+        if (!id.empty()) OnStickerClicked(id, toggle);
         return json::object();
     });
 

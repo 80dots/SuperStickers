@@ -37,7 +37,8 @@
       <button id="newBtn" class="tb-btn" data-i18n-title="tt.new">
         <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M7.25 2h1.5v5.25H14v1.5H8.75V14h-1.5V8.75H2v-1.5h5.25z"/></svg>
       </button>
-      <button id="aiReviewBtn" class="tb-btn hidden" disabled data-i18n-title="tt.aiReview">
+      <button id="aiReviewBtn" class="tb-btn hidden" disabled data-i18n-title="tt.aiReview"
+              data-menu-i18n="menu.aiReview">
         <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M8 1l1.6 4.1L14 6.7l-4.4 1.6L8 12.4 6.4 8.3 2 6.7l4.4-1.6zM12.8 10.6l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></svg>
       </button>
       <button id="deleteBtn" class="tb-btn" data-i18n-title="tt.delete">
@@ -85,7 +86,7 @@
   </div>
 
   <!-- 번역 뷰 (선택 언어가 원문과 다를 때 본문 대신 표시) -->
-  <div id="transView" class="hidden"></div>
+  <div id="transView" class="md-body hidden"></div>
 
   <!-- 웹 메모: URL 바 (이 아래 영역은 네이티브 사이트 브라우저 뷰가 덮는다) -->
   <div id="webBar" class="hidden">
@@ -109,7 +110,7 @@
 
   <!-- 마크다운 메모 -->
   <textarea id="mdSource" class="hidden" spellcheck="false"></textarea>
-  <div id="mdPreview" class="hidden"></div>
+  <div id="mdPreview" class="md-body hidden"></div>
   <div id="mdSuggest" class="hidden"></div>
 
   <!-- 파일 메모 -->
@@ -197,7 +198,7 @@
     </button>
     <div id="tbMoreMenu" class="hidden"></div>
     <span class="tb-spacer"></span>
-    <button class="tb-btn hidden" id="previewBtn"></button>
+    <button class="tb-btn hidden" id="previewBtn" data-i18n-title="tt.preview"></button>
     <!-- AI 패널 진입점 (서식 툴바 맨 오른쪽) -->
     <button class="tb-btn" id="aiPanelBtn" data-i18n-title="sel.aiPanel">AI</button>
   </div>
@@ -247,7 +248,6 @@
       <button id="aiInsertBtn" data-i18n="ai.insert"></button>
       <button id="aiReplaceBtn" data-i18n="ai.replace"></button>
       <button id="aiCopyBtn" data-i18n="ai.copy"></button>
-      <button id="aiStopBtn" class="ai-danger" data-i18n="ai.stop"></button>
     </div>
   </div>
 
