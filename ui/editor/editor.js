@@ -240,6 +240,10 @@ const editorCore = (() => {
         return;
       }
       if (tag === 'hr') { out.push('---'); return; }
+      if (node.classList && node.classList.contains('mcal')) {
+        calendarTools.toMarkdown(node).forEach((l) => out.push(l));
+        return;
+      }
       if (tag === 'table' && node.classList.contains('mtable')) {
         tableTools.toMarkdown(node).forEach((l) => out.push(l));
         return;

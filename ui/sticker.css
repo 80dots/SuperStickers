@@ -860,6 +860,138 @@ th[data-sort] .mtable-sort { opacity: 1; color: var(--accent); }
 .mtable-wrap:focus-within .mtable-grip { opacity: 0.35; }
 .mtable-grip:hover { opacity: 1 !important; }
 
+/* ---------- 캘린더 (리치 메모) ---------- */
+/* 저장되는 것은 .mcal의 data-view / data-date / data-events뿐이다.
+   격자·머리글·편집기는 전부 data-chrome이라 저장 직전에 걷힌다 (calendar.js 참고). */
+.mcal {
+  position: relative;
+  display: block;
+  margin: 8px 0;
+  border: 1px solid rgba(55, 53, 47, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  overflow: hidden;
+  user-select: none;
+}
+.mcal-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-bottom: 1px solid rgba(55, 53, 47, 0.14);
+}
+.mcal-head button {
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 11.5px;
+  color: inherit;
+  opacity: 0.7;
+}
+.mcal-head button:hover { background: rgba(55, 53, 47, 0.09); opacity: 1; }
+.mcal-nav { font-size: 14px !important; line-height: 1; }
+.mcal-title { flex: 1; font-weight: 600; font-size: 12.5px; padding: 0 4px; }
+.mcal-views { display: flex; border: 1px solid rgba(55, 53, 47, 0.18); border-radius: 6px; }
+.mcal-views button { border-radius: 0; }
+.mcal-views button:not(:last-child) { border-right: 1px solid rgba(55, 53, 47, 0.18); }
+.mcal-view.on { background: rgba(55, 53, 47, 0.13); opacity: 1; font-weight: 600; }
+.mcal-add { font-size: 14px !important; line-height: 1; }
+
+.mcal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.mcal-wd {
+  padding: 3px 4px;
+  text-align: center;
+  font-size: 11px;
+  opacity: 0.6;
+  border-bottom: 1px solid rgba(55, 53, 47, 0.12);
+}
+.mcal-wd.sun, .mcal-day.sun .mcal-num { color: #C2410C; }
+.mcal-wd.sat, .mcal-day.sat .mcal-num { color: #1D4ED8; }
+.mcal-day {
+  min-height: 54px;
+  padding: 2px 3px 4px;
+  border-right: 1px solid rgba(55, 53, 47, 0.08);
+  border-bottom: 1px solid rgba(55, 53, 47, 0.08);
+  cursor: pointer;
+  overflow: hidden;
+}
+.mcal-day.tall { min-height: 110px; }
+.mcal-day:nth-child(7n) { border-right: none; }
+.mcal-day:hover { background: rgba(55, 53, 47, 0.05); }
+.mcal-day.out { opacity: 0.35; }
+.mcal-num { font-size: 11px; text-align: right; padding: 0 2px; }
+.mcal-day.today .mcal-num {
+  display: inline-block;
+  float: right;
+  min-width: 16px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  text-align: center;
+}
+.mcal-chip {
+  display: flex;
+  gap: 3px;
+  margin-top: 2px;
+  padding: 1px 4px;
+  border-radius: 4px;
+  background: var(--accent-soft, rgba(99, 85, 224, 0.16));
+  font-size: 10.5px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcal-chip:hover { filter: brightness(0.95); }
+.mcal-chip-t { opacity: 0.7; flex: none; }
+.mcal-chip-x { overflow: hidden; text-overflow: ellipsis; }
+.mcal-more { font-size: 10px; opacity: 0.6; padding: 1px 4px; }
+
+.mcal-daylist { padding: 6px; min-height: 90px; cursor: pointer; }
+.mcal-empty { opacity: 0.5; padding: 8px 4px; }
+.mcal-row {
+  display: flex;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 5px;
+}
+.mcal-row:hover { background: rgba(55, 53, 47, 0.06); }
+.mcal-row-t { flex: none; opacity: 0.65; min-width: 44px; }
+
+/* 일정 편집기 */
+.mcal-editor {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 4px;
+  padding: 6px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  z-index: 5;
+}
+.mcal-editor input {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 6px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--fg);
+}
+.mcal-editor input[type="text"] { flex: 1; min-width: 60px; }
+.mcal-editor button {
+  padding: 3px 9px;
+  border-radius: 5px;
+  font-size: 12px;
+  border: 1px solid var(--border);
+  color: var(--fg);
+}
+.mcal-editor .mcal-save { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.mcal-editor .mcal-del { color: var(--danger); }
+
 /* ---------- 우클릭 메뉴 ---------- */
 #ctxMenu {
   position: fixed;

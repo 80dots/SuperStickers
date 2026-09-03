@@ -729,6 +729,8 @@
     editorCore.init(editor, scheduleSave);
     // 저장된 표에 조작용 장식(정렬 버튼·손잡이)을 다시 붙이고 통계를 계산한다
     tableTools.init(editor, scheduleSave);
+    // 캘린더는 격자를 저장하지 않는다 — 데이터(속성)만 남고 화면은 열 때 다시 그린다
+    calendarTools.init(editor, scheduleSave);
     // 저장돼 있던 3D 임베드에 뷰어 마운트 (UI는 Shadow DOM — 저장 HTML 미오염)
     editor.querySelectorAll('.embed3d').forEach((el) => viewer3d.mount(el, scheduleSave));
     // 본문에서 떨어진 임베드는 viewer3d가 렌더 루프·WebGL 컨텍스트를 놓는다. 되돌리기(Ctrl+Z)나
@@ -1040,6 +1042,15 @@
     $('#tableBtn').addEventListener('click', insertTable);
     window.__insertTable = insertTable;
 
+    // ---------- 캘린더 (리치 전용 — 마크다운 본문에는 담을 자리가 없다) ----------
+    function insertCalendar() {
+      if (type !== 'rich') return;
+      calendarTools.insert();
+    }
+    $('#calBtn').addEventListener('mousedown', (e) => e.preventDefault());
+    $('#calBtn').addEventListener('click', insertCalendar);
+    if (type !== 'rich') $('#calBtn').classList.add('hidden');
+
     // ---------- 우클릭 메뉴 ----------
     // 표 위에서는 행·열 조작을, 빈 곳에서는 표 삽입을 준다.
     // 글을 선택한 채로 누른 경우에는 이미 선택 메뉴가 떠 있으므로 내놓지 않는다.
@@ -1084,6 +1095,25 @@
       function targetCols(table, cell) {
         const sel = tableTools.selectedCols(table);
         return sel.length ? sel : [tableTools.cellPos(table, cell).col];
+      }
+
+      function calItems(cal) {
+        const after = (fn) => () => { fn(); scheduleSave(); };
+        const view = calendarTools.viewOf(cal);
+        const mark = (v) => (view === v ? '  ✓' : '');
+        return [
+          { label: i18n.t('cal.month') + mark('month'),
+            run: after(() => calendarTools.setView(cal, 'month')) },
+          { label: i18n.t('cal.week') + mark('week'),
+            run: after(() => calendarTools.setView(cal, 'week')) },
+          { label: i18n.t('cal.day') + mark('day'),
+            run: after(() => calendarTools.setView(cal, 'day')) },
+          { sep: true },
+          { label: i18n.t('cal.today'), run: after(() => calendarTools.goToday(cal)) },
+          { label: i18n.t('cal.add'), run: () => calendarTools.openEditor(cal, {}) },
+          { sep: true },
+          { label: i18n.t('cal.remove'), run: () => { cal.remove(); scheduleSave(); } },
+        ];
       }
 
       function tableItems(table, cell) {
@@ -1170,6 +1200,12 @@
           open(e.clientX, e.clientY, mediaItems(media));
           return;
         }
+        const cal = type === 'rich' && e.target.closest ? e.target.closest('#editor .mcal') : null;
+        if (cal) {
+          e.preventDefault();
+          open(e.clientX, e.clientY, calItems(cal));
+          return;
+        }
         const cell = type === 'rich' ? tableTools.cellOf(e.target) : null;
         const table = cell && tableTools.tableOf(cell);
         if (table) {
@@ -1189,7 +1225,10 @@
           : editor.contains(e.target);
         if (picked || !inBody) return;
         e.preventDefault();
-        open(e.clientX, e.clientY, [{ label: i18n.t('table.insert'), run: insertTable }]);
+        open(e.clientX, e.clientY, [
+          { label: i18n.t('table.insert'), run: insertTable },
+          ...(type === 'rich' ? [{ label: i18n.t('cal.insert'), run: insertCalendar }] : []),
+        ]);
       });
       document.addEventListener('mousedown', (e) => {
         if (!menu.contains(e.target)) hide();
