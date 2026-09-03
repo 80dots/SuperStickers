@@ -69,18 +69,23 @@ const mediaTools = (() => {
     editorCore.insertNodeAtCaret(img);
   }
 
-  async function pickVideo() {
-    const res = await bridge.call('attachment.pickVideo');
-    if (res.cancelled) return;
+  // 첨부로 들여온 동영상을 본문에 넣는다 (툴바 picker와 드래그앤드롭이 함께 쓴다)
+  function insertVideoUrl(url) {
     if (window.__insertMedia && window.__insertMedia.isMarkdown()) {
-      window.__insertMedia.video(res.url);
+      window.__insertMedia.video(url);
       return;
     }
     const video = document.createElement('video');
     video.controls = true;
-    video.src = res.url;
+    video.src = url;
     video.contentEditable = 'false';
     insertBlockNode(video);
+  }
+
+  async function pickVideo() {
+    const res = await bridge.call('attachment.pickVideo');
+    if (res.cancelled) return;
+    insertVideoUrl(res.url);
   }
 
   // paste 이벤트 처리: 이미지 / YouTube URL / 일반 텍스트
@@ -110,14 +115,13 @@ const mediaTools = (() => {
   }
 
   function handleDrop(e) {
-    const files = e.dataTransfer?.files || [];
-    for (const f of files) {
-      if (f.type.startsWith('image/')) {
-        e.preventDefault();
-        insertImageBlob(f).catch(console.error);
-        return;
-      }
-    }
+    const imgs = [...(e.dataTransfer?.files || [])].filter((f) => f.type.startsWith('image/'));
+    if (!imgs.length) return;
+    e.preventDefault();
+    // 여러 장을 떨어뜨리면 전부 넣는다 (예전에는 첫 장에서 빠져나갔다)
+    (async () => {
+      for (const f of imgs) await insertImageBlob(f).catch(console.error);
+    })();
   }
 
   function pickImageFile() {
@@ -130,5 +134,6 @@ const mediaTools = (() => {
     input.click();
   }
 
-  return { handlePaste, handleDrop, pickImageFile, pickVideo, youtubeId, insertYoutube };
+  return { handlePaste, handleDrop, pickImageFile, pickVideo, insertVideoUrl,
+           youtubeId, insertYoutube };
 })();

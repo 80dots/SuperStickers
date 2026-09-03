@@ -59,6 +59,8 @@
   "mf.addFolder": "Add folder…",
   "mf.open": "Open",
   "mf.reveal": "Show in file browser",
+  "mf.viewSmall": "Compact view",
+  "mf.viewThumb": "Thumbnail view",
   "mf.copy": "Copy",
   "mf.remove": "Remove from memo",
   "mf.badgeLink": "Link",

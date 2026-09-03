@@ -59,6 +59,8 @@
   "mf.addFolder": "폴더 추가…",
   "mf.open": "열기",
   "mf.reveal": "파일 브라우저로 열기",
+  "mf.viewSmall": "작게 보기",
+  "mf.viewThumb": "썸네일 보기",
   "mf.copy": "복사",
   "mf.remove": "메모에서 지우기",
   "mf.badgeLink": "링크",

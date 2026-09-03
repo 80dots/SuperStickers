@@ -847,6 +847,32 @@ void StickerWindow::RegisterTypeBridges() {
         return out;
     });
 
+    // 드롭한 동영상 파일을 첨부로 들여온다 (picker를 거치는 attachment.pickVideo와 같은 일)
+    b.Register("attachment.videoFromPath", [self](const json& p) {
+        std::wstring src = BackslashPath(util::Utf8ToWide(p.value("path", "")));
+        if (src.empty()) throw std::runtime_error("no path");
+        std::string name = App::I().store.ImportAttachment(self->data.id, src, "video");
+        if (name.empty()) throw std::runtime_error("copy failed");
+        self->data.attachments.push_back(name);
+        self->SaveData();
+        return json{{"name", name}, {"url", AttachmentUrl(self->data.id, name)}};
+    });
+
+    // 복사본(File/…)의 실제 경로 — 썸네일을 뽑으려면 절대 경로가 필요하다
+    b.Register("memofile.absPaths", [self](const json& p) {
+        json out = json::object();
+        if (!p.contains("rels") || !p["rels"].is_array()) return out;
+        for (auto& x : p["rels"]) {
+            if (!x.is_string()) continue;
+            std::string rel = x.get<std::string>();
+            std::string fixed = rel;
+            for (auto& c : fixed) if (c == '/') c = '\\';
+            out[rel] = util::WideToUtf8(App::I().store.StickerDir(self->data.id) + L"\\" +
+                                        util::Utf8ToWide(fixed));
+        }
+        return out;
+    });
+
     // 메모 폴더 안의 복사본을 연결된 앱으로 연다
     b.Register("memofile.openCopy", [self](const json& p) {
         std::string rel = p.value("rel", "");

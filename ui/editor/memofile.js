@@ -26,6 +26,20 @@ const memoFileTools = (() => {
   const isDir = (el) => el.dataset.dir === '1';
   const broken = (el) => isLink(el) && missing.has(el.dataset.path || '');
 
+  // 보기 모드: 'small'(한 줄) | 'thumb'(썸네일). 항목마다 따로 둔다.
+  const viewOf = (el) => (el.dataset.view === 'thumb' ? 'thumb' : 'small');
+  function setView(el, v) {
+    el.dataset.view = v;
+    render(el);
+    if (v === 'thumb') requestThumbs();
+    notify();
+  }
+
+  // 썸네일 캐시 (셸에서 뽑아 온 dataURL). 키는 절대 경로.
+  const thumbs = new Map();
+  const absOfCopy = new Map();   // data-rel → 절대 경로
+  let thumbSeq = 0;
+
   function tag(name, cls, text) {
     const e = document.createElement(name);
     if (cls) e.className = cls;
@@ -95,23 +109,60 @@ const memoFileTools = (() => {
   }
 
   // ---------- 그리기 ----------
+  // 이 항목의 실제 경로 (링크는 그대로, 복사본은 네이티브가 알려 준 절대 경로)
+  const absOf = (el) => (isLink(el) ? el.dataset.path : absOfCopy.get(el.dataset.rel) || '');
+
   function render(el) {
     el.querySelectorAll('[data-chrome]').forEach((n) => n.remove());
     const ui = tag('div', 'mfile-ui');
     ui.dataset.chrome = '1';
     const bad = broken(el);
+    const thumb = viewOf(el) === 'thumb';
     el.classList.toggle('broken', bad);
     el.classList.toggle('is-dir', isDir(el));
+    el.classList.toggle('thumb', thumb);
 
-    ui.appendChild(tag('span', 'mfile-icon', bad ? '⚠' : isDir(el) ? '📁' : '📄'));
-    ui.appendChild(tag('span', 'mfile-name', nameOf(el)));
     const badge = tag('span', 'mfile-badge ' + (isLink(el) ? 'link' : 'copy'),
                       isLink(el) ? T('mf.badgeLink', '링크') : T('mf.badgeCopy', '복사본'));
-    ui.appendChild(badge);
-    if (bad) ui.appendChild(tag('span', 'mfile-broken', T('mf.broken', '링크가 끊어졌습니다')));
+    if (thumb) {
+      const box = tag('div', 'mfile-thumbbox');
+      const url = thumbs.get(absOf(el));
+      if (bad) box.appendChild(tag('span', 'mfile-icon', '⚠'));
+      else if (url) box.style.backgroundImage = 'url(' + url + ')';
+      else box.appendChild(tag('span', 'mfile-icon', isDir(el) ? '📁' : '📄'));
+      ui.appendChild(box);
+      const foot = tag('div', 'mfile-foot');
+      foot.appendChild(tag('span', 'mfile-name', nameOf(el)));
+      foot.appendChild(badge);
+      ui.appendChild(foot);
+    } else {
+      ui.appendChild(tag('span', 'mfile-icon', bad ? '⚠' : isDir(el) ? '📁' : '📄'));
+      ui.appendChild(tag('span', 'mfile-name', nameOf(el)));
+      ui.appendChild(badge);
+      if (bad) ui.appendChild(tag('span', 'mfile-broken', T('mf.broken', '링크가 끊어졌습니다')));
+    }
     el.title = (isLink(el) ? el.dataset.path : nameOf(el)) +
                (bad ? '  —  ' + T('mf.broken', '링크가 끊어졌습니다') : '');
     el.appendChild(ui);
+  }
+
+  // 썸네일은 셸에서 뽑는다 (파일 메모와 같은 경로). 복사본은 절대 경로부터 받아 온다.
+  async function requestThumbs() {
+    const want = items().filter((el) => viewOf(el) === 'thumb' && !broken(el));
+    if (!want.length) return;
+    const rels = [...new Set(want.filter((el) => !isLink(el)).map((el) => el.dataset.rel)
+                                 .filter((r) => r && !absOfCopy.has(r)))];
+    if (rels.length) {
+      try {
+        const map = await bridge.call('memofile.absPaths', { rels });
+        Object.keys(map || {}).forEach((r) => absOfCopy.set(r, map[r]));
+      } catch (e) { /* 못 받아도 아이콘으로 보여 준다 */ }
+    }
+    const paths = [...new Set(want.map(absOf).filter((p) => p && !thumbs.has(p)))];
+    if (!paths.length) { want.forEach(render); return; }
+    bridge.call('files.requestThumbs',
+                { requestId: 'mf-' + (++thumbSeq), paths, size: 96 }).catch(() => {});
+    want.forEach(render);
   }
 
   // 링크가 살아 있는지 네이티브에 물어본 뒤 다시 그린다
@@ -130,6 +181,7 @@ const memoFileTools = (() => {
       missing.clear();
     }
     items().forEach(render);
+    requestThumbs();
   }
 
   // ---------- 선택 (Shift+클릭으로 범위) ----------
@@ -201,6 +253,11 @@ const memoFileTools = (() => {
     onChange = changeCb;
     editor.addEventListener('pointerdown', onPointerDown, true);
     editor.addEventListener('dblclick', onDblClick);
+    bridge.on('files.thumb', (d) => {
+      if (!d || !d.dataUrl || String(d.requestId || '').indexOf('mf-') !== 0) return;
+      thumbs.set(d.path, d.dataUrl);
+      items().filter((el) => viewOf(el) === 'thumb' && absOf(el) === d.path).forEach(render);
+    });
     refreshAll();
   }
 
@@ -212,5 +269,5 @@ const memoFileTools = (() => {
 
   return { init, addPaths, refreshAll, render, items, selected, clearSelection,
            open, reveal, copyToClipboard, remove, isLink, isDir, broken, toMarkdown,
-           makeLink, makeCopy };
+           makeLink, makeCopy, viewOf, setView };
 })();

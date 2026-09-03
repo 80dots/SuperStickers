@@ -901,6 +901,21 @@ th[data-sort] .mtable-sort { opacity: 1; color: var(--accent); }
 .mfile-badge.copy { background: var(--accent-soft, rgba(99, 85, 224, 0.16)); }
 .mfile-broken { flex: none; font-size: 10.5px; color: var(--danger); }
 
+/* 썸네일 보기 (항목마다 우클릭으로 고른다 — data-view="thumb") */
+.mfile.thumb { display: inline-block; width: 120px; margin: 3px 6px 3px 0; vertical-align: top; }
+.mfile.thumb .mfile-ui { flex-direction: column; align-items: stretch; gap: 4px; padding: 6px; }
+.mfile-thumbbox {
+  height: 84px;
+  border-radius: 4px;
+  background: rgba(55, 53, 47, 0.06) center / contain no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+}
+.mfile-foot { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.mfile.thumb .mfile-name { font-size: 11.5px; }
+
 /* ---------- 캘린더 (리치 메모) ---------- */
 /* 저장되는 것은 .mcal의 data-view / data-date / data-events뿐이다.
    격자·머리글·편집기는 전부 data-chrome이라 저장 직전에 걷힌다 (calendar.js 참고). */

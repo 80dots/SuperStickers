@@ -774,10 +774,34 @@
     editor.addEventListener('drop', (e) => {
       const files = [...(e.dataTransfer?.files || [])];
       if (!files.length) return;
+      // 이미지는 mediaTools가, 3D 모델은 앞의 처리기가 이미 가져갔다 — 여기서 또 넣으면
+      // 그림과 파일 항목이 같이 생긴다(중복). 동영상은 여기서 첨부로 들여온다.
+      const ext = (f) => (f.name.split('.').pop() || '').toLowerCase();
+      const isImg = (f) => /^image\//.test(f.type) ||
+                           ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'svg'].includes(ext(f));
+      const is3d = (f) => ['glb', 'gltf', 'obj', 'stl'].includes(ext(f));
+      const isVid = (f) => /^video\//.test(f.type) ||
+                           ['mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv', 'avi'].includes(ext(f));
+      const rest = files.filter((f) => !isImg(f) && !is3d(f));
+      if (!rest.length) return;
       e.preventDefault();
-      bridge.callWithFiles('memofile.dropPaths', {}, files)
-        .then((r) => memoFileTools.addPaths(r.paths))
-        .catch(console.error);
+      const videos = rest.filter(isVid);
+      const others = rest.filter((f) => !isVid(f));
+      if (videos.length) {
+        bridge.callWithFiles('memofile.dropPaths', {}, videos)
+          .then(async (r) => {
+            for (const path of r.paths || []) {
+              const v = await bridge.call('attachment.videoFromPath', { path });
+              mediaTools.insertVideoUrl(v.url);
+            }
+          })
+          .catch(console.error);
+      }
+      if (others.length) {
+        bridge.callWithFiles('memofile.dropPaths', {}, others)
+          .then((r) => memoFileTools.addPaths(r.paths))
+          .catch(console.error);
+      }
     });
 
     // 탐색기에서 복사한 파일·폴더 붙여넣기. 클립보드의 File 객체는 전체 경로를 주지 않아
@@ -1147,6 +1171,13 @@
             out.push({ label: i18n.t('mf.reveal'), run: () => memoFileTools.reveal(el) });
           }
         }
+        const view = memoFileTools.viewOf(el);
+        out.push({ sep: true });
+        out.push({ label: i18n.t('mf.viewSmall') + (view === 'small' ? '  ✓' : ''),
+                   run: () => list.forEach((x) => memoFileTools.setView(x, 'small')) });
+        out.push({ label: i18n.t('mf.viewThumb') + (view === 'thumb' ? '  ✓' : ''),
+                   run: () => list.forEach((x) => memoFileTools.setView(x, 'thumb')) });
+        out.push({ sep: true });
         out.push({ label: i18n.t('mf.copy'), run: () => memoFileTools.copyToClipboard(list) });
         out.push({ sep: true });
         out.push({ label: i18n.t('mf.remove') + (one ? '' : ' (' + list.length + ')'),
