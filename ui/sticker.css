@@ -328,6 +328,11 @@ body {
 #editor img.media-m, #editor video.media-m { width: 400px; height: auto; }
 #editor img.media-l, #editor video.media-l { width: 560px; height: auto; }
 /* 3D는 높이가 내용으로 정해지지 않는다 — 폭에 어울리는 높이를 함께 준다 */
+/* 캘린더는 높이를 내용이 정한다 — 폭만 준다 */
+.mcal.media-fit { width: 100%; }
+.mcal.media-s { width: 260px; }
+.mcal.media-m { width: 420px; }
+.mcal.media-l { width: 600px; }
 .embed3d.media-fit { width: 100%; height: 260px; }
 .embed3d.media-s { width: 240px; height: 150px; }
 .embed3d.media-m { width: 400px; height: 240px; }
@@ -860,6 +865,42 @@ th[data-sort] .mtable-sort { opacity: 1; color: var(--accent); }
 .mtable-wrap:focus-within .mtable-grip { opacity: 0.35; }
 .mtable-grip:hover { opacity: 1 !important; }
 
+/* ---------- 본문에 넣은 파일·폴더 ---------- */
+/* 저장되는 것은 .mfile의 data-kind / data-path 또는 data-rel / data-name뿐이고,
+   아이콘·이름·뱃지는 data-chrome이라 저장 직전에 걷힌다 (memofile.js 참고). */
+.mfile {
+  display: block;
+  margin: 3px 0;
+  border: 1px solid rgba(55, 53, 47, 0.16);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.45);
+  cursor: default;
+  user-select: none;
+}
+.mfile:hover { background: rgba(55, 53, 47, 0.06); }
+.mfile.tsel { background: var(--accent-soft, rgba(99, 85, 224, 0.16)); border-color: var(--accent); }
+.mfile.broken { border-style: dashed; }
+.mfile-ui {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  font-size: 12.5px;
+}
+.mfile-icon { flex: none; }
+.mfile-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mfile.broken .mfile-name { text-decoration: line-through; opacity: 0.7; }
+.mfile-badge {
+  flex: none;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(55, 53, 47, 0.1);
+  opacity: 0.8;
+}
+.mfile-badge.copy { background: var(--accent-soft, rgba(99, 85, 224, 0.16)); }
+.mfile-broken { flex: none; font-size: 10.5px; color: var(--danger); }
+
 /* ---------- 캘린더 (리치 메모) ---------- */
 /* 저장되는 것은 .mcal의 data-view / data-date / data-events뿐이다.
    격자·머리글·편집기는 전부 data-chrome이라 저장 직전에 걷힌다 (calendar.js 참고). */
@@ -991,6 +1032,43 @@ th[data-sort] .mtable-sort { opacity: 1; color: var(--accent); }
 }
 .mcal-editor .mcal-save { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .mcal-editor .mcal-del { color: var(--danger); }
+
+/* 국경일 · 기간 일정 · 가로 스크롤(주간) · 편집기 여러 줄 */
+.mcal-day.holiday .mcal-num { color: #C2410C; font-weight: 700; }
+.mcal-hol {
+  font-size: 10px;
+  color: #C2410C;
+  padding: 0 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mcal-hol-row { font-size: 11.5px; color: #C2410C; padding: 2px 6px 6px; }
+.mcal-chip.span { border-left: 3px solid var(--accent); border-radius: 2px 4px 4px 2px; }
+.mcal-chip-a { flex: none; font-size: 9px; opacity: 0.8; }
+.mcal-row-main { flex: 1; min-width: 0; }
+.mcal-row-meta { font-size: 11px; opacity: 0.65; margin-top: 1px; }
+
+/* 주간: 칸을 넓게 쓰고 가로로 민다 */
+.mcal-hscroll { overflow-x: auto; }
+.mcal-hscroll .mcal-week { min-width: 700px; }
+
+/* 편집기: 여러 줄 */
+.mcal-editor { flex-direction: column; gap: 5px; }
+.mcal-erow { display: flex; align-items: center; gap: 5px; }
+.mcal-erow input[type="text"] { flex: 1; min-width: 0; }
+.mcal-erow select {
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 3px 4px;
+  font-size: 12px;
+  background: var(--bg);
+  color: var(--fg);
+}
+.mcal-erow-btns { justify-content: flex-end; }
+.mcal-tilde { opacity: 0.5; }
+.mcal-check { display: flex; align-items: center; gap: 3px; font-size: 11.5px; white-space: nowrap; }
+.mcal-check input { margin: 0; }
 
 /* ---------- 우클릭 메뉴 ---------- */
 #ctxMenu {

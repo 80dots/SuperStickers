@@ -30,6 +30,8 @@ bool CopyDirRecursive(const std::wstring& src, const std::wstring& dst);
 bool MoveDirTo(const std::wstring& src, const std::wstring& dst);
 // 자식 프로세스를 창 없이 실행하고 종료를 기다린다. 종료 코드 0이면 true.
 bool RunProcessWait(const std::wstring& cmdLine, DWORD timeoutMs = 5 * 60 * 1000);
+// 사용자 지역 (ISO 3166 두 글자, 예: "KR"·"US"). 알 수 없으면 빈 문자열.
+std::string UserCountry();
 // PowerShell 작은따옴표 문자열용 이스케이프 (' -> '')
 std::wstring PsQuote(const std::wstring& s);
 // 폴더 내용물 전체를 zip으로 압축 / zip을 폴더로 해제 (PowerShell 이용).

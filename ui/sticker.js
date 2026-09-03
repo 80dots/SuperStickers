@@ -200,6 +200,18 @@
     : type === 'rich' ? !!(editor.textContent.trim() || editor.querySelector('img,video,.embed3d'))
     : false;
 
+  // 캘린더가 바뀌면 알람 목록을 메모 메타에 넣어 둔다. 네이티브 타이머가 그걸 보고
+  // 트레이 알림을 띄운다 — 메모창이 닫혀 있거나 그룹에 들어가 있어도 울려야 한다.
+  let lastAlarms = null;
+  function syncCalendarAlarms() {
+    scheduleSave();
+    if (type !== 'rich' || typeof calendarTools === 'undefined') return;
+    const json = JSON.stringify(calendarTools.collectAlarms());
+    if (json === lastAlarms) return;
+    lastAlarms = json;
+    saveMeta({ calAlarms: json });
+  }
+
   function saveMeta(patch) {
     bridge.call('sticker.setMeta', patch).catch(console.error);
   }
@@ -730,7 +742,9 @@
     // 저장된 표에 조작용 장식(정렬 버튼·손잡이)을 다시 붙이고 통계를 계산한다
     tableTools.init(editor, scheduleSave);
     // 캘린더는 격자를 저장하지 않는다 — 데이터(속성)만 남고 화면은 열 때 다시 그린다
-    calendarTools.init(editor, scheduleSave);
+    calendarTools.init(editor, syncCalendarAlarms);
+    // 본문에 넣은 파일·폴더 (링크는 살아 있는지 확인해 끊긴 것을 표시한다)
+    memoFileTools.init(editor, scheduleSave);
     // 저장돼 있던 3D 임베드에 뷰어 마운트 (UI는 Shadow DOM — 저장 HTML 미오염)
     editor.querySelectorAll('.embed3d').forEach((el) => viewer3d.mount(el, scheduleSave));
     // 본문에서 떨어진 임베드는 viewer3d가 렌더 루프·WebGL 컨텍스트를 놓는다. 되돌리기(Ctrl+Z)나
@@ -754,6 +768,30 @@
     editor.addEventListener('paste', mediaTools.handlePaste);
     editor.addEventListener('drop', mediaTools.handleDrop);
     editor.addEventListener('dragover', (e) => e.preventDefault());
+
+    // 탐색기에서 끌어다 놓은 파일·폴더를 본문에 넣는다.
+    // 이미지·동영상·3D는 앞선 처리기가 가져가므로 여기까지 오지 않는다.
+    editor.addEventListener('drop', (e) => {
+      const files = [...(e.dataTransfer?.files || [])];
+      if (!files.length) return;
+      e.preventDefault();
+      bridge.callWithFiles('memofile.dropPaths', {}, files)
+        .then((r) => memoFileTools.addPaths(r.paths))
+        .catch(console.error);
+    });
+
+    // 탐색기에서 복사한 파일·폴더 붙여넣기. 클립보드의 File 객체는 전체 경로를 주지 않아
+    // 네이티브가 CF_HDROP을 직접 읽는다.
+    editor.addEventListener('paste', (e) => {
+      const cd = e.clipboardData;
+      if (!cd || !cd.files || !cd.files.length) return;
+      // 이미지 붙여넣기는 mediaTools가 이미 처리했다
+      if ([...cd.files].every((f) => /^image\//.test(f.type))) return;
+      e.preventDefault();
+      bridge.call('memofile.clipboardPaths')
+        .then((r) => memoFileTools.addPaths(r.paths))
+        .catch(console.error);
+    });
   } else if (type === 'markdown') {
     $('#toolbar').classList.remove('hidden');
     $('#previewBtn').classList.remove('hidden');
@@ -1097,6 +1135,31 @@
         return sel.length ? sel : [tableTools.cellPos(table, cell).col];
       }
 
+      // 본문에 넣은 파일·폴더
+      function fileItems(el) {
+        const picked = memoFileTools.selected();
+        const list = picked.length ? picked : [el];
+        const one = list.length === 1;
+        const out = [];
+        if (one) {
+          out.push({ label: i18n.t('mf.open'), run: () => memoFileTools.open(el) });
+          if (memoFileTools.isLink(el)) {
+            out.push({ label: i18n.t('mf.reveal'), run: () => memoFileTools.reveal(el) });
+          }
+        }
+        out.push({ label: i18n.t('mf.copy'), run: () => memoFileTools.copyToClipboard(list) });
+        out.push({ sep: true });
+        out.push({ label: i18n.t('mf.remove') + (one ? '' : ' (' + list.length + ')'),
+                   run: () => memoFileTools.remove(list) });
+        return out;
+      }
+
+      function addFilesFromPicker(folders) {
+        bridge.call('memofile.pick', { folders })
+          .then((r) => memoFileTools.addPaths(r.paths))
+          .catch(console.error);
+      }
+
       function calItems(cal) {
         const after = (fn) => () => { fn(); scheduleSave(); };
         const view = calendarTools.viewOf(cal);
@@ -1200,10 +1263,17 @@
           open(e.clientX, e.clientY, mediaItems(media));
           return;
         }
+        const mfile = type === 'rich' && e.target.closest
+          ? e.target.closest('#editor .mfile') : null;
+        if (mfile) {
+          e.preventDefault();
+          open(e.clientX, e.clientY, fileItems(mfile));
+          return;
+        }
         const cal = type === 'rich' && e.target.closest ? e.target.closest('#editor .mcal') : null;
         if (cal) {
           e.preventDefault();
-          open(e.clientX, e.clientY, calItems(cal));
+          open(e.clientX, e.clientY, calItems(cal).concat([{ sep: true }], mediaItems(cal)));
           return;
         }
         const cell = type === 'rich' ? tableTools.cellOf(e.target) : null;
@@ -1227,7 +1297,12 @@
         e.preventDefault();
         open(e.clientX, e.clientY, [
           { label: i18n.t('table.insert'), run: insertTable },
-          ...(type === 'rich' ? [{ label: i18n.t('cal.insert'), run: insertCalendar }] : []),
+          ...(type === 'rich' ? [
+            { label: i18n.t('cal.insert'), run: insertCalendar },
+            { sep: true },
+            { label: i18n.t('mf.addFile'), run: () => addFilesFromPicker(false) },
+            { label: i18n.t('mf.addFolder'), run: () => addFilesFromPicker(true) },
+          ] : []),
         ]);
       });
       document.addEventListener('mousedown', (e) => {

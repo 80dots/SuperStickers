@@ -121,6 +121,9 @@ public:
     void AbortOllamaTasks();
 
     // 휴지통
+    // 캘린더 알람: 30초마다 모든 메모의 calAlarms를 훑어 시각이 된 것을 트레이 알림으로 띄운다.
+    // 창이 있든 없든(그룹 소속 메모 포함) 동작해야 하므로 본문 HTML이 아니라 메타를 본다.
+    void CheckCalendarAlarms();
     void PurgeExpiredTrash();                 // 보관 기간 지난 항목 완전 삭제
     void EmptyTrashInteractive(HWND owner);   // 확인 팝업 → 휴지통 비우기
     void RestoreTrashSticker(const std::string& id);  // 개별 스티커로 복원·표시
@@ -176,6 +179,7 @@ private:
     std::atomic<bool> installingOllama_{false};
     std::atomic<bool> installAbort_{false};       // 설치 다운로드 중단 플래그
     std::set<std::string> activePulls_;           // 진행 중인 모델 다운로드 requestId
+    std::set<std::string> firedAlarms_;           // 이번 실행에서 이미 띄운 알람 (id@시각)
     UINT_PTR nextTimerId_ = 100;
     UINT taskbarCreatedMsg_ = 0;
     bool quitting_ = false;

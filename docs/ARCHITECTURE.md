@@ -340,6 +340,37 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - **마크다운**(AI 리뷰용): 격자는 옮길 수 없으니 기간 제목과 일정 목록만 낸다.
   `getPlainText`는 장식을 걷어내므로 캘린더 내용이 빠진다 — AI가 보는 경로는 마크다운 쪽이다.
 
+### 본문 안의 파일·폴더 (`ui/editor/memofile.js`)
+
+파일 메모의 기능을 리치 본문으로 옮겨 온 것이다. 캘린더처럼 **데이터만 저장하고 겉모습은
+열 때 다시 그린다**:
+
+```html
+<div class="mfile" contenteditable="false" data-kind="link"
+     data-path="C:\Users\me\a.txt" data-name="a.txt" data-dir="0"></div>
+<div class="mfile" contenteditable="false" data-kind="copy"
+     data-rel="File/<guid>.txt" data-name="a.txt"></div>
+```
+
+- **링크와 복사본**: 파일을 넣을 때 네이티브 TaskDialog(커맨드 링크 2개)로 물어본다.
+  링크는 원본 경로를 가리키고, 복사본은 `Store::ImportAttachment(kind "file")`로 메모 폴더의
+  `File/`에 복사한다. **폴더는 묻지 않고 링크만** 만든다(통째로 복제할 일은 아니다).
+- **끊긴 링크**: 열 때마다 `memofile.exists`로 한 번에 확인해 없는 것에 `.broken`을 붙인다
+  (아이콘 경고·취소선·점선 테두리). 더블클릭하면 네이티브가 "찾을 수 없습니다"를 띄운다.
+  확인에 실패하면 끊겼다고 단정하지 않는다.
+- **지우기는 메모에서만**: 링크를 지워도 원본은 그대로다. 그 사실을 TaskDialog로 한 번 알리고,
+  **'다시 보지 않기'** 체크는 `settings.hideLinkDeleteNotice`에 남는다.
+- **선택**: Shift+클릭으로 범위 선택(`.tsel` — 저장 직전에 걷힌다). 복사·지우기는 고른 것
+  전체에 적용된다. 창 다중 선택은 Ctrl이라 서로 부딪히지 않는다.
+- **넣는 경로**: 툴바 버튼 없이 **드래그앤드롭 / 본문 우클릭의 파일·폴더 추가 / 붙여넣기**.
+  붙여넣기는 클립보드의 File 객체가 전체 경로를 주지 않으므로 **네이티브가 CF_HDROP을 직접
+  읽는다**(`memofile.clipboardPaths`).
+- **열기 허용**: `files.open`·`memofile.reveal`은 `App::IsRegisteredFilePath`를 지난다. 일반
+  메모의 링크는 본문에 `data-path="…"`로 들어 있으므로, HTML을 파싱하지 않고 그 속성 문자열이
+  있는지만 본다(마크업은 우리가 만든다).
+- 복사본은 `getAttachments`가 `[data-rel]`로 수집해 첨부로 등록한다 — 그래야 본문에서 지웠을
+  때 다음 실행의 GC가 실제 파일을 치운다.
+
 ### 미디어 크기 (동영상·이미지·3D)
 
 - 본문에서 우클릭하면 크기 메뉴가 뜬다: 메모창 너비에 맞춰 확장 / 작은·중간·큰 크기 고정.

@@ -45,6 +45,8 @@ struct Settings {
     int trashRetentionDays = 30;   // 휴지통 보관 일수, 0 = 자동 삭제하지 않음
     double uiScale = 1.0;          // 전체 UI 배율 (0.3 ~ 2.0, 1.0 = 100%)
     bool autoHideUi = true;        // 메모창 전용: 마우스가 벗어나면 헤더·서식 툴바 자동 숨김
+    // 링크를 지울 때 "원본은 지워지지 않습니다" 안내를 다시 띄우지 않기 (사용자가 체크)
+    bool hideLinkDeleteNotice = false;
     // 자동 숨김이 켜져 있을 때만 의미 있음. true면 창을 클릭해야 UI가 나타나고,
     // false면 마우스를 올리기만 해도 나타난다.
     bool uiRevealOnClick = true;
@@ -89,6 +91,10 @@ struct StickerData {
     std::string summaryEn;          // AI 요약 (영어)
     std::string transKo;            // 본문 한국어 번역 (원문이 영어일 때)
     std::string transEn;            // 본문 영어 번역 (원문이 한국어일 때)
+    // 캘린더 알람: 페이지가 캘린더에서 뽑아 준 JSON 배열 문자열.
+    // 본문 HTML을 네이티브가 파싱하지 않으려고 따로 둔다 (창이 없는 그룹 메모도 봐야 한다).
+    // [{"id":"e1","at":"2026-09-03T13:50","title":"회의"}] — at은 현지 시각의 알림 시각.
+    std::string calAlarms;
     std::string srcLang;            // AI가 판별한 원문 언어 "ko" | "en"
     std::string viewLang;           // 사용자가 선택한 표시 언어 (빈 값 = 원문)
     bool needsReview = false;       // 마지막 AI Review 이후 내용이 수정됨

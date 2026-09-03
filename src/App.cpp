@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <ctime>
 #include <set>
 #include <thread>
 #include <vector>
@@ -33,6 +34,8 @@ constexpr UINT_PTR kQuitTimerId = 1;
 constexpr UINT_PTR kTrashTimerId = 2;
 constexpr UINT_PTR kTrayClickTimerId = 3;  // 트레이 단일/더블클릭 구분용
 constexpr UINT kTrashPurgeIntervalMs = 60 * 60 * 1000;  // 1시간마다 만료 항목 정리
+constexpr UINT_PTR kAlarmTimerId = 5;
+constexpr UINT kAlarmIntervalMs = 30 * 1000;  // 캘린더 알람 확인 주기
 // 자석이 당기기 시작하는 거리 (논리 px). 민감도가 높을수록 멀리서도 붙는다.
 constexpr int kSnapThresholdLowDip = 6;
 constexpr int kSnapThresholdMediumDip = 12;
@@ -112,6 +115,7 @@ bool App::Init(HINSTANCE hinst, bool startHidden) {
 void App::OnEnvironmentReady(bool startHidden) {
     PurgeExpiredTrash();  // 보관 기간 지난 휴지통 항목 정리 (GC보다 먼저)
     SetTimer(hwnd_, kTrashTimerId, kTrashPurgeIntervalMs, nullptr);
+    SetTimer(hwnd_, kAlarmTimerId, kAlarmIntervalMs, nullptr);
     auto all = store.LoadAllStickers();
     for (auto& d : all) store.GarbageCollectMemoFiles(d);  // 메모 폴더의 미참조 첨부 정리
     auto allGroups = store.LoadAllGroups();
@@ -261,6 +265,56 @@ void App::DeleteSticker(const std::string& id) {
     dispose(d);
 }
 
+// 캘린더 알람. 페이지가 메모 메타(calAlarms)에 넣어 둔 "언제·무엇"만 보고 트레이 알림을
+// 띄운다. 본문 HTML을 파싱하지 않는 이유: 창이 없는 그룹 소속 메모도 알람이 울려야 한다.
+//
+// 시각이 막 지난 것만 띄운다(최근 kAlarmWindowMin분). 앱이 꺼져 있던 동안의 지난 알람이
+// 켜자마자 우르르 뜨면 안 되기 때문이다. 이미 띄운 것은 실행 중 다시 띄우지 않는다.
+void App::CheckCalendarAlarms() {
+    constexpr int kAlarmWindowMin = 5;
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    // 현지 시각을 분 단위 정수로 (같은 날 안에서만 비교하면 자정을 넘길 때 어긋난다)
+    auto toMinutes = [](int y, int mo, int d, int h, int mi) {
+        // 대략적인 통일 척도면 충분하다 — 같은 척도끼리만 뺀다
+        std::tm tm{};
+        tm.tm_year = y - 1900;
+        tm.tm_mon = mo - 1;
+        tm.tm_mday = d;
+        tm.tm_hour = h;
+        tm.tm_min = mi;
+        tm.tm_isdst = -1;
+        std::time_t t = std::mktime(&tm);
+        return t == (std::time_t)-1 ? (long long)0 : (long long)(t / 60);
+    };
+    const long long now = toMinutes(st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute);
+
+    auto scan = [&](const StickerData& d) {
+        if (d.calAlarms.empty()) return;
+        json list = json::parse(d.calAlarms, nullptr, false);
+        if (!list.is_array()) return;
+        for (auto& a : list) {
+            if (!a.is_object() || !a.contains("at") || !a["at"].is_string()) continue;
+            std::string at = a["at"].get<std::string>();          // "YYYY-MM-DDTHH:MM"
+            if (at.size() < 16) continue;
+            int y = atoi(at.substr(0, 4).c_str()), mo = atoi(at.substr(5, 2).c_str());
+            int dd = atoi(at.substr(8, 2).c_str()), hh = atoi(at.substr(11, 2).c_str());
+            int mi = atoi(at.substr(14, 2).c_str());
+            long long when = toMinutes(y, mo, dd, hh, mi);
+            if (when > now || now - when > kAlarmWindowMin) continue;
+            std::string key = d.id + "|" + at + "|" + a.value("id", "");
+            if (!firedAlarms_.insert(key).second) continue;       // 이미 띄웠다
+            std::string title = a.value("title", "");
+            std::string when_s = a.value("when", "");
+            std::wstring head = title.empty() ? i18n.T("cal.title") : util::Utf8ToWide(title);
+            tray_.ShowBalloon(head, util::Utf8ToWide(when_s));
+        }
+    };
+
+    for (auto* w : stickers_) scan(w->data);
+    for (auto& kv : groupedStickers_) scan(kv.second);
+}
+
 void App::PurgeExpiredTrash() {
     if (settings.trashRetentionDays <= 0) return;  // 자동 삭제하지 않음
     ULONGLONG now = 0;
@@ -376,10 +430,13 @@ bool App::IsRegisteredFilePath(const std::wstring& path) const {
         return p;
     };
     std::wstring want = norm(path);
+    // 일반 메모는 본문에 <div class="mfile" data-path="..."> 로 들어 있다.
+    // HTML을 파싱하지 않고 그 속성 문자열이 있는지만 본다 (마크업은 우리가 만든다).
+    const std::string needle = "data-path=\"" + util::WideToUtf8(want) + "\"";
     auto has = [&](const StickerData& d) {
         for (auto& f : d.files)
             if (norm(util::Utf8ToWide(f)) == want) return true;
-        return false;
+        return d.html.find(needle) != std::string::npos;
     };
     for (auto* w : stickers_)
         if (has(w->data)) return true;
@@ -1326,6 +1383,7 @@ json App::MakeInitJson(const std::string& page, const std::string& stickerId) {
                 {"stickerId", stickerId},
                 {"theme", EffectiveTheme()},
                 {"lang", i18n.Lang()},
+                {"country", util::UserCountry()},  // 캘린더의 국경일 표시에 쓴다
                 {"autoHideUi", settings.autoHideUi},
                 {"uiRevealOnClick", settings.uiRevealOnClick},
                 {"highlightColors", settings.highlightColors},
@@ -2158,6 +2216,8 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 DestroyWindow(hwnd_);
             } else if (wp == kTrashTimerId) {
                 PurgeExpiredTrash();
+            } else if (wp == kAlarmTimerId) {
+                CheckCalendarAlarms();
             } else if (wp == kTrayClickTimerId) {
                 KillTimer(hwnd, kTrayClickTimerId);
                 BringAllToFront();  // 트레이 단일 클릭: 보이는 스티커 모두 맨 앞으로

@@ -125,6 +125,19 @@ bool MoveDirTo(const std::wstring& src, const std::wstring& dst) {
     return RemoveDirRecursive(src);
 }
 
+std::string UserCountry() {
+    // Win10 1709+. 실패하면 로케일 이름("ko-KR")의 뒤쪽을 쓴다.
+    wchar_t geo[16]{};
+    if (GetUserDefaultGeoName(geo, 16) > 0 && geo[0]) return WideToUtf8(geo);
+    wchar_t loc[LOCALE_NAME_MAX_LENGTH]{};
+    if (GetUserDefaultLocaleName(loc, LOCALE_NAME_MAX_LENGTH) > 0) {
+        std::wstring s = loc;
+        size_t dash = s.rfind(L'-');
+        if (dash != std::wstring::npos && s.size() - dash == 3) return WideToUtf8(s.substr(dash + 1));
+    }
+    return {};
+}
+
 bool RunProcessWait(const std::wstring& cmdLine, DWORD timeoutMs) {
     STARTUPINFOW si{sizeof(si)};
     PROCESS_INFORMATION pi{};

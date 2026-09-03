@@ -258,6 +258,7 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
         setStr("transKo", self->data.transKo);
         setStr("transEn", self->data.transEn);
         setStr("srcLang", self->data.srcLang);
+        setStr("calAlarms", self->data.calAlarms);  // 캘린더 알람 (네이티브 타이머가 본다)
         setStr("viewLang", self->data.viewLang);
         if (p.contains("needsReview") && p["needsReview"].is_boolean())
             self->data.needsReview = p["needsReview"];
@@ -757,6 +758,151 @@ void StickerWindow::RegisterTypeBridges() {
     });
 
     // 원본 파일 위치를 탐색기에서 열고 파일 선택
+    // ---------- 일반 메모에 넣는 파일·폴더 ----------
+    // 파일 메모의 기능을 리치 본문에서도 쓴다. 본문에는 링크(원본 경로)나
+    // 복사본(메모 폴더 안 File/…)이 <div class="mfile">로 들어간다.
+    b.Register("memofile.pick", [self](const json& p) {
+        auto picked = PickFilesOrFolders(self->hwnd_, p.value("folders", false));
+        json arr = json::array();
+        for (auto& w : picked) arr.push_back(util::WideToUtf8(w));
+        return json{{"paths", arr}};
+    });
+
+    // 드롭·붙여넣기로 들어온 File 객체의 전체 경로 (WebViewHost가 params.paths로 합쳐 준다)
+    b.Register("memofile.dropPaths", [](const json& p) {
+        json arr = json::array();
+        if (p.contains("paths") && p["paths"].is_array())
+            for (auto& x : p["paths"])
+                if (x.is_string()) arr.push_back(x);
+        return json{{"paths", arr}};
+    });
+
+    // 클립보드의 파일 목록 (탐색기에서 복사한 것). File 객체 경로가 막힌 경로를 우회한다.
+    b.Register("memofile.clipboardPaths", [self](const json&) {
+        json arr = json::array();
+        if (!OpenClipboard(self->hwnd_)) return json{{"paths", arr}};
+        HANDLE h = GetClipboardData(CF_HDROP);
+        if (h) {
+            auto drop = (HDROP)h;
+            UINT n = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+            for (UINT i = 0; i < n; ++i) {
+                wchar_t buf[MAX_PATH * 2]{};
+                if (DragQueryFileW(drop, i, buf, MAX_PATH * 2)) arr.push_back(util::WideToUtf8(buf));
+            }
+        }
+        CloseClipboard();
+        return json{{"paths", arr}};
+    });
+
+    // 링크로 넣을지 복사본으로 넣을지 묻는다. 폴더는 복사본을 만들지 않는다(통째로 복제해야 한다).
+    b.Register("memofile.askKind", [self](const json& p) {
+        bool isDir = p.value("isDir", false);
+        int count = p.value("count", 1);
+        if (isDir) return json{{"kind", "link"}};
+        TASKDIALOGCONFIG tdc{};
+        tdc.cbSize = sizeof(tdc);
+        tdc.hwndParent = self->hwnd_;
+        tdc.dwFlags = TDF_USE_COMMAND_LINKS | TDF_POSITION_RELATIVE_TO_WINDOW |
+                      TDF_ALLOW_DIALOG_CANCELLATION;
+        tdc.dwCommonButtons = TDCBF_CANCEL_BUTTON;
+        std::wstring title = App::I().i18n.T("mf.askTitle");
+        std::wstring head = App::I().i18n.T("mf.askHead");
+        if (count > 1) head += L" (" + std::to_wstring(count) + L")";
+        tdc.pszWindowTitle = L"Super Stickers";
+        tdc.pszMainInstruction = head.c_str();
+        std::wstring body = App::I().i18n.T("mf.askBody");
+        tdc.pszContent = body.c_str();
+        std::wstring linkTxt = App::I().i18n.T("mf.askLink");
+        std::wstring copyTxt = App::I().i18n.T("mf.askCopy");
+        TASKDIALOG_BUTTON btns[2] = {{101, linkTxt.c_str()}, {102, copyTxt.c_str()}};
+        tdc.pButtons = btns;
+        tdc.cButtons = 2;
+        int pressed = 0;
+        if (FAILED(TaskDialogIndirect(&tdc, &pressed, nullptr, nullptr)))
+            return json{{"kind", "link"}};
+        return json{{"kind", pressed == 102 ? "copy" : pressed == 101 ? "link" : "cancel"}};
+    });
+
+    // 원본을 메모 폴더로 복사한다 (File/<guid>.<ext>)
+    b.Register("memofile.copyIn", [self](const json& p) {
+        std::wstring src = BackslashPath(util::Utf8ToWide(p.value("path", "")));
+        if (src.empty()) throw std::runtime_error("no path");
+        std::string rel = App::I().store.ImportAttachment(self->data.id, src, "file");
+        if (rel.empty()) throw std::runtime_error("copy failed");
+        return json{{"rel", rel},
+                    {"name", util::WideToUtf8(PathFindFileNameW(src.c_str()))}};
+    });
+
+    // 링크가 살아 있는지 (없어진 링크는 페이지가 깨진 표시를 한다)
+    b.Register("memofile.exists", [](const json& p) {
+        json out = json::object();
+        if (p.contains("paths") && p["paths"].is_array()) {
+            for (auto& x : p["paths"]) {
+                if (!x.is_string()) continue;
+                std::wstring w = BackslashPath(util::Utf8ToWide(x.get<std::string>()));
+                out[x.get<std::string>()] =
+                    GetFileAttributesW(w.c_str()) != INVALID_FILE_ATTRIBUTES;
+            }
+        }
+        return out;
+    });
+
+    // 메모 폴더 안의 복사본을 연결된 앱으로 연다
+    b.Register("memofile.openCopy", [self](const json& p) {
+        std::string rel = p.value("rel", "");
+        if (rel.empty()) throw std::runtime_error("no rel");
+        for (auto& c : rel) if (c == '/') c = '\\';
+        std::wstring path = App::I().store.StickerDir(self->data.id) + L"\\" +
+                            util::Utf8ToWide(rel);
+        if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES)
+            throw std::runtime_error("file not found");
+        ShellExecuteW(nullptr, L"open", path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        return json::object();
+    });
+
+    b.Register("memofile.reveal", [](const json& p) {
+        std::wstring path = BackslashPath(util::Utf8ToWide(p.value("path", "")));
+        if (path.empty()) throw std::runtime_error("no path");
+        if (!App::I().IsRegisteredFilePath(path)) throw std::runtime_error("not a memo file");
+        std::wstring args = L"/select,\"" + path + L"\"";
+        ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+        return json::object();
+    });
+
+    // 없어진 링크를 열려고 할 때
+    b.Register("memofile.notFound", [self](const json& p) {
+        std::wstring path = util::Utf8ToWide(p.value("path", ""));
+        std::wstring msg = App::I().i18n.T("mf.notFound") + L"\n\n" + path;
+        MessageBoxW(self->hwnd_, msg.c_str(), L"Super Stickers",
+                    MB_OK | MB_ICONWARNING | MB_SETFOREGROUND);
+        return json::object();
+    });
+
+    // 링크를 지울 때의 안내 ("원본은 지워지지 않습니다"). 다시 보지 않기를 체크하면 설정에 남는다.
+    b.Register("memofile.linkDeleteNotice", [self](const json&) {
+        if (App::I().settings.hideLinkDeleteNotice) return json{{"shown", false}};
+        TASKDIALOGCONFIG tdc{};
+        tdc.cbSize = sizeof(tdc);
+        tdc.hwndParent = self->hwnd_;
+        tdc.dwFlags = TDF_POSITION_RELATIVE_TO_WINDOW;
+        tdc.dwCommonButtons = TDCBF_OK_BUTTON;
+        tdc.pszWindowTitle = L"Super Stickers";
+        std::wstring head = App::I().i18n.T("mf.linkDelHead");
+        std::wstring body = App::I().i18n.T("mf.linkDelBody");
+        std::wstring verify = App::I().i18n.T("mf.dontShowAgain");
+        tdc.pszMainInstruction = head.c_str();
+        tdc.pszContent = body.c_str();
+        tdc.pszVerificationText = verify.c_str();
+        int pressed = 0;
+        BOOL checked = FALSE;
+        TaskDialogIndirect(&tdc, &pressed, nullptr, &checked);
+        if (checked) {
+            App::I().settings.hideLinkDeleteNotice = true;
+            App::I().store.SaveSettings(App::I().settings);
+        }
+        return json{{"shown", true}};
+    });
+
     b.Register("model.reveal", [normalizeModelPath](const json& p) {
         std::wstring path = normalizeModelPath(util::Utf8ToWide(p.value("path", "")));
         if (path.empty()) throw std::runtime_error("no path");

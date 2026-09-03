@@ -132,6 +132,10 @@ const editorCore = (() => {
   function getAttachments() {
     const names = [];
     if (!editor) return names;
+    // 본문에 넣은 파일 복사본 (File/<guid>.<ext>) — 참조가 없으면 GC가 지운다
+    editor.querySelectorAll('[data-rel]').forEach((el) => {
+      if (el.dataset.rel) names.push(el.dataset.rel);
+    });
     const add = (src) => {
       const m = (src || '').match(ATTACH_RE);
       if (m) names.push(decodeURIComponent(m[1]));
@@ -240,6 +244,10 @@ const editorCore = (() => {
         return;
       }
       if (tag === 'hr') { out.push('---'); return; }
+      if (node.classList && node.classList.contains('mfile')) {
+        out.push(memoFileTools.toMarkdown(node));
+        return;
+      }
       if (node.classList && node.classList.contains('mcal')) {
         calendarTools.toMarkdown(node).forEach((l) => out.push(l));
         return;

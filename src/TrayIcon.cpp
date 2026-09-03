@@ -25,6 +25,16 @@ void TrayIcon::UpdateTip(const std::wstring& tip) {
     Shell_NotifyIconW(NIM_MODIFY, &nid_);
 }
 
+void TrayIcon::ShowBalloon(const std::wstring& title, const std::wstring& text) {
+    if (!added_) return;
+    NOTIFYICONDATAW n = nid_;
+    n.uFlags = NIF_INFO;
+    n.dwInfoFlags = NIIF_INFO;
+    wcsncpy_s(n.szInfoTitle, title.c_str(), _TRUNCATE);
+    wcsncpy_s(n.szInfo, text.c_str(), _TRUNCATE);
+    Shell_NotifyIconW(NIM_MODIFY, &n);
+}
+
 void TrayIcon::Destroy() {
     if (added_) {
         Shell_NotifyIconW(NIM_DELETE, &nid_);

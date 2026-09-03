@@ -119,6 +119,7 @@ Settings Store::LoadSettingsUnchecked() {
         if (s.uiScale < 0.3) s.uiScale = 0.3;
         if (s.uiScale > 2.0) s.uiScale = 2.0;
         s.autoHideUi = j.value("autoHideUi", s.autoHideUi);
+        s.hideLinkDeleteNotice = j.value("hideLinkDeleteNotice", s.hideLinkDeleteNotice);
         s.uiRevealOnClick = j.value("uiRevealOnClick", s.uiRevealOnClick);
         if (j.contains("magnet") && j["magnet"].is_object()) {
             s.magnetEnabled = j["magnet"].value("enabled", s.magnetEnabled);
@@ -162,6 +163,7 @@ void Store::SaveSettings(const Settings& s) {
         {"trash", {{"enabled", s.trashEnabled}, {"retentionDays", s.trashRetentionDays}}},
         {"uiScale", s.uiScale},
         {"autoHideUi", s.autoHideUi},
+        {"hideLinkDeleteNotice", s.hideLinkDeleteNotice},
         {"uiRevealOnClick", s.uiRevealOnClick},
         {"magnet",
          {{"enabled", s.magnetEnabled},
@@ -190,7 +192,7 @@ json Store::ToJson(const StickerData& d) {
         {"title", d.title}, {"summary", d.summary},
         {"titleEn", d.titleEn}, {"summaryEn", d.summaryEn},
         {"transKo", d.transKo}, {"transEn", d.transEn},
-        {"srcLang", d.srcLang}, {"viewLang", d.viewLang},
+        {"srcLang", d.srcLang}, {"viewLang", d.viewLang}, {"calAlarms", d.calAlarms},
         {"needsReview", d.needsReview},
     };
 }
@@ -201,7 +203,8 @@ static bool ValidAttachmentRel(const std::string& rel) {
     size_t slash = rel.find('/');
     if (slash == std::string::npos || slash == 0 || slash + 1 >= rel.size()) return false;
     std::string sub = rel.substr(0, slash), file = rel.substr(slash + 1);
-    if (sub != "Image" && sub != "Video" && sub != "PDF" && sub != "3D") return false;
+    if (sub != "Image" && sub != "Video" && sub != "PDF" && sub != "3D" && sub != "File")
+        return false;
     if (file == "." || file == "..") return false;
     for (unsigned char c : file) {
         if (!(isalnum(c) || c == '.' || c == '_' || c == '-')) return false;
@@ -269,6 +272,7 @@ StickerData Store::FromJson(const json& j) {
     d.summaryEn = j.value("summaryEn", "");
     d.transKo = j.value("transKo", "");
     d.transEn = j.value("transEn", "");
+    d.calAlarms = j.value("calAlarms", "");
     d.srcLang = j.value("srcLang", "");
     d.viewLang = j.value("viewLang", "");
     d.needsReview = j.value("needsReview", false);
@@ -425,6 +429,7 @@ int Store::CountTrash() {
 static std::wstring SubdirFor(std::string kind, std::wstring ext) {
     for (auto& c : kind) c = (char)tolower((unsigned char)c);
     for (auto& c : ext) c = (wchar_t)towlower(c);
+    if (kind == "file") return L"File";  // 일반 메모에 넣은 파일 복사본
     if (kind == "3d") return L"3D";
     if (kind == "pdf") return L"PDF";
     if (kind == "video") return L"Video";
@@ -480,7 +485,7 @@ void Store::GarbageCollectMemoFiles(const StickerData& d) {
     };
     for (auto& a : d.attachments) addRef(a);
     addRef(d.pdfName);
-    static const wchar_t* kSubs[] = {L"Image", L"Video", L"PDF", L"3D"};
+    static const wchar_t* kSubs[] = {L"Image", L"Video", L"PDF", L"3D", L"File"};
     for (auto* sub : kSubs) {
         std::wstring dir = StickerDir(d.id) + L"\\" + sub;
         for (auto& [name, isDir] : util::ListDirEntries(dir)) {
