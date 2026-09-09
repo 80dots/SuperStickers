@@ -542,6 +542,10 @@ IPv4 `127.0.0.1`에만 붙는다. 그래서 `localhost`로는 `::1`을 두드렸
   같은 규칙 — `HasActiveOllamaTasks()`면 네이티브 확인 후에만 끝낸다.
 - 내려받을 수 있는 모델 목록은 `ui/common/ollama-models.js`가 단일 출처다(설정 화면의
   콤보와 마법사가 같은 목록을 쓴다).
+- **오류 옆 버튼**: 마법사를 지나쳤는데(예: 확인 직후 Ollama가 죽음) `ai.chat`이 "no model"·
+  "connection failed"로 실패하면 `isSetupError()`가 판정해 요약 상자·AI 패널의 오류 옆에
+  `wizard.openBtn` 버튼을 붙인다. 이 오류는 5초 자동 소멸을 하지 않는다(누를 시간을 준다).
+  버튼은 마법사를 띄우고, 마치면 같은 작업(리뷰 또는 마지막 `runTask`)을 다시 돌린다.
 
 ### AI 프롬프트 편집 (설정 → AI 탭)
 
@@ -771,6 +775,17 @@ IPv4 `127.0.0.1`에만 붙는다. 그래서 `localhost`로는 `::1`을 두드렸
     (z 순서만 올라가고 전경은 그대로). 그러면 "우리가 전경인가" 검사가 영원히 거짓이라
     아무리 눌러도 감춰지지 않는다. `RaiseAllAndRecord`가 올린 직후 실제로 전경이
     되었는지 확인해 `raiseFailed_`에 남기고, 실패했으면 다음 누름을 감추기로 처리한다.
+- **최소화** (`StickerData.minimized`/`restoreH`, `StickerWindow::SetMinimized`): 창 높이를
+  타이틀바(34 CSS px × 배율) + 리사이즈 밴드 둘로 줄이고 `sticker.minimized` 이벤트로 페이지가
+  `html.minimized`를 켠다 — 타이틀바만 남고 자동 숨김도 타이틀바를 지우지 못한다.
+  `h`는 줄어든 높이가 되고 원래 높이는 `restoreH`에 두므로, 켤 때 그 높이로 만들어지고
+  되돌릴 때 `restoreH`로 돌아간다. **`WM_GETMINMAXINFO`가 먼저 바뀌어야 한다**: 최소 높이
+  160 DIP 제한은 `SetWindowPos`에도 적용되므로 `data.minimized`를 세운 뒤에 크기를 바꾸고,
+  최소화 중에는 min=max로 세로 드래그를 막는다(`WM_SIZING`도 같은 값을 지킨다).
+- **가장자리 정렬** (`App::ArrangeToEdge`, 단축키 `arrangeLeft`/`arrangeRight`): 보이는
+  메모(그룹창 제외)를 화면 순서(위→아래, 왼→오른)로 모두 최소화한 뒤 작업 영역의 한쪽
+  가장자리에 위에서부터 `8×배율` 간격으로 세운다. 다음 창이 작업 영역 아래에 닿으면 그
+  줄의 최대 너비 + 간격만큼 안쪽으로 물러나 새 줄을 시작한다. 너비는 각 창의 것을 지킨다.
 - **창 자석 정렬** (`settings.magnet.enabled` 기본 On, `.gap` 기본 10 논리 px): 메모창을
   드래그해 다른 메모창 근처로 가져가면 정해진 간격으로 붙고 가장자리가 맞춰진다.
   `WM_MOVING`이 준 제안 사각형을 `App::SnapStickerRect`가 보정한 뒤 TRUE를 반환하는

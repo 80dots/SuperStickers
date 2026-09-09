@@ -441,5 +441,10 @@
   "wizard.s2Cancel": "Stop",
   "wizard.s2Failed": "Download failed",
   "wizard.s3Title": "Step 3 — Choose the model to use",
-  "wizard.s3Desc": "Pick the model the AI features will use. You can change it later in settings."
+  "wizard.s3Desc": "Pick the model the AI features will use. You can change it later in settings.",
+  "tt.minimize": "Minimize (title only)",
+  "tt.restore": "Restore size",
+  "settings.hotkeyArrangeLeft": "Minimize and stack on the left edge",
+  "settings.hotkeyArrangeRight": "Minimize and stack on the right edge",
+  "wizard.openBtn": "AI setup wizard"
 }

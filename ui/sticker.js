@@ -26,6 +26,24 @@
   const isText = type === 'rich' || type === 'markdown';
   colorUtil.apply(data.color, isDark());
   $('#pinBtn').classList.toggle('on', !!data.topmost);
+  // 최소화: 타이틀바만 남긴다. 상태는 네이티브가 정하고(창 높이도 거기서 줄인다) 여기는 따른다.
+  function applyMinimized(on) {
+    document.documentElement.classList.toggle('minimized', !!on);
+    $('#minBtn').title = i18n.t(on ? 'tt.restore' : 'tt.minimize');
+    $('#minBtn').classList.toggle('on', !!on);
+  }
+  applyMinimized(!!data.minimized);
+  bridge.on('sticker.minimized', (d) => applyMinimized(!!d.on));
+  $('#minBtn').addEventListener('mousedown', (e) => e.preventDefault());
+  $('#minBtn').addEventListener('click', () => {
+    bridge.call('sticker.setMinimized', {}).catch(console.error);  // 값 없이 부르면 토글
+  });
+  // 최소화된 창은 타이틀바 더블클릭으로도 되돌린다
+  $('#titlebar').addEventListener('dblclick', (e) => {
+    if (!document.documentElement.classList.contains('minimized')) return;
+    if (e.target.closest('button, input')) return;
+    bridge.call('sticker.setMinimized', { on: false }).catch(console.error);
+  });
   $('#typeBadge').textContent =
     { markdown: 'MD', file: 'FILE', web: 'WEB', pdf: 'PDF' }[type] || '';
 
@@ -504,9 +522,14 @@
     summaryErrorTimer = 0;
   }
 
-  function renderSummary(errorMsg) {
+  // 오류가 "AI를 쓸 준비가 안 됨"(모델 없음·연결 안 됨)인지. 그때만 마법사 버튼을 붙인다.
+  function isSetupError(msg) {
+    return /no model|connection failed|not found|http 404/i.test(msg || '');
+  }
+  function renderSummary(errorMsg, setupError) {
     const box = $('#summaryBox');
     clearSummaryErrorTimer();
+    $('#summaryWizardBtn').classList.toggle('hidden', !(errorMsg && setupError));
     if (errorMsg) {
       box.classList.remove('hidden');
       box.classList.add('error');
@@ -518,6 +541,8 @@
       bar.style.animation = 'none';
       void bar.offsetWidth;  // 리플로우 강제 (없으면 재시작되지 않음)
       bar.style.animation = '';
+      // 마법사 버튼이 붙은 오류는 사용자가 누를 때까지 남겨 둔다 (5초 만에 사라지면 못 누른다)
+      if (setupError) return;
       summaryErrorTimer = setTimeout(() => {
         summaryErrorTimer = 0;
         renderSummary();  // 저장된 요약으로 복귀 (없으면 상자 숨김)
@@ -622,10 +647,16 @@
       stopLoadingTicker();
       loadingRender = null;  // 남겨 두면 다른 창의 로딩 방송이 이 창의 요약을 덮는다
       renderSummary(/no model/.test(e.message) ? i18n.t('ai.noModel')
-                                              : `${i18n.t('ai.error')}: ${e.message}`);
+                                              : `${i18n.t('ai.error')}: ${e.message}`,
+                    isSetupError(e.message));
       setReviewState();
     });
   }
+  // 오류 옆 '설정 마법사' — 마치면 곧바로 다시 분석한다
+  $('#summaryWizardBtn').addEventListener('click', async () => {
+    renderSummary();
+    if (await aiWizard.ensureReady(init.stickerId)) runAiReview();
+  });
   if (isText) {
     $('#aiReviewBtn').addEventListener('click', async () => {
       // AI를 쓸 준비가 안 되어 있으면 설정 마법사를 먼저 띄우고, 마치면 이어서 분석한다
@@ -652,7 +683,8 @@
       loadingRender = null;
       if (!d.ok) {
         renderSummary(d.error === 'aborted' ? i18n.t('ai.aborted')
-                                            : `${i18n.t('ai.error')}: ${d.error}`);
+                                            : `${i18n.t('ai.error')}: ${d.error}`,
+                      d.error !== 'aborted' && isSetupError(d.error));
         setReviewState();
         return;
       }
@@ -1660,10 +1692,18 @@
       return editorCore.getPlainText();
     }
     // 결과를 글자 그대로 보여 준다 (스트리밍 중·오류·안내 문구)
-    function showPlain(text) {
+    function showPlain(text, setupError) {
       aiOutput.classList.remove('md-body');
       aiOutput.textContent = text;
+      $('#aiWizardBtn').classList.toggle('hidden', !setupError);
     }
+    // 오류 옆 '설정 마법사' — 마치면 같은 작업을 다시 돌린다
+    let lastTask = null;
+    $('#aiWizardBtn').addEventListener('click', async () => {
+      $('#aiWizardBtn').classList.add('hidden');
+      if (!(await aiWizard.ensureReady(init.stickerId))) return;
+      if (lastTask) runTask(lastTask);
+    });
     // 완성된 결과를 마크다운으로 렌더링한다. 삽입·교체·복사는 resultText(원문)를 그대로 쓴다.
     function showRendered(text) {
       aiOutput.classList.add('md-body');
@@ -1689,11 +1729,13 @@
         streaming = false;
         aiOutput.classList.add('error');
         showPlain(/no model/.test(e.message) ? i18n.t('ai.noModel')
-                                             : `${i18n.t('ai.error')}: ${e.message}`);
+                                             : `${i18n.t('ai.error')}: ${e.message}`,
+                  isSetupError(e.message));
         setActionsState();
       });
     }
     function runTask(task) {
+      lastTask = task;
       captureSelection();
       const text = selectedOrAllText();
       if (task !== 'ask' && !text) {
@@ -1754,7 +1796,8 @@
         aiOutput.classList.add('error');
         const msg =
           d.error === 'aborted' ? i18n.t('ai.aborted') : `${i18n.t('ai.error')}: ${d.error}`;
-        showPlain(resultText ? `${resultText}\n\n[${msg}]` : msg);
+        showPlain(resultText ? `${resultText}\n\n[${msg}]` : msg,
+                  d.error !== 'aborted' && !resultText && isSetupError(d.error));
       } else if (resultText) {
         showRendered(resultText);  // 다 받았으니 마크다운을 표현해 준다
       }

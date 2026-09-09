@@ -48,6 +48,9 @@
       <button class="tb-btn hidden" id="hdrMoreBtn" data-i18n-title="tt.more">
         <svg viewBox="0 0 16 16" width="14" height="14"><circle fill="currentColor" cx="3.2" cy="8" r="1.35"/><circle fill="currentColor" cx="8" cy="8" r="1.35"/><circle fill="currentColor" cx="12.8" cy="8" r="1.35"/></svg>
       </button>
+      <button id="minBtn" class="tb-btn" data-i18n-title="tt.minimize">
+        <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2.5 11.25h11v1.5h-11z"/></svg>
+      </button>
       <button id="hideBtn" class="tb-btn" data-i18n-title="tt.hide">
         <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M3.05 2 8 6.95 12.95 2 14 3.05 9.05 8 14 12.95 12.95 14 8 9.05 3.05 14 2 12.95 6.95 8 2 3.05z"/></svg>
       </button>
@@ -81,6 +84,8 @@
   <div id="summaryBox" class="hidden">
     <span id="summaryLabel" data-i18n="review.summaryLabel"></span>
     <div id="summaryText"></div>
+    <!-- AI를 쓸 수 없는 오류일 때만 보이는 설정 마법사 버튼 -->
+    <button id="summaryWizardBtn" class="wiz-inline hidden" data-i18n="wizard.openBtn"></button>
     <!-- 오류 메시지가 사라지기까지 남은 시간 (오류 상태에서만 보임) -->
     <div id="summaryTimer"><div id="summaryTimerBar"></div></div>
   </div>
@@ -259,6 +264,7 @@
       <button id="aiRunBtn" class="ai-primary" data-i18n="ai.run"></button>
     </div>
     <div id="aiOutput" class="hidden"></div>
+    <button id="aiWizardBtn" class="wiz-inline hidden" data-i18n="wizard.openBtn"></button>
     <div id="aiActions" class="hidden">
       <button id="aiInsertBtn" data-i18n="ai.insert"></button>
       <button id="aiReplaceBtn" data-i18n="ai.replace"></button>

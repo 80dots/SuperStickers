@@ -222,6 +222,12 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
     Bridge& b = self->host_.bridge();
     b.Register("sticker.load", [self](const json&) { return Store::ToJson(self->data); });
 
+    b.Register("sticker.setMinimized", [self](const json& p) {
+        bool on = p.value("on", !self->data.minimized);
+        App::I().RunOnUi([self, on]() { self->SetMinimized(on); });
+        return json::object();
+    });
+
     b.Register("sticker.saveContent", [self](const json& p) {
         self->data.html = p.value("html", self->data.html);
         self->data.markdown = p.value("markdown", self->data.markdown);
@@ -437,6 +443,34 @@ int StickerWindow::BandPx() const { return MulDiv(kBandDip, dpi_, 96); }
 
 int StickerWindow::CssPx(int cssPx) const {
     return (int)llround(cssPx * App::I().settings.uiScale * dpi_ / 96.0);
+}
+
+// 최소화 높이 = 타이틀바(34 CSS px, 배율 반영) + 위아래 리사이즈 밴드
+int StickerWindow::MinimizedHeightPx() const { return CssPx(34) + 2 * BandPx(); }
+
+void StickerWindow::SetMinimized(bool on) {
+    if (on == data.minimized) return;
+    RECT r{};
+    GetWindowRect(hwnd_, &r);
+    int w = r.right - r.left, h = r.bottom - r.top;
+    if (on) {
+        data.restoreH = h;
+        data.minimized = true;  // WM_GETMINMAXINFO가 낮은 높이를 허용하도록 먼저 바꾼다
+        SetWindowPos(hwnd_, nullptr, 0, 0, w, MinimizedHeightPx(),
+                     SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    } else {
+        data.minimized = false;
+        int back = data.restoreH > 0 ? data.restoreH : CssPx(450);
+        SetWindowPos(hwnd_, nullptr, 0, 0, w, back, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+        // 되돌린 창이 작업 영역 밖으로 나가면 안쪽으로 들인다
+        int x = r.left, y = r.top, cw = w, ch = back;
+        util::ClampRectToWorkArea(x, y, cw, ch);
+        if (x != r.left || y != r.top)
+            SetWindowPos(hwnd_, nullptr, x, y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    StoreGeometryFromWindow();
+    SaveData();
+    host_.PostEvent("sticker.minimized", json{{"on", data.minimized}});
 }
 
 void StickerWindow::StoreGeometryFromWindow() {
@@ -1021,6 +1055,10 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             double s = App::I().settings.uiScale;  // 최소 크기도 UI 배율을 따름
             mmi->ptMinTrackSize.x = (LONG)(kMinWDip * s * dpi_ / 96.0);
             mmi->ptMinTrackSize.y = (LONG)(kMinHDip * s * dpi_ / 96.0);
+            if (data.minimized) {  // 최소화 중: 높이는 고정, 너비만 바꿀 수 있다
+                mmi->ptMinTrackSize.y = MinimizedHeightPx();
+                mmi->ptMaxTrackSize.y = MinimizedHeightPx();
+            }
             return 0;
         }
 
@@ -1105,7 +1143,14 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             // 여기서 다시 지킨다 (WM_GETMINMAXINFO와 같은 계산).
             const double sc = App::I().settings.uiScale;
             const int minW = (int)(kMinWDip * sc * dpi_ / 96.0);
-            const int minH = (int)(kMinHDip * sc * dpi_ / 96.0);
+            const int minH = data.minimized ? MinimizedHeightPx()
+                                            : (int)(kMinHDip * sc * dpi_ / 96.0);
+            if (data.minimized) {  // 최소화 중에는 세로를 아예 바꾸지 않는다
+                if (edge == WMSZ_TOP || edge == WMSZ_TOPLEFT || edge == WMSZ_TOPRIGHT)
+                    pr->top = pr->bottom - minH;
+                else
+                    pr->bottom = pr->top + minH;
+            }
             if (pr->right - pr->left < minW) {
                 if (edge == WMSZ_LEFT || edge == WMSZ_TOPLEFT || edge == WMSZ_BOTTOMLEFT)
                     pr->left = pr->right - minW;

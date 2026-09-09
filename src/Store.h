@@ -58,6 +58,9 @@ struct Settings {
         std::string toggleAll = "Ctrl+Shift+S";  // 메모 모두 보이기 / 감추기
         std::string newMemo = "Ctrl+Shift+N";    // 새 메모
         std::string list = "Ctrl+Shift+L";       // 메모 목록
+        // 화면 가장자리로 최소화해 정렬 (보이는 메모를 모두 줄여 한쪽 가장자리에 세로로)
+        std::string arrangeLeft = "Ctrl+Shift+Left";
+        std::string arrangeRight = "Ctrl+Shift+Right";
     };
     Hotkeys hotkeys;
     bool magnetEnabled = true;     // 메모창끼리 자석처럼 붙고 가장자리가 정렬됨
@@ -90,6 +93,10 @@ struct StickerData {
     int x = 100, y = 100, w = 510, h = 450;  // 새 메모 기본 크기
     bool topmost = false;
     bool hidden = false;
+    // 최소화: 그룹창의 목록 보기처럼 제목 한 줄(타이틀바)만 남긴다. h는 줄어든 높이가 되고,
+    // 되돌릴 높이는 restoreH에 둔다.
+    bool minimized = false;
+    int restoreH = 0;
     std::vector<std::string> attachments;  // 메모 폴더 기준 경로 ("Image/xxx.png")
     std::string createdAt, updatedAt;
     std::string deletedAt;  // 휴지통 이동 시각 (휴지통 항목에만 존재)

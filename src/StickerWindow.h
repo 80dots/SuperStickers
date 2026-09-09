@@ -24,6 +24,9 @@ public:
 
     void ShowWin(bool show, bool activate);
     bool VisibleNow() const { return hwnd_ && IsWindowVisible(hwnd_); }
+    // 최소화: 타이틀바 한 줄만 남긴다 (그룹창의 목록 보기와 같은 높이 감각). 저장된다.
+    void SetMinimized(bool on);
+    int MinimizedHeightPx() const;
     void SetTopmost(bool on);
     void SetColor(const std::string& color);
     void OnThemeChanged();  // 밴드 색 갱신

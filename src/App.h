@@ -114,6 +114,7 @@ public:
     // 감춰진 메모가 있으면 모두 꺼내 맨 앞으로, 이미 다 보이는데 다른 앱에 가려져 있으면
     // 맨 앞으로만, 우리 창이 이미 앞이면 모두 감춘다.
     void ToggleShowAllFront();
+    void ArrangeToEdge(bool right);
     void RaiseAllAndRecord();
     const std::set<std::string>& FailedHotkeys() const { return failedHotkeys_; }
 

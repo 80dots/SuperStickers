@@ -1468,3 +1468,24 @@ th[data-sort] .mtable-sort { opacity: 1; color: var(--accent); }
 .wiz-ask { padding: 12px 14px; border-top: 1px solid var(--border, #e2e2e2); }
 .wiz-ask-text { margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
 .wiz-ask-row { display: flex; justify-content: flex-end; gap: 8px; }
+
+/* ---------- 최소화 ---------- */
+/* 창은 네이티브가 타이틀바 높이로 줄인다. 페이지는 타이틀바만 남기고, 자동 숨김이
+   타이틀바를 지우지 못하게 막는다 (제목 한 줄이 곧 이 창의 전부다). */
+html.minimized body > *:not(#titlebar) { display: none !important; }
+html.minimized #titlebar { display: flex !important; opacity: 1 !important; }
+html.minimized #stTitle { display: inline-block !important; }
+html.minimized #toolbar { display: none !important; }
+
+/* AI를 쓸 수 없다는 오류 옆의 '설정 마법사' 버튼 */
+.wiz-inline {
+  margin-top: 6px;
+  padding: 4px 10px;
+  border: 1px solid var(--accent, #3b7ddd);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--accent, #3b7ddd);
+  font-size: 12px;
+  cursor: pointer;
+}
+.wiz-inline:hover { background: var(--accent, #3b7ddd); color: var(--accent-fg, #fff); }

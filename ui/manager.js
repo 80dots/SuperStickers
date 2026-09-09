@@ -682,7 +682,8 @@ SOFTWARE.`;
   // ---------- 단축키 ----------
   // 칸을 누르면 '키를 누르세요' 상태가 되고, 다음에 누른 조합을 그대로 저장한다.
   // 수정자(Ctrl/Shift/Alt/Win) 없이 누른 키는 다른 앱의 타자를 먹으므로 받지 않는다.
-  const HK_FIELDS = { toggleAll: 'ToggleAll', newMemo: 'NewMemo', list: 'List' };
+  const HK_FIELDS = { toggleAll: 'ToggleAll', newMemo: 'NewMemo', list: 'List',
+                      arrangeLeft: 'ArrangeLeft', arrangeRight: 'ArrangeRight' };
   const HK_NAMED = {
     ' ': 'Space', Escape: 'Esc', ArrowLeft: 'Left', ArrowRight: 'Right',
     ArrowUp: 'Up', ArrowDown: 'Down',

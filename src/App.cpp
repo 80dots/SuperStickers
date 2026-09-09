@@ -39,8 +39,10 @@ constexpr UINT_PTR kAlarmTimerId = 5;
 constexpr int kHotkeyToggleId = 1;
 constexpr int kHotkeyNewId = 2;
 constexpr int kHotkeyListId = 3;
+constexpr int kHotkeyArrangeLeftId = 4;
+constexpr int kHotkeyArrangeRightId = 5;
 constexpr int kHotkeyFirstId = 1;
-constexpr int kHotkeyLastId = 3;
+constexpr int kHotkeyLastId = 5;
 constexpr UINT kAlarmIntervalMs = 30 * 1000;  // 캘린더 알람 확인 주기
 // 자석이 당기기 시작하는 거리 (논리 px). 민감도가 높을수록 멀리서도 붙는다.
 constexpr int kSnapThresholdLowDip = 6;
@@ -971,6 +973,8 @@ void App::RegisterHotkeys() {
         {kHotkeyToggleId, "toggleAll", &settings.hotkeys.toggleAll},
         {kHotkeyNewId, "newMemo", &settings.hotkeys.newMemo},
         {kHotkeyListId, "list", &settings.hotkeys.list},
+        {kHotkeyArrangeLeftId, "arrangeLeft", &settings.hotkeys.arrangeLeft},
+        {kHotkeyArrangeRightId, "arrangeRight", &settings.hotkeys.arrangeRight},
     };
     for (const auto& it : items) {
         if (it.text->empty()) continue;  // 빈 값 = 쓰지 않음
@@ -985,6 +989,50 @@ void App::OnHotkey(int id) {
     if (id == kHotkeyToggleId) ToggleShowAllFront();
     else if (id == kHotkeyNewId) NewSticker("rich");
     else if (id == kHotkeyListId) OpenManager("list");
+    else if (id == kHotkeyArrangeLeftId) ArrangeToEdge(false);
+    else if (id == kHotkeyArrangeRightId) ArrangeToEdge(true);
+}
+
+// 화면에 보이는 메모를 모두 최소화해 한쪽 가장자리에 위에서부터 같은 간격으로 세운다.
+// 한 줄이 작업 영역 아래에 닿으면 안쪽으로 한 줄 더 세운다. 그룹창은 대상이 아니다.
+void App::ArrangeToEdge(bool right) {
+    std::vector<StickerWindow*> list;
+    for (auto* w : stickers_)
+        if (w->VisibleNow()) list.push_back(w);
+    if (list.empty()) return;
+    // 정렬 순서는 지금 화면의 위→아래, 같은 높이면 왼쪽→오른쪽 (눈에 보이는 순서를 지킨다)
+    std::stable_sort(list.begin(), list.end(), [](StickerWindow* a, StickerWindow* b) {
+        RECT ra{}, rb{};
+        GetWindowRect(a->hwnd(), &ra);
+        GetWindowRect(b->hwnd(), &rb);
+        return ra.top != rb.top ? ra.top < rb.top : ra.left < rb.left;
+    });
+
+    RECT wa{};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
+    const int gap = (int)(8 * settings.uiScale + 0.5);
+    int y = wa.top + gap;
+    int columnEdge = right ? wa.right - gap : wa.left + gap;  // 이 줄이 붙는 가장자리
+    int columnMaxW = 0;
+    for (auto* w : list) {
+        w->SetMinimized(true);
+        RECT r{};
+        GetWindowRect(w->hwnd(), &r);
+        int cw = r.right - r.left, ch = r.bottom - r.top;
+        if (y + ch > wa.bottom && y != wa.top + gap) {  // 이 줄이 찼다 — 안쪽으로 한 줄
+            y = wa.top + gap;
+            columnEdge += right ? -(columnMaxW + gap) : (columnMaxW + gap);
+            columnMaxW = 0;
+        }
+        int x = right ? columnEdge - cw : columnEdge;
+        SetWindowPos(w->hwnd(), nullptr, x, y, 0, 0,
+                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+        w->StoreGeometryFromWindow();
+        w->SaveData();
+        y += ch + gap;
+        if (cw > columnMaxW) columnMaxW = cw;
+    }
+    BringAllToFront();
 }
 
 void App::ToggleShowAllFront() {
@@ -1378,6 +1426,8 @@ void App::ApplySettingsPatch(const json& patch) {
         take("toggleAll", settings.hotkeys.toggleAll);
         take("newMemo", settings.hotkeys.newMemo);
         take("list", settings.hotkeys.list);
+        take("arrangeLeft", settings.hotkeys.arrangeLeft);
+        take("arrangeRight", settings.hotkeys.arrangeRight);
         RegisterHotkeys();
         SendEventToManager("hotkeys.changed", {{"failed", failedHotkeys_}});
     }
@@ -1614,6 +1664,8 @@ void App::SetupCommonBridge(WebViewHost& host) {
                         {"toggleAll", settings.hotkeys.toggleAll},
                         {"newMemo", settings.hotkeys.newMemo},
                         {"list", settings.hotkeys.list},
+                        {"arrangeLeft", settings.hotkeys.arrangeLeft},
+                        {"arrangeRight", settings.hotkeys.arrangeRight},
                         {"failed", failedHotkeys_}}},
                       {"magnet",
                        {{"enabled", settings.magnetEnabled},

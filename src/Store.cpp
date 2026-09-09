@@ -131,6 +131,8 @@ Settings Store::LoadSettingsUnchecked() {
             s.hotkeys.toggleAll = h.value("toggleAll", s.hotkeys.toggleAll);
             s.hotkeys.newMemo = h.value("newMemo", s.hotkeys.newMemo);
             s.hotkeys.list = h.value("list", s.hotkeys.list);
+            s.hotkeys.arrangeLeft = h.value("arrangeLeft", s.hotkeys.arrangeLeft);
+            s.hotkeys.arrangeRight = h.value("arrangeRight", s.hotkeys.arrangeRight);
         }
         if (j.contains("magnet") && j["magnet"].is_object()) {
             s.magnetEnabled = j["magnet"].value("enabled", s.magnetEnabled);
@@ -180,7 +182,9 @@ void Store::SaveSettings(const Settings& s) {
          {{"enabled", s.hotkeys.enabled},
           {"toggleAll", s.hotkeys.toggleAll},
           {"newMemo", s.hotkeys.newMemo},
-          {"list", s.hotkeys.list}}},
+          {"list", s.hotkeys.list},
+          {"arrangeLeft", s.hotkeys.arrangeLeft},
+          {"arrangeRight", s.hotkeys.arrangeRight}}},
         {"magnet",
          {{"enabled", s.magnetEnabled},
           {"gap", s.magnetGap},
@@ -202,6 +206,7 @@ json Store::ToJson(const StickerData& d) {
         {"color", d.color}, {"x", d.x},           {"y", d.y},
         {"w", d.w},       {"h", d.h},             {"topmost", d.topmost},
         {"hidden", d.hidden}, {"attachments", d.attachments},
+        {"minimized", d.minimized}, {"restoreH", d.restoreH},
         {"createdAt", d.createdAt}, {"updatedAt", d.updatedAt},
         {"deletedAt", d.deletedAt},
         {"tags", d.tags}, {"aiTags", d.aiTags},
@@ -266,6 +271,8 @@ StickerData Store::FromJson(const json& j) {
     d.h = j.value("h", d.h);
     d.topmost = j.value("topmost", false);
     d.hidden = j.value("hidden", false);
+    d.minimized = j.value("minimized", false);
+    d.restoreH = j.value("restoreH", 0);
     if (j.contains("attachments") && j["attachments"].is_array()) {
         for (auto& a : j["attachments"])
             if (a.is_string() && ValidAttachmentRel(a.get<std::string>()))
