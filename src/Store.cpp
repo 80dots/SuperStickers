@@ -115,6 +115,10 @@ Settings Store::LoadSettingsUnchecked() {
             s.trashRetentionDays = j["trash"].value("retentionDays", s.trashRetentionDays);
             if (s.trashRetentionDays < 0) s.trashRetentionDays = 0;
         }
+        // 예전 기본값 마이그레이션: localhost는 IPv6 ::1로 먼저 풀려 네트워크 노출이 꺼진
+        // Ollama에 닿지 못하는 일이 있다 (AiClient::ParseEndpoint 설명 참고).
+        if (s.ollama.endpoint == "http://localhost:11434")
+            s.ollama.endpoint = "http://127.0.0.1:11434";
         s.uiScale = j.value("uiScale", s.uiScale);
         if (s.uiScale < 0.3) s.uiScale = 0.3;
         if (s.uiScale > 2.0) s.uiScale = 2.0;

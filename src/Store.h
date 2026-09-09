@@ -6,7 +6,8 @@
 #include <json.hpp>
 
 struct OllamaSettings {
-    std::string endpoint = "http://localhost:11434";
+    // localhost가 아니라 127.0.0.1 — AiClient::ParseEndpoint의 설명 참고
+    std::string endpoint = "http://127.0.0.1:11434";
     std::string model;
 };
 

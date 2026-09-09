@@ -596,20 +596,22 @@ void App::AbortOllamaTasks() {
     localAi.CancelDownloads();
 }
 
-void App::InstallOllama() {
+void App::InstallOllama(const std::string& ownerId) {
     if (installingOllama_.exchange(true)) return;  // 중복 실행 방지
     installAbort_ = false;
-    std::thread([this]() {
-        auto progress = [this](const std::string& stage, uint64_t received, uint64_t total) {
-            RunOnUi([this, stage, received, total]() {
-                SendEventToManager("ollama.installProgress",
+    std::thread([this, ownerId]() {
+        auto progress = [this, ownerId](const std::string& stage, uint64_t received,
+                                        uint64_t total) {
+            RunOnUi([this, ownerId, stage, received, total]() {
+                SendEventToOwner(ownerId, "ollama.installProgress",
                                {{"stage", stage}, {"received", received}, {"total", total}});
             });
         };
-        auto finish = [this](bool ok, const std::string& err, bool already, bool exposeSet) {
-            RunOnUi([this, ok, err, already, exposeSet]() {
+        auto finish = [this, ownerId](bool ok, const std::string& err, bool already,
+                                      bool exposeSet) {
+            RunOnUi([this, ownerId, ok, err, already, exposeSet]() {
                 installingOllama_ = false;
-                SendEventToManager("ollama.installDone", {{"ok", ok},
+                SendEventToOwner(ownerId, "ollama.installDone", {{"ok", ok},
                                                       {"error", err},
                                                       {"already", already},
                                                       {"exposeSet", exposeSet}});
@@ -1462,6 +1464,17 @@ void App::SendEventToSticker(const std::string& stickerId, const std::string& ev
     BroadcastEvent(ev, data);  // 창을 못 찾으면(직후 파괴 등) 기존 동작으로 폴백
 }
 
+// AI 설정 마법사는 설정 창이 아니라 메모창 안에서도 돈다. 진행률·결과를 누가 받을지
+// 요청이 ownerId로 정해 주면 그 창에, 없으면 지금까지처럼 설정 창에 보낸다.
+void App::SendEventToOwner(const std::string& ownerId, const std::string& ev,
+                           const json& data) {
+    if (ownerId.empty()) {
+        SendEventToManager(ev, data);
+        return;
+    }
+    SendEventToSticker(ownerId, ev, data);
+}
+
 void App::SendEventToManager(const std::string& ev, const json& data) {
     if (manager_) {
         manager_->host().PostEvent(ev, data);
@@ -1831,15 +1844,17 @@ void App::SetupCommonBridge(WebViewHost& host) {
 
     b.Register("ai.listModels", [this](const json& p) {
         std::string requestId = p.value("requestId", "");
+        std::string ownerId = p.value("ownerId", "");  // 설정 마법사가 메모창에서 부를 때
         std::string provider = p.value("provider", settings.aiProvider);
         bool openai = provider == "lmstudio";
         std::string endpoint = p.value(
             "endpoint", openai ? settings.lmstudio.endpoint : settings.ollama.endpoint);
         ai.ListModels(endpoint,
                       openai ? AiClient::Protocol::OpenAiSse : AiClient::Protocol::OllamaNdjson,
-                      [this, requestId, provider](bool ok, std::vector<std::string> models,
-                                                  std::string error) {
-                          SendEventToManager("ai.models", {{"requestId", requestId},
+                      [this, requestId, provider, ownerId](bool ok,
+                                                          std::vector<std::string> models,
+                                                          std::string error) {
+                          SendEventToOwner(ownerId, "ai.models", {{"requestId", requestId},
                                                            {"provider", provider},
                                                            {"ok", ok},
                                                            {"models", models},
@@ -2080,29 +2095,38 @@ void App::SetupCommonBridge(WebViewHost& host) {
 
     b.Register("ollama.pull", [this](const json& p) {
         std::string requestId = p.value("requestId", "");
+        std::string ownerId = p.value("ownerId", "");  // 설정 마법사가 메모창에서 부를 때
         std::string name = p.value("name", "");
         if (name.empty()) throw std::runtime_error("model name required");
         activePulls_.insert(requestId);  // 설정 창 닫기 시 중단 대상
         ai.Pull(
             requestId, settings.ollama.endpoint, name,
-            [this, requestId](std::string status, uint64_t total, uint64_t completed) {
-                SendEventToManager("ollama.pullProgress",
+            [this, requestId, ownerId](std::string status, uint64_t total,
+                                       uint64_t completed) {
+                SendEventToOwner(ownerId, "ollama.pullProgress",
                                {{"requestId", requestId},
                                 {"status", status},
                                 {"total", total},
                                 {"completed", completed}});
             },
-            [this, requestId](bool ok, std::string err) {
+            [this, requestId, ownerId](bool ok, std::string err) {
                 activePulls_.erase(requestId);  // UI 스레드 콜백
-                SendEventToManager("ollama.pullDone",
+                SendEventToOwner(ownerId, "ollama.pullDone",
                                {{"requestId", requestId}, {"ok", ok}, {"error", err}});
             });
         return json::object();
     });
 
-    b.Register("ollama.installOllama", [this](const json&) {
-        InstallOllama();
+    b.Register("ollama.installOllama", [this](const json& p) {
+        InstallOllama(p.value("ownerId", ""));  // 설정 마법사가 메모창에서 부를 때
         return json{{"started", true}};
+    });
+
+    // 마법사가 닫힐 때 진행 중인 설치를 접는다 (내려받기 단계만 접을 수 있고,
+    // 설치 프로그램이 이미 돌고 있으면 그것은 끝까지 간다 — AbortOllamaTasks와 같은 규칙)
+    b.Register("ollama.cancelInstall", [this](const json&) {
+        installAbort_ = true;
+        return json::object();
     });
 
     b.Register("ollama.checkInstalled", [](const json&) {
@@ -2330,6 +2354,12 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     EmptyTrashInteractive(nullptr);
                     break;
                 case IDM_TRAY_QUIT:
+                    // Ollama 설치·모델 내려받기가 도는 중이면 확인 후에만 끝낸다
+                    // (설정 창의 닫기와 같은 규칙 — ManagerWindow의 WM_CLOSE 참고)
+                    if (HasActiveOllamaTasks()) {
+                        if (!ConfirmYesNo(hwnd_, "confirm.closeCancelsDownloads")) break;
+                        AbortOllamaTasks();
+                    }
                     Quit();
                     break;
             }

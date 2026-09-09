@@ -627,7 +627,10 @@
     });
   }
   if (isText) {
-    $('#aiReviewBtn').addEventListener('click', runAiReview);
+    $('#aiReviewBtn').addEventListener('click', async () => {
+      // AI를 쓸 준비가 안 되어 있으면 설정 마법사를 먼저 띄우고, 마치면 이어서 분석한다
+      if (await aiWizard.ensureReady(init.stickerId)) runAiReview();
+    });
     bridge.on('ai.chunk', (d) => {
       if (d.requestId !== reviewRequestId) return;
       // 첫 토큰이 왔으면 로딩은 끝난 것 — 이후 상태 방송이 안내를 되살리지 않게 한다
@@ -1611,10 +1614,16 @@
     // 다른 경로(단축키 등)에서 열고 싶으면 이 함수를 부른다.
     window.__toggleAiPanel = () => aiPanel.classList.toggle('hidden');
     $('#aiPanelBtn').addEventListener('mousedown', (e) => e.preventDefault());
-    $('#aiPanelBtn').addEventListener('click', () => {
+    $('#aiPanelBtn').addEventListener('click', async () => {
       // 선택을 붙잡아 두면 패널의 '바꾸기'로 그 자리를 바로 교체할 수 있다
       captureSelection();
-      aiPanel.classList.toggle('hidden');
+      if (!aiPanel.classList.contains('hidden')) {   // 닫는 길에는 확인이 필요 없다
+        aiPanel.classList.add('hidden');
+        return;
+      }
+      // AI를 쓸 준비가 안 되어 있으면 설정 마법사를 먼저 띄운다. 마치면 패널을 연다.
+      if (!(await aiWizard.ensureReady(init.stickerId))) return;
+      aiPanel.classList.remove('hidden');
     });
     $('#aiCloseBtn').addEventListener('click', () => {
       if (currentRequestId) bridge.call('ai.abort', { requestId: currentRequestId });

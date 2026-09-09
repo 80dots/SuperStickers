@@ -78,6 +78,14 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 라우팅은 App이 한다. LM Studio는 OpenAI 호환 서버라 내장 백엔드와 같은 프로토콜을 쓰고
 (엔드포인트만 다르다), 모델 목록만 `/v1/models`로 조회한다(Ollama는 `/api/tags`).
 
+**엔드포인트는 `localhost`가 아니라 `127.0.0.1`을 쓴다.** 윈도우에서 `localhost`는 IPv6
+`::1`로 먼저 풀리는 일이 많은데(실측: 이 머신의 `getaddrinfo`가 `::1`을 먼저 준다), Ollama는
+"네트워크에 노출"(`%LOCALAPPDATA%\Ollama\db.sqlite`의 `settings.expose`)이 꺼져 있으면
+IPv4 `127.0.0.1`에만 붙는다. 그래서 `localhost`로는 `::1`을 두드렸다가 거절당한다 —
+"Ollama를 켰는데 연결이 안 된다"의 흔한 정체다. `AiClient::ParseEndpoint`가 호스트가
+`localhost`면 `127.0.0.1`로 바꾸고, 예전에 저장된 기본값도 `Store::LoadSettings`가
+한 번 옮긴다. 이 처리 덕분에 노출 설정을 켜지 않아도 된다.
+
 - **AiClient**(구 OllamaClient)가 두 프로토콜을 모두 다룬다. 스트리밍 루프는 하나이고
   파싱만 갈린다:
   - Ollama: `POST /api/chat`, NDJSON 한 줄에 `message.content`, 끝은 `done:true`
@@ -259,8 +267,10 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - **그룹 shape 안전망 폴링(500ms)은 visible일 때만** DOM을 측정한다. 다시 표시되면
   visibilitychange에서 즉시 한 번 갱신한다.
 - **Ollama 스트리밍 이벤트는 구독 창에만 보낸다**: chunk/done은 ownerId의 스티커 창,
-  models/pull·install 진행은 설정(매니저) 창 (`SendEventToSticker/ToManager`,
-  창이 없으면 브로드캐스트 폴백). 이전에는 청크마다 모든 창에 IPC가 발생했다.
+  models/pull·install 진행은 요청이 준 ownerId가 있으면 그 스티커 창, 없으면
+  설정(매니저) 창 (`SendEventToOwner` → `SendEventToSticker`/`ToManager`, 창이 없으면
+  브로드캐스트 폴백). 이전에는 청크마다 모든 창에 IPC가 발생했다. ownerId 분기는 AI 설정
+  마법사가 설정 창이 아니라 **메모창 안에서** 돌기 때문에 필요하다.
 - **브로드캐스트는 1회 직렬화**: `BroadcastEvent`가 payload를 한 번 dump()하고
   `PostEventRaw`로 각 창에 전달한다.
 
@@ -513,6 +523,25 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - 'AI에게 물어보기'는 기존 AI 패널을 재사용한다: `captureSelection()`으로 선택을 붙잡고
   패널을 질문 모드로 연다. 답변 스트리밍·삽입·교체·복사가 이미 패널에 있어 중복 구현이 없다.
   (타이틀바의 AI 버튼을 없앤 뒤 패널의 새 진입점이 되었다.)
+
+### AI 설정 마법사 (`ui/aiwizard.js`)
+
+메모창의 **AI Review**·**AI** 버튼은 곧바로 실행하지 않고 `aiWizard.ensureReady()`를 먼저
+거친다. 쓸 수 있으면 그대로 통과하고(연결이 살아 있을 때 실측 11ms), 아니면 마법사를 띄운
+뒤 **다 마쳤을 때만 원래 하려던 동작을 잇는다**(`ensureReady`가 Promise\<boolean\>).
+
+- **어느 단계에서 시작할지**는 `inspect()`가 정한다 — Ollama 미설치·무응답이면 1단계,
+  설치된 모델이 없으면 2단계, 쓸 모델이 없거나 그 모델이 지워졌으면 3단계.
+  `aiProvider`가 `ollama`가 아니면 마법사는 끼어들지 않는다(LM Studio는 대상이 아니다).
+- **설치·내려받기 진행률**은 `ownerId`(= 이 메모의 id)를 실어 보내 이 창으로 돌아온다.
+- **`bridge.on`에는 해제 수단이 없다.** 그래서 이벤트 구독은 모듈이 뜰 때 한 번만 하고,
+  지금 단계가 무엇을 들을지는 `handlers` 맵에 갈아 끼운다. 단계를 오갈 때마다 `bridge.on`을
+  부르면 구독이 쌓여 한 번의 진행률이 여러 번 처리된다.
+- **닫기는 항상 되묻는다**(진행 중이면 "설치·내려받기가 중단됩니다"로 문구가 바뀐다).
+  이 앱은 페이지 `confirm()`을 쓰지 않으므로 모달 안에 확인 줄을 그린다. 트레이 종료도
+  같은 규칙 — `HasActiveOllamaTasks()`면 네이티브 확인 후에만 끝낸다.
+- 내려받을 수 있는 모델 목록은 `ui/common/ollama-models.js`가 단일 출처다(설정 화면의
+  콤보와 마법사가 같은 목록을 쓴다).
 
 ### AI 프롬프트 편집 (설정 → AI 탭)
 

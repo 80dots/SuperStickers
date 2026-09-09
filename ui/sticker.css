@@ -1381,3 +1381,90 @@ th[data-sort] .mtable-sort { opacity: 1; color: var(--accent); }
   flex: none;
   opacity: 0.75;
 }
+
+/* ---------- AI 설정 마법사 ---------- */
+/* 메모창 안에 뜨는 모달. 창이 작을 수 있으므로 본문만 스크롤한다. */
+.wiz-back {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px;
+  background: rgba(0, 0, 0, 0.42);
+}
+.wiz-box {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 460px;
+  max-height: 100%;
+  border-radius: 12px;
+  background: var(--panel-bg, #fff);
+  color: var(--fg, #222);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+.wiz-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border, #e2e2e2);
+}
+.wiz-title { flex: 1; font-size: 14px; font-weight: 600; }
+.wiz-step { font-size: 12px; color: var(--muted, #777); }
+.wiz-close {
+  width: 26px; height: 26px;
+  border: none; border-radius: 6px;
+  background: transparent; color: var(--muted, #777);
+  font-size: 13px; cursor: pointer;
+}
+.wiz-close:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); }
+.wiz-body { flex: 1; overflow-y: auto; padding: 14px; }
+.wiz-h { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
+.wiz-desc { margin: 0 0 10px; font-size: 12px; line-height: 1.55; color: var(--muted, #777); }
+.wiz-status { margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
+.wiz-actions { display: flex; gap: 8px; margin-bottom: 10px; }
+.wiz-prog { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.wiz-prog progress { flex: 1; height: 8px; }
+.wiz-pct { font-size: 12px; color: var(--muted, #777); min-width: 34px; }
+.wiz-list { display: flex; flex-direction: column; gap: 4px; }
+.wiz-item {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 8px; border-radius: 8px; cursor: pointer;
+}
+.wiz-item:hover { background: var(--hover, rgba(0, 0, 0, 0.05)); }
+.wiz-item input { margin-top: 2px; }
+.wiz-item-main { flex: 1; min-width: 0; }
+.wiz-item-name { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.wiz-item-sub { font-size: 11px; color: var(--muted, #777); }
+.wiz-tag {
+  padding: 1px 6px; border-radius: 999px;
+  background: var(--hover, rgba(0, 0, 0, 0.08));
+  font-size: 10px; color: var(--muted, #777);
+}
+.wiz-tag.ok { background: rgba(45, 150, 90, 0.16); color: #2d965a; }
+.wiz-foot {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 11px 14px; border-top: 1px solid var(--border, #e2e2e2);
+}
+.wiz-btn {
+  padding: 7px 14px;
+  border: 1px solid var(--border-strong, #c9c9c9);
+  border-radius: 7px;
+  background: transparent; color: inherit;
+  font-size: 12px; cursor: pointer;
+}
+.wiz-btn:hover:not(:disabled) { background: var(--hover, rgba(0, 0, 0, 0.06)); }
+.wiz-btn:disabled { opacity: 0.42; cursor: default; }
+.wiz-btn.primary {
+  border-color: transparent;
+  background: var(--accent, #3b7ddd);
+  color: var(--accent-fg, #fff);
+}
+.wiz-btn.danger { border-color: transparent; background: #d9534f; color: #fff; }
+.wiz-ask { padding: 12px 14px; border-top: 1px solid var(--border, #e2e2e2); }
+.wiz-ask-text { margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
+.wiz-ask-row { display: flex; justify-content: flex-end; gap: 8px; }

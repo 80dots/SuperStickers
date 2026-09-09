@@ -17,6 +17,10 @@ AiClient::Url AiClient::ParseEndpoint(const std::string& endpoint) {
     c.dwHostNameLength = 255;
     if (!WinHttpCrackUrl(w.c_str(), (DWORD)w.size(), 0, &c)) return u;
     u.host = host;
+    // "localhost"는 이 컴퓨터에서 IPv6 ::1로 먼저 풀리는 일이 많다. Ollama는 네트워크
+    // 노출이 꺼져 있으면 IPv4 127.0.0.1에만 붙으므로, localhost로 접속하면 ::1을 먼저
+    // 두드렸다가 거절당한다("연결할 수 없음"의 흔한 원인). 뜻이 같은 IPv4로 고정한다.
+    if (_wcsicmp(u.host.c_str(), L"localhost") == 0) u.host = L"127.0.0.1";
     u.port = c.nPort;
     u.https = (c.nScheme == INTERNET_SCHEME_HTTPS);
     u.valid = !u.host.empty();

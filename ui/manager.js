@@ -12,7 +12,7 @@
   } catch (e) {
     console.error(e);
     state = { settings: { theme: 'system', language: init.lang, autostart: false,
-                          ollama: { endpoint: 'http://localhost:11434', model: '' },
+                          ollama: { endpoint: 'http://127.0.0.1:11434', model: '' },
                           trash: { enabled: true, retentionDays: 30 } } };
   }
   if (!state.settings.trash) state.settings.trash = { enabled: true, retentionDays: 30 };
@@ -1251,15 +1251,7 @@ SOFTWARE.`;
 
   // ---------- 접이식 다운로드 섹션 ----------
   // 다운로드 가능한 모델: 엄선된 고정 목록만 제공
-  const PULL_MODELS = [
-    'llama3:8b',
-    'gemma4:12b',
-    'gemma3:4b',
-    'gemma3:12b',
-    'qwen3.5:4b',
-    'qwen3.5:9b',
-    'gpt-oss:20b',
-  ];
+  const PULL_MODELS = ollamaModels.names();  // ui/common/ollama-models.js가 단일 출처
   function buildPullCombo() {
     const sel = $('#pullModelSelect');
     sel.innerHTML = '';

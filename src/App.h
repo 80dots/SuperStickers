@@ -123,7 +123,7 @@ public:
 
     // Ollama 공식 설치 프로그램을 내려받아 무인 설치 (워커 스레드).
     // 진행: ollama.installProgress {stage, total, received} / 완료: ollama.installDone.
-    void InstallOllama();
+    void InstallOllama(const std::string& ownerId = "");
     // 설정의 "auto"를 실제 엔진 변형으로 푼다 ("cpu" | "vulkan")
     std::string ResolvedEngineVariant() const;
     // 시작 시 자동 로드 (설정이 켜져 있고 엔진·모델이 준비된 경우에만)
@@ -162,6 +162,8 @@ public:
     void SendEventToSticker(const std::string& stickerId, const std::string& ev,
                             const nlohmann::json& data);
     void SendEventToManager(const std::string& ev, const nlohmann::json& data);
+    void SendEventToOwner(const std::string& ownerId, const std::string& ev,
+                          const nlohmann::json& data);
 
     // 브리지: 모든 창에 공통으로 등록되는 메서드 (settings/ollama/stickers/app)
     void SetupCommonBridge(WebViewHost& host);
