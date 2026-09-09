@@ -199,7 +199,7 @@ void StickerWindow::RegisterWndClass(HINSTANCE hinst) {
 }
 
 StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool show,
-                                     bool activate) {
+                                     bool activate, bool focusEditor) {
     auto* self = new StickerWindow();
     self->data = d;
 
@@ -348,7 +348,7 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
     App::I().SetupCommonBridge(self->host_);
 
     self->host_.Create(hwnd, L"https://app.sticker/sticker.html",
-                       App::I().MakeInitJson("sticker", d.id),
+                       App::I().MakeInitJson("sticker", d.id, focusEditor),
                        [self]() { self->ApplyUiScale(); });
 
     // 웹 메모: 상단 스트립 아래를 채우는 자유 탐색 브라우저 뷰

@@ -2323,6 +2323,21 @@
     });
   })();
 
+  // 새로 만든 메모는 곧바로 입력할 수 있게 커서를 본문에 둔다.
+  // WebView 자체에는 네이티브가 이미 포커스를 줬고, 여기서 본문 요소까지 넘긴다.
+  if (init.focusEditor && isText) {
+    requestAnimationFrame(() => {
+      if (type === 'markdown') { mdSource.focus(); return; }
+      editor.focus();
+      const sel = window.getSelection();
+      const r = document.createRange();
+      r.selectNodeContents(editor);
+      r.collapse(true);   // 빈 본문의 첫 줄
+      sel.removeAllRanges();
+      sel.addRange(r);
+    });
+  }
+
   // ---------- 네이티브 이벤트 ----------
   // (테마 변경은 메모창에 영향 없음 — theme.changed 무시)
   bridge.on('locale.changed', async (d) => {

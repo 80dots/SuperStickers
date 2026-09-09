@@ -13,7 +13,8 @@
 class StickerWindow {
 public:
     static void RegisterWndClass(HINSTANCE hinst);
-    static StickerWindow* Create(HINSTANCE hinst, const StickerData& d, bool show, bool activate);
+    static StickerWindow* Create(HINSTANCE hinst, const StickerData& d, bool show,
+                                 bool activate, bool focusEditor = false);
 
     HWND hwnd() const { return hwnd_; }
     WebViewHost& host() { return host_; }

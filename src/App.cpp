@@ -209,8 +209,9 @@ void App::RunOnUiDelayed(UINT delayMs, std::function<void()> fn) {
 
 // ---------- 스티커 관리 ----------
 
-StickerWindow* App::CreateStickerWindow(const StickerData& d, bool show, bool activate) {
-    auto* w = StickerWindow::Create(hinst_, d, show, activate);
+StickerWindow* App::CreateStickerWindow(const StickerData& d, bool show, bool activate,
+                                        bool focusEditor) {
+    auto* w = StickerWindow::Create(hinst_, d, show, activate, focusEditor);
     if (w) stickers_.push_back(w);
     return w;
 }
@@ -231,7 +232,8 @@ void App::NewSticker(const std::string& type) {
     d.x = 120 + (n % 8) * 44;
     d.y = 120 + (n % 8) * 44;
     store.SaveSticker(d);
-    CreateStickerWindow(d, true, true);
+    // 새로 만든 메모는 바로 쓸 수 있게 본문에 커서를 놓는다
+    CreateStickerWindow(d, true, true, true);
 }
 
 StickerWindow* App::FindSticker(const std::string& id) {
@@ -480,6 +482,7 @@ bool App::AnyStickerVisible() const {
 }
 
 void App::SetAllVisible(bool visible) {
+    hotkeyHidden_.clear();  // 명시적인 전체 보이기/감추기가 우선한다
     // 상태가 실제로 바뀐 창만 저장한다 — 저장은 본문 전체 직렬화 + .bak 복사 + 원자적 쓰기라
     // 메모가 많으면 트레이 토글 한 번에 파일 연산이 3N번 일어났다.
     for (auto* w : stickers_) {
@@ -983,33 +986,47 @@ void App::OnHotkey(int id) {
 }
 
 void App::ToggleShowAllFront() {
-    bool anyHidden = false;
-    for (auto* w : stickers_)
-        if (!w->VisibleNow()) anyHidden = true;
-    for (auto* g : groups_)
-        if (!g->VisibleNow()) anyHidden = true;
-    if (anyHidden) {  // 감춰진 것이 있으면 모두 꺼내 앞으로 올린다
-        SetAllVisible(true);
-        BringAllToFront();
-        lastRaiseTick_ = GetTickCount();
+    // 이 단축키가 감춘 것이 있으면 그것만 되돌린다. ×로 닫아 둔 메모(data.hidden)는
+    // 화면에 없는 것이 사용자의 뜻이므로 꺼내지 않는다.
+    if (!hotkeyHidden_.empty()) {
+        for (auto* w : stickers_)
+            if (hotkeyHidden_.count(w->data.id)) w->ShowWin(true, false);
+        for (auto* g : groups_)
+            if (hotkeyHidden_.count("g:" + g->data.id)) g->ShowWin(true, false);
+        hotkeyHidden_.clear();
+        RaiseAllAndRecord();
         return;
     }
-    if (!AnyStickerVisible()) return;  // 보여 줄 메모가 아예 없다
+    if (!AnyStickerVisible()) return;  // 화면에 있는 메모가 없다 — 꺼낼 것도 없다
     // 전부 보이는 중이다. 다른 앱이 앞에 있으면 그 아래 깔린 것이므로 위로 올리고,
     // 우리 창이 이미 앞이면 그때 감춘다.
     DWORD pid = 0;
     GetWindowThreadProcessId(GetForegroundWindow(), &pid);
-    DWORD now = GetTickCount();
-    // 전경 전환이 거부되는 경우가 있다(다른 앱이 방금 입력을 받았을 때 윈도우가 막는다).
-    // 그러면 아무리 눌러도 감춰지지 않으므로, 방금 올린 직후의 재차 누름은 감추기로 본다.
-    bool justRaised = lastRaiseTick_ && now - lastRaiseTick_ < 1500;
-    if (pid == GetCurrentProcessId() || justRaised) {
-        lastRaiseTick_ = 0;
-        SetAllVisible(false);
+    // 우리 창이 앞이면 감추고, 아니면 앞으로 올린다. 다만 직전에 올리려다 전경 전환이
+    // 거부됐다면(RaiseAllAndRecord 참고) 아무리 눌러도 감춰지지 않으므로 감추기로 넘어간다.
+    if (pid == GetCurrentProcessId() || raiseFailed_) {
+        // 지금 화면에 나와 있는 것만 감춘다. data.hidden은 그대로 두어 다음에 이 단축키를
+        // 누르면 되돌아오고, 앱을 다시 켜도 원래대로 열린다 (닫은 것과 구분된다).
+        for (auto* w : stickers_)
+            if (w->VisibleNow()) { hotkeyHidden_.insert(w->data.id); w->ShowWin(false, false); }
+        for (auto* g : groups_)
+            if (g->VisibleNow()) {
+                hotkeyHidden_.insert("g:" + g->data.id);
+                g->ShowWin(false, false);
+            }
+        raiseFailed_ = false;
     } else {
-        BringAllToFront();
-        lastRaiseTick_ = now;
+        RaiseAllAndRecord();
     }
+}
+
+// 앞으로 올린 뒤 정말 전경이 되었는지 남겨 둔다. 다른 앱이 방금 입력을 받았으면 윈도우가
+// SetForegroundWindow를 조용히 거부한다 — z 순서는 올라가지만 전경은 그대로다.
+void App::RaiseAllAndRecord() {
+    BringAllToFront();
+    DWORD pid = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+    raiseFailed_ = pid != GetCurrentProcessId();
 }
 
 void App::ClampAllWindowsToScreen() {
@@ -1511,9 +1528,11 @@ std::string CpuArchString() {
 
 }  // namespace
 
-json App::MakeInitJson(const std::string& page, const std::string& stickerId) {
+json App::MakeInitJson(const std::string& page, const std::string& stickerId,
+                       bool focusEditor) {
     return json{{"page", page},
                 {"stickerId", stickerId},
+                {"focusEditor", focusEditor},  // 새 메모: 페이지가 본문에 커서를 놓는다
                 {"theme", EffectiveTheme()},
                 {"lang", i18n.Lang()},
                 {"country", util::UserCountry()},  // 캘린더의 국경일 표시에 쓴다

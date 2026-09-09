@@ -748,11 +748,11 @@ SOFTWARE.`;
     if (e.key === 'Escape') { hkCapturing = null; applyHotkeyUi(); return; }
     if (e.key === 'Backspace' || e.key === 'Delete') { hkSet(hkCapturing, ''); return; }
     if (['Control', 'Shift', 'Alt', 'Meta', 'OS'].includes(e.key)) return;  // 수정자만 누른 상태
-    const parts = [];
-    if (e.ctrlKey) parts.push('Ctrl');
-    if (e.shiftKey) parts.push('Shift');
-    if (e.altKey) parts.push('Alt');
+    const parts = [];   // 윈도우 표기 관례: Win, Ctrl, Alt, Shift 순
     if (e.metaKey) parts.push('Win');
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.altKey) parts.push('Alt');
+    if (e.shiftKey) parts.push('Shift');
     let key = e.key;
     if (key.length === 1) key = key.toUpperCase();
     key = HK_NAMED[key] || key;

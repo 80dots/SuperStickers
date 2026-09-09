@@ -271,7 +271,7 @@
   "settings.sensLow": "Low",
   "settings.magnetGap": "Window gap",
   "settings.hotkeys": "Shortcuts",
-  "settings.hotkeysDesc": "Global shortcuts that work even while you are in another program. Click a field, then press the key combination. Esc cancels, Backspace clears.",
+  "settings.hotkeysDesc": "Global shortcuts that work even while you are in another program. Click a field, then press the key combination (Ctrl / Shift / Alt / Win; a bare key with no modifier is not accepted). Esc cancels, Backspace clears.",
   "settings.hotkeysEnabled": "Use global shortcuts",
   "settings.hotkeyToggleAll": "Show / hide memos",
   "settings.hotkeyNewMemo": "New sticky memo",

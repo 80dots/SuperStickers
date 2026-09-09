@@ -271,7 +271,7 @@
   "settings.sensLow": "하",
   "settings.magnetGap": "창 간격",
   "settings.hotkeys": "단축키",
-  "settings.hotkeysDesc": "다른 프로그램을 쓰는 중에도 동작하는 전역 단축키입니다. 칸을 누른 뒤 원하는 키 조합을 누르세요. Esc는 취소, Backspace는 사용 안 함입니다.",
+  "settings.hotkeysDesc": "다른 프로그램을 쓰는 중에도 동작하는 전역 단축키입니다. 칸을 누른 뒤 원하는 키 조합을 누르세요(Ctrl·Shift·Alt·Win 조합, 수정자 없는 단일 키는 받지 않습니다). Esc는 취소, Backspace는 사용 안 함입니다.",
   "settings.hotkeysEnabled": "전역 단축키 사용",
   "settings.hotkeyToggleAll": "메모 보이기 / 감추기",
   "settings.hotkeyNewMemo": "새 스티커 메모",

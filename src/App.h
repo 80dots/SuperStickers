@@ -50,7 +50,8 @@ public:
     void RunOnUiDelayed(UINT delayMs, std::function<void()> fn);
 
     // 스티커 관리
-    StickerWindow* CreateStickerWindow(const StickerData& d, bool show, bool activate);
+    StickerWindow* CreateStickerWindow(const StickerData& d, bool show, bool activate,
+                                       bool focusEditor = false);
     void NewSticker(const std::string& type = "rich");
     void DeleteSticker(const std::string& id);
     StickerWindow* FindSticker(const std::string& id);
@@ -113,6 +114,7 @@ public:
     // 감춰진 메모가 있으면 모두 꺼내 맨 앞으로, 이미 다 보이는데 다른 앱에 가려져 있으면
     // 맨 앞으로만, 우리 창이 이미 앞이면 모두 감춘다.
     void ToggleShowAllFront();
+    void RaiseAllAndRecord();
     const std::set<std::string>& FailedHotkeys() const { return failedHotkeys_; }
 
     // 진행 중인 Ollama 요청을 소유 창(스티커 id) 기준으로 중단
@@ -163,7 +165,8 @@ public:
 
     // 브리지: 모든 창에 공통으로 등록되는 메서드 (settings/ollama/stickers/app)
     void SetupCommonBridge(WebViewHost& host);
-    nlohmann::json MakeInitJson(const std::string& page, const std::string& stickerId);
+    nlohmann::json MakeInitJson(const std::string& page, const std::string& stickerId,
+                                bool focusEditor = false);
 
     void Quit();
 
@@ -192,7 +195,10 @@ private:
     std::set<std::string> activePulls_;           // 진행 중인 모델 다운로드 requestId
     std::set<std::string> firedAlarms_;           // 이번 실행에서 이미 띄운 알람 (id@시각)
     std::set<std::string> failedHotkeys_;         // 등록에 실패한 단축키 ("toggleAll" 등)
-    DWORD lastRaiseTick_ = 0;                     // 보기 단축키로 마지막에 앞으로 올린 시각
+    bool raiseFailed_ = false;                    // 보기 단축키의 전경 전환이 거부되었다
+    // 보기 단축키로 감춘 창들 (스티커는 id, 그룹은 "g:"+id). 이것만 되돌린다 —
+    // ×로 닫아 둔 메모까지 꺼내면 안 되므로 data.hidden과는 따로 관리한다.
+    std::set<std::string> hotkeyHidden_;
     UINT_PTR nextTimerId_ = 100;
     UINT taskbarCreatedMsg_ = 0;
     bool quitting_ = false;
