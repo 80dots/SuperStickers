@@ -14,6 +14,7 @@
 const calendarTools = (() => {
   let editor = null;
   let onChange = null;
+  // 로케일 문구 (사전에 없으면 폴백)
   const T = (k, fallback) => {
     const v = typeof i18n !== 'undefined' ? i18n.t(k) : k;
     return v === k ? fallback : v;
@@ -24,12 +25,14 @@ const calendarTools = (() => {
   // ---------- 날짜 (전부 현지 시각 기준 YYYY-MM-DD 문자열) ----------
   const pad = (n) => String(n).padStart(2, '0');
   const iso = (d) => d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
+  // "YYYY-MM-DD" → Date
   function parse(s) {
     const p = String(s || '').split('-').map(Number);
     const d = new Date(p[0] || 1970, (p[1] || 1) - 1, p[2] || 1);
     return isNaN(d) ? new Date() : d;
   }
   const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+  // n달 뒤 같은 날 (말일은 그 달 말일로)
   const addMonths = (d, n) => {
     const x = new Date(d.getFullYear(), d.getMonth() + n, 1);
     x.setDate(Math.min(d.getDate(), new Date(x.getFullYear(), x.getMonth() + 1, 0).getDate()));
@@ -47,6 +50,7 @@ const calendarTools = (() => {
       return [];
     }
   }
+  // 일정 목록 저장 (정렬해 data-events에)
   function setEvents(el, list) {
     list.sort((a, b) => ((a.d + (a.t || '')) < (b.d + (b.t || '')) ? -1 : 1));
     el.dataset.events = JSON.stringify(list);
@@ -70,10 +74,12 @@ const calendarTools = (() => {
           '05-04': 'みどりの日', '05-05': 'こどもの日', '08-11': '山の日', '11-03': '文化の日',
           '11-23': '勤労感謝の日' },
   };
+  // 사용자 국가 코드 (init.country)
   const country = () => {
     const c = (typeof window !== 'undefined' && window.__init && window.__init.country) || '';
     return String(c).toUpperCase();
   };
+  // 그 날의 국경일 이름 (없으면 undefined)
   function holidayOn(day) {
     const table = HOLIDAYS[country()];
     return table ? table[String(day).slice(5)] : undefined;
@@ -93,6 +99,7 @@ const calendarTools = (() => {
     return el;
   }
 
+  // 캘린더 삽입
   function insert() {
     const el = create();
     const after = document.createElement('div');
@@ -111,6 +118,7 @@ const calendarTools = (() => {
     if (text != null) e.textContent = text;
     return e;
   }
+  // 버튼 요소 만들기
   function btn(cls, text, title) {
     const b = tag('button', cls, text);
     b.type = 'button';
@@ -118,6 +126,7 @@ const calendarTools = (() => {
     return b;
   }
 
+  // 기간 제목 (월/주/일 보기별)
   function periodLabel(el) {
     const d = dateOf(el);
     const view = viewOf(el);
@@ -145,6 +154,7 @@ const calendarTools = (() => {
     return parts.join(' ');
   }
 
+  // 일정 칩 요소
   function chip(ev) {
     const c = tag('div', 'mcal-chip' + (isMulti(ev) ? ' span' : ''));
     c.dataset.id = ev.id;
@@ -155,6 +165,7 @@ const calendarTools = (() => {
     return c;
   }
 
+  // 날짜 칸 요소 (일정·국경일 포함)
   function dayCell(el, day, cur, cls) {
     const cell = tag('div', 'mcal-day' + (cls || ''));
     cell.dataset.date = iso(day);
@@ -178,6 +189,7 @@ const calendarTools = (() => {
     return cell;
   }
 
+  // 월 보기 그리기
   function renderMonth(el, body) {
     const cur = dateOf(el);
     const first = new Date(cur.getFullYear(), cur.getMonth(), 1);
@@ -194,6 +206,7 @@ const calendarTools = (() => {
     body.appendChild(grid);
   }
 
+  // 주 보기 그리기 (가로 스크롤)
   function renderWeek(el, body) {
     const start = weekStart(dateOf(el));
     // 주간은 칸을 넓게 쓰고 가로로 스크롤한다 (좁은 메모창에서 글자가 뭉개지지 않게)
@@ -209,6 +222,7 @@ const calendarTools = (() => {
     body.appendChild(scroller);
   }
 
+  // 일 보기 그리기
   function renderDay(el, body) {
     const day = dateOf(el);
     const list = eventsOn(el, iso(day));
@@ -245,11 +259,13 @@ const calendarTools = (() => {
   const ALARMS = [['', 'cal.alarmNone', '알림 없음'], ['0', 'cal.alarmAt', '시작할 때'],
                   ['10', 'cal.alarm10', '10분 전'], ['30', 'cal.alarm30', '30분 전'],
                   ['60', 'cal.alarm60', '1시간 전'], ['1440', 'cal.alarm1d', '하루 전']];
+  // 알람 시점 문구
   function alarmLabel(v) {
     const hit = ALARMS.find((a) => a[0] === String(v));
     return hit ? T(hit[1], hit[2]) : '';
   }
 
+  // 캘린더 하나 그리기 (장식은 data-chrome)
   function render(el) {
     el.querySelectorAll('[data-chrome]').forEach((n) => n.remove());
     const ui = tag('div', 'mcal-ui');
@@ -281,6 +297,7 @@ const calendarTools = (() => {
   }
 
   const calendars = () => (editor ? [...editor.querySelectorAll('.mcal')] : []);
+  // 모든 캘린더 그리기
   function renderAll() { calendars().forEach(render); }
 
   // ---------- 일정 편집기 ----------
@@ -289,6 +306,7 @@ const calendarTools = (() => {
     if (f) f.remove();
   }
 
+  // 일정 편집기 열기 (새 일정 또는 기존 일정)
   function openEditor(el, ev) {
     closeEditor(el);
     const form = tag('div', 'mcal-editor');
@@ -405,11 +423,13 @@ const calendarTools = (() => {
     render(el);
     notify();
   }
+  // 오늘로
   function goToday(el) {
     el.dataset.date = iso(new Date());
     render(el);
     notify();
   }
+  // 이전/다음 기간으로
   function step(el, dir) {
     const view = viewOf(el);
     const d = dateOf(el);
@@ -419,6 +439,7 @@ const calendarTools = (() => {
     notify();
   }
 
+  // 캘린더 안 클릭 처리 (이동·보기 전환·일정 열기)
   function onClick(e) {
     const el = e.target.closest && e.target.closest('.mcal');
     if (!el || !editor.contains(el)) return;
@@ -443,6 +464,7 @@ const calendarTools = (() => {
     closeEditor(el);
   }
 
+  // 편집기에 붙이기
   function init(el, changeCb) {
     editor = el;
     onChange = changeCb;

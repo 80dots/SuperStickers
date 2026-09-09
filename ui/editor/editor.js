@@ -3,6 +3,7 @@ const editorCore = (() => {
   let editor = null;
   let onChange = null;
 
+  // 편집기에 붙이기
   function init(el, changeCb) {
     editor = el;
     onChange = changeCb;
@@ -19,10 +20,12 @@ const editorCore = (() => {
     editor.addEventListener('input', notify);
   }
 
+  // 변경 알림 (자동 저장)
   function notify() {
     if (onChange) onChange();
   }
 
+  // execCommand 실행
   function exec(cmd, value) {
     editor.focus();
     document.execCommand(cmd, false, value == null ? null : value);
@@ -45,6 +48,7 @@ const editorCore = (() => {
     return item;
   }
 
+  // 커서가 있는 블록 요소
   function currentBlock() {
     const sel = window.getSelection();
     if (!sel.rangeCount) return null;
@@ -53,6 +57,7 @@ const editorCore = (() => {
     return node && node.nodeType === 1 ? node : null;
   }
 
+  // 요소 안에 커서 놓기
   function placeCaret(el, atStart = true) {
     const range = document.createRange();
     range.selectNodeContents(el);
@@ -62,6 +67,7 @@ const editorCore = (() => {
     sel.addRange(range);
   }
 
+  // 체크리스트 항목 삽입
   function insertChecklist() {
     editor.focus();
     const block = currentBlock();
@@ -84,6 +90,7 @@ const editorCore = (() => {
     notify();
   }
 
+  // Enter 처리 (체크리스트 이어가기·빠져나가기)
   function onKeydown(e) {
     if (e.key !== 'Enter' || e.shiftKey) return;
     const sel = window.getSelection();
@@ -129,6 +136,7 @@ const editorCore = (() => {
   // 메모 폴더 기준 상대 경로(예: "Image/xxx.png")만 추출한다
   const ATTACH_RE = /^https:\/\/data\.sticker\/stickers\/[^/]+\/(.+)$/;
 
+  // 본문이 참조하는 첨부 파일명 목록
   function getAttachments() {
     const names = [];
     if (!editor) return names;
@@ -151,6 +159,7 @@ const editorCore = (() => {
     return names;
   }
 
+  // 본문 순수 텍스트 (장식 제외)
   function getPlainText() {
     if (!editor) return '';
     // 표의 정렬 버튼 같은 장식은 본문이 아니다 (AI에 그대로 넘어가면 안 된다)
@@ -274,6 +283,7 @@ const editorCore = (() => {
     return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
   }
 
+  // 커서 자리에 노드 넣기 (커서가 밖이면 끝에)
   function insertNodeAtCaret(node) {
     editor.focus();
     const sel = window.getSelection();

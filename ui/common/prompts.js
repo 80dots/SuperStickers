@@ -109,6 +109,7 @@ const prompts = (() => {
 
   // 설정에서 편집한 프롬프트. { task: '...' } 형태이며 값이 비었으면 기본값을 쓴다.
   let overrides = {};
+  // 설정에서 온 사용자 프롬프트 재정의 반영
   function setOverrides(map) { overrides = (map && typeof map === 'object') ? map : {}; }
   // 설정 UI가 기본값을 안내 문구(placeholder)로 보여줄 때 쓴다
   function defaultOf(task, uiLang) {
@@ -117,6 +118,7 @@ const prompts = (() => {
   }
   const TASKS = ['review', 'summarize', 'spellcheck', 'refine', 'koToEn', 'enToKo', 'ask'];
 
+  // 작업별 메시지 배열 만들기 (재정의 > 기본 프롬프트)
   function build(task, text, uiLang, question) {
     const s = (overrides[task] || '').trim() || defaultOf(task, uiLang);
     if (task === 'review') {

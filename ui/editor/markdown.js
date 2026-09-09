@@ -3,6 +3,7 @@ const mdTools = (() => {
   let ta = null;      // textarea (#mdSource)
   let onChange = null;
 
+  // 텍스트영역에 붙이기
   function init(textarea, changeCb) {
     ta = textarea;
     onChange = changeCb;
@@ -26,6 +27,7 @@ const mdTools = (() => {
     onChange();
   }
 
+  // 선택을 앞뒤 기호로 감싸기 (**굵게** 등)
   function wrapSelection(before, after) {
     ta.focus();
     const { selectionStart: s, selectionEnd: e, value } = ta;
@@ -101,6 +103,7 @@ const mdTools = (() => {
     onChange();
   }
 
+  // 선택한 줄 앞에 접두 넣기 (목록·인용)
   function prefixLines(prefix) {
     ta.focus();
     const { value } = ta;
@@ -186,6 +189,7 @@ const mdTools = (() => {
     return lines.join('\n');
   }
 
+  // 마크다운이 참조하는 첨부 파일명
   function getAttachments(mdText) {
     const names = [];
     // https://data.sticker/stickers/<id>/<Sub>/<file> → "<Sub>/<file>"
@@ -243,6 +247,7 @@ const mdTools = (() => {
   // 캐럿 이전 텍스트에서 아직 닫히지 않은 HTML 태그 스택 (위치 포함)
   const VOID_TAGS = new Set(['br', 'hr', 'img', 'input', 'source', 'embed', 'meta', 'link',
                              'area', 'col', 'wbr']);
+  // 열려 있는 HTML 태그 스택 (닫기용)
   function openTagStack(text) {
     const stack = [];
     const re = /<(\/)?([a-zA-Z][a-zA-Z0-9-]*)\b[^<>]*?(\/)?>/g;
@@ -377,6 +382,7 @@ const mdTools = (() => {
     return result;
   }
 
+  // 자동완성 상자 붙이기
   function attachIntellisense(textarea, box, getLang) {
     let open = false;
     let mode = 'open';   // 'open': '<' 태그 목록 | 'close': '>' 닫힘 제안
@@ -388,11 +394,13 @@ const mdTools = (() => {
     let closeItems = [];      // '>' 트리거의 닫힘 제안
     let openCloseItems = [];  // '<' 트리거 시 목록 상단에 우선 표시할 닫힘 제안
 
+    // 자동완성 닫기
     function close() {
       open = false;
       box.classList.add('hidden');
     }
 
+    // 자동완성 항목 적용
     function choose(item) {
       const end = textarea.selectionStart;
       textarea.setRangeText(item.insert, startPos, end, 'end');
@@ -405,6 +413,7 @@ const mdTools = (() => {
       textarea.focus();
     }
 
+    // 자동완성 목록 그리기
     function render() {
       const lang = getLang() === 'ko' ? 'ko' : 'en';
       const all =

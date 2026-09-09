@@ -3,6 +3,7 @@ const mediaTools = (() => {
   const YT_RE =
     /^(?:https?:\/\/)?(?:www\.|m\.)?(?:youtube\.com\/(?:watch\?[^ ]*v=|shorts\/|embed\/)|youtu\.be\/)([\w-]{6,20})/;
 
+  // 텍스트에서 유튜브 영상 id
   function youtubeId(text) {
     const m = (text || '').trim().match(YT_RE);
     return m ? m[1] : null;
@@ -34,6 +35,7 @@ const mediaTools = (() => {
     editorCore.notify();
   }
 
+  // 유튜브 임베드 삽입
   function insertYoutube(id) {
     const wrap = document.createElement('div');
     wrap.className = 'yt-embed';
@@ -82,6 +84,7 @@ const mediaTools = (() => {
     insertBlockNode(video);
   }
 
+  // 동영상 파일 고르기 → 첨부로 삽입
   async function pickVideo() {
     const res = await bridge.call('attachment.pickVideo');
     if (res.cancelled) return;
@@ -114,6 +117,7 @@ const mediaTools = (() => {
     }
   }
 
+  // 이미지 드롭 처리 (여러 장 모두)
   function handleDrop(e) {
     const imgs = [...(e.dataTransfer?.files || [])].filter((f) => f.type.startsWith('image/'));
     if (!imgs.length) return;
@@ -124,6 +128,7 @@ const mediaTools = (() => {
     })();
   }
 
+  // 이미지 파일 고르기
   function pickImageFile() {
     const input = document.createElement('input');
     input.type = 'file';

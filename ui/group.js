@@ -1,6 +1,9 @@
 // 그룹 창 메인: 멤버 메모를 카드로 렌더링, 재정렬(DnD)·인라인 편집·분리·삭제
 (async () => {
   const init = window.__init || { theme: 'light', lang: 'en' };
+  // 서체·글자 크기는 그룹 카드에도 같이 적용된다 (배경 이미지는 메모창만)
+  appStyle.apply({ font: (init.style || {}).font, fontSize: (init.style || {}).fontSize });
+  bridge.on('style.changed', (st) => appStyle.apply({ font: st.font, fontSize: st.fontSize }));
   const $ = (sel) => document.querySelector(sel);
   const cardsEl = $('#cards');
 
@@ -36,12 +39,14 @@
       parseInt(hex.slice(5, 7), 16),
     ];
   }
+  // 프레임 색보다 살짝 진한/밝은 불투명 헤더 색
   function solidHeaderTone(hex, fgIsDark) {
     // 프레임 색보다 살짝 진한/밝은 불투명 헤더 색
     const [r, g, b] = hexToRgb(hex);
     const mix = (v) => Math.round(fgIsDark ? v * 0.93 : v + (255 - v) * 0.1);
     return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
   }
+  // 그룹 색·투명도를 CSS 변수로
   function applyAppearance() {
     const root = document.documentElement.style;
     const opacity = Math.min(1, Math.max(0, group.opacity ?? 1));
@@ -68,6 +73,7 @@
   // ---------- 불투명 영역(shape) 전송 ----------
   // 헤더/카드/팝오버 사각형을 네이티브로 보내 content 창 region으로 사용한다.
   let lastShapeJson = '';
+  // 창 region으로 남길 사각형(헤더·카드) 수집
   function collectShape() {
     const dpr = window.devicePixelRatio || 1;
     const rects = [];
@@ -107,6 +113,7 @@
     add($('#gcolorPopover'), 8);
     return rects;
   }
+  // 네이티브에 region 사각형 전송 (바뀐 경우만)
   function sendShape() {
     const rects = collectShape();
     const j = JSON.stringify(rects);
@@ -115,6 +122,7 @@
     bridge.call('group.setShape', { rects }).catch(() => {});
   }
   let shapeTimer = null;
+  // 다음 프레임에 region 갱신
   function scheduleShape() {
     if (shapeTimer) return;
     shapeTimer = requestAnimationFrame(() => {
@@ -135,10 +143,12 @@
   shapeObserver.observe($('#gnewMenu'), { attributes: true, attributeFilter: ['class'] });
   shapeObserver.observe($('#gcolorPopover'), { attributes: true, attributeFilter: ['class'] });
 
+  // 멤버 본문 저장 예약 (디바운스)
   function scheduleMemberSave(m) {
     clearTimeout(saveTimers.get(m.id));
     saveTimers.set(m.id, setTimeout(() => flushMemberSave(m), 800));
   }
+  // 멤버 본문 즉시 저장
   function flushMemberSave(m) {
     clearTimeout(saveTimers.get(m.id));
     saveTimers.delete(m.id);
@@ -154,6 +164,7 @@
       id: m.id, html: m.html, markdown: m.markdown, mode: m.mode, attachments,
     }).catch(console.error);
   }
+  // 예약된 저장 모두 즉시
   function flushAll() {
     members.forEach((m) => { if (saveTimers.has(m.id)) flushMemberSave(m); });
   }
@@ -177,6 +188,7 @@
     scheduleShape();
   }
 
+  // 멤버 카드 요소 만들기
   function buildCard(m) {
     const card = document.createElement('div');
     card.className = 'gcard';
@@ -351,6 +363,7 @@
     return text.slice(0, 80) || i18n.t('manager.noText');
   }
 
+  // 카드 바의 작은 버튼
   function mkBtn(glyph, title, onClick) {
     const b = document.createElement('button');
     b.textContent = glyph;
@@ -381,6 +394,7 @@
                <path d="M2 5l6 3.2L14 5M8 8.2v6"/></g></svg>3D</span>`}</div>`;
   }
 
+  // 카드 본문 렌더 (종류별)
   function renderCardBody(m, card, body) {
     body.innerHTML = '';
     const t = m.type || (m.mode === 'markdown' ? 'markdown' : 'rich');
@@ -501,6 +515,7 @@
     });
   }
 
+  // 마크다운 카드 편집/미리보기 전환
   function toggleMdEdit(m, card) {
     flushAll();
     if (mdEditing.has(m.id)) mdEditing.delete(m.id);
@@ -508,6 +523,7 @@
     renderCardBody(m, card, card.querySelector('.gcard-body'));
   }
 
+  // 카드 순서 저장 (바뀐 경우만)
   function commitOrder() {
     const order = [...cardsEl.querySelectorAll('.gcard')].map((c) => c.dataset.id);
     if (order.join('\n') === members.map((m) => m.id).join('\n')) return;  // 그대로면 저장 안 함
@@ -535,6 +551,7 @@
     span.classList.toggle('placeholder', !t);
   }
 
+  // 그룹 제목 편집 모드
   function setTitleEditing(on) {
     $('#gtitleText').classList.toggle('hidden', on);
     $('#titleEditBtn').classList.toggle('hidden', on);
@@ -549,6 +566,7 @@
 
   $('#titleEditBtn').addEventListener('click', () => setTitleEditing(true));
 
+  // 그룹 제목 저장
   function commitTitle() {
     const v = $('#titleInput').value.trim();
     if (v !== (group.title || '')) {
@@ -573,6 +591,7 @@
     }
   });
 
+  // 레이아웃 클래스·버튼 상태
   function setLayoutUi(layout) {
     cardsEl.classList.toggle('grid', layout === 'grid');
     cardsEl.classList.toggle('masonry', layout === 'masonry');
@@ -589,16 +608,26 @@
     $('#gsizeL').classList.toggle('on', group.gridSize === 'l');
     scheduleShape();
   }
+  // 레이아웃 바꾸기·저장
   function chooseLayout(layout) {
     group.layout = layout;
     setLayoutUi(layout);
     renderCards();  // 레이아웃별 높이 적용 방식이 달라 다시 그림
     bridge.call('group.setLayout', { layout });
   }
+  // 카드 본문 안의 메모 링크(memo:ID)를 누르면 그 메모를 띄운다 (sticker 페이지와 같은 규칙)
+  document.addEventListener('click', (e) => {
+    const a = e.target.closest && e.target.closest('a[href^="memo:"]');
+    if (!a) return;
+    e.preventDefault();
+    e.stopPropagation();
+    bridge.call('stickers.show', { id: a.getAttribute('href').slice(5) }).catch(console.error);
+  }, true);
   $('#layoutGridBtn').addEventListener('click', () => chooseLayout('grid'));
   $('#layoutMasonryBtn').addEventListener('click', () => chooseLayout('masonry'));
   $('#layoutListBtn').addEventListener('click', () => chooseLayout('list'));
 
+  // 격자 크기 바꾸기·저장
   function chooseGridSize(size) {
     group.gridSize = size;
     setLayoutUi(group.layout);
@@ -622,6 +651,7 @@
 
   // ---------- 색상/투명도 팝오버 ----------
   const gcolorPopover = $('#gcolorPopover');
+  // 그룹 색 팔레트 그리기
   function buildGroupColorGrid() {
     const grid = $('#gcolorGrid');
     grid.innerHTML = '';

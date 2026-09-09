@@ -5,6 +5,7 @@
 
 #include <json.hpp>
 
+// Ollama 연결 설정
 struct OllamaSettings {
     // localhost가 아니라 127.0.0.1 — AiClient::ParseEndpoint의 설명 참고
     std::string endpoint = "http://127.0.0.1:11434";
@@ -28,6 +29,7 @@ struct BuiltinAiSettings {
     bool autoLoad = false;
 };
 
+// 앱 전체 설정 (settings.json 한 파일)
 struct Settings {
     std::string theme = "system";  // "light" | "dark" | "system"
     std::string language;          // "ko" | "en" (빈 값이면 OS 언어로 결정)
@@ -63,6 +65,19 @@ struct Settings {
         std::string arrangeRight = "Ctrl+Shift+Right";
     };
     Hotkeys hotkeys;
+    // 스타일: 메모창 배경 이미지·서체·글자 크기. 모든 메모창이 공유한다.
+    struct Style {
+        std::string background;  // "" = 없음 | "preset:<id>"(ui/bg) | "file:<파일명>"(AppDir\style)
+        std::string font;        // "" = 기본(Pretendard) | ui/common/style.js FONTS의 id
+        int fontSize = 0;        // 0 = 기본(14px) | 11 ~ 24
+    };
+    Style style;
+    // 읽어주기(TTS): 윈도우 음성 토큰 id와 속도(-10 ~ 10, 0 = 보통)
+    struct TtsSettings {
+        std::string voice;  // "" = 시스템 기본 음성
+        int rate = 0;
+    };
+    TtsSettings tts;
     bool magnetEnabled = true;     // 메모창끼리 자석처럼 붙고 가장자리가 정렬됨
     int magnetGap = 10;            // 자석으로 붙을 때 유지할 간격 (논리 px, UI 배율 적용)
     // 자석이 당기기 시작하는 거리. "high"면 멀리서도 붙는다. "low" | "medium" | "high"
@@ -75,6 +90,7 @@ struct Settings {
     std::map<std::string, std::string> prompts;
 };
 
+// 메모 하나의 데이터 (메모 폴더의 memo.json)
 struct StickerData {
     std::string id;
     std::string type = "rich";     // "rich" | "markdown" | "file" | "web" | "pdf"
@@ -117,6 +133,7 @@ struct StickerData {
     bool needsReview = false;       // 마지막 AI Review 이후 내용이 수정됨
 };
 
+// 그룹창 데이터 (groups\<id>.json)
 struct GroupData {
     std::string id;
     std::string title;
@@ -137,6 +154,7 @@ inline std::string AttachmentUrl(const std::string& stickerId, const std::string
     return "https://data.sticker/stickers/" + stickerId + "/" + rel;
 }
 
+// 디스크 저장소 — 설정·메모·그룹·휴지통 파일 입출력과 정리
 class Store {
 public:
     void Init();  // %APPDATA%\SuperSticker 하위 디렉터리 생성

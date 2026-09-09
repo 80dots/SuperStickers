@@ -12,12 +12,14 @@ const colorUtil = (() => {
     yellow: '#FFF4B8', mint: '#C8F0DC', pink: '#FFD9E3', blue: '#CFE5FF', gray: '#EAEAEA',
   };
 
+  // 레거시 프리셋 이름 등을 #RRGGBB로
   function normalize(color) {
     if (!color) return PRESETS[0];
     if (color[0] === '#') return color.length === 7 ? color.toUpperCase() : PRESETS[0];
     return LEGACY[color] || PRESETS[0];
   }
 
+  // #RRGGBB → [r,g,b]
   function hexToRgb(hex) {
     return [
       parseInt(hex.slice(1, 3), 16),
@@ -26,11 +28,13 @@ const colorUtil = (() => {
     ];
   }
 
+  // [r,g,b] → #RRGGBB
   function rgbToHex([r, g, b]) {
     const h = (v) => Math.round(v).toString(16).padStart(2, '0');
     return ('#' + h(r) + h(g) + h(b)).toUpperCase();
   }
 
+  // RGB → HSL
   function rgbToHsl([r, g, b]) {
     r /= 255; g /= 255; b /= 255;
     const mx = Math.max(r, g, b), mn = Math.min(r, g, b);
@@ -47,6 +51,7 @@ const colorUtil = (() => {
     return [h, s, l];
   }
 
+  // HSL → RGB
   function hslToRgb([h, s, l]) {
     if (s === 0) return [l * 255, l * 255, l * 255];
     const hue2rgb = (p, q, t) => {

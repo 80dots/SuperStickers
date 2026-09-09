@@ -11,6 +11,7 @@
 const memoFileTools = (() => {
   let editor = null;
   let onChange = null;
+  // 로케일 문구 (사전에 없으면 폴백)
   const T = (k, fallback) => {
     const v = typeof i18n !== 'undefined' ? i18n.t(k) : k;
     return v === k ? fallback : v;
@@ -28,6 +29,7 @@ const memoFileTools = (() => {
 
   // 보기 모드: 'small'(한 줄) | 'thumb'(썸네일). 항목마다 따로 둔다.
   const viewOf = (el) => (el.dataset.view === 'thumb' ? 'thumb' : 'small');
+  // 보기 방식 (작게/썸네일)
   function setView(el, v) {
     el.dataset.view = v;
     render(el);
@@ -40,6 +42,7 @@ const memoFileTools = (() => {
   const absOfCopy = new Map();   // data-rel → 절대 경로
   let thumbSeq = 0;
 
+  // 요소 만들기
   function tag(name, cls, text) {
     const e = document.createElement(name);
     if (cls) e.className = cls;
@@ -58,6 +61,7 @@ const memoFileTools = (() => {
     el.dataset.dir = dir ? '1' : '0';
     return el;
   }
+  // 복사본 파일 항목 요소
   function makeCopy(rel, name) {
     const el = document.createElement('div');
     el.className = 'mfile';
@@ -101,6 +105,7 @@ const memoFileTools = (() => {
     notify();
   }
 
+  // 커서 자리에 항목 넣기
   function insertNode(el) {
     editorCore.insertNodeAtCaret(el);
     const after = document.createElement('div');
@@ -112,6 +117,7 @@ const memoFileTools = (() => {
   // 이 항목의 실제 경로 (링크는 그대로, 복사본은 네이티브가 알려 준 절대 경로)
   const absOf = (el) => (isLink(el) ? el.dataset.path : absOfCopy.get(el.dataset.rel) || '');
 
+  // 항목 장식(아이콘·뱃지·썸네일) 그리기
   function render(el) {
     el.querySelectorAll('[data-chrome]').forEach((n) => n.remove());
     const ui = tag('div', 'mfile-ui');
@@ -187,9 +193,11 @@ const memoFileTools = (() => {
   // ---------- 선택 (Shift+클릭으로 범위) ----------
   let anchor = null;
   const selected = () => items().filter((el) => el.classList.contains('tsel'));
+  // 선택 해제
   function clearSelection() {
     items().forEach((el) => el.classList.remove('tsel'));
   }
+  // 항목 선택 (Shift면 범위)
   function select(el, extend) {
     const all = items();
     if (!extend || !anchor || !all.includes(anchor)) {
@@ -212,6 +220,7 @@ const memoFileTools = (() => {
     if (isLink(el)) bridge.call('files.open', { path: el.dataset.path }).catch(console.error);
     else bridge.call('memofile.openCopy', { rel: el.dataset.rel }).catch(console.error);
   }
+  // 탐색기에서 보기
   function reveal(el) {
     if (!isLink(el)) return;
     if (broken(el)) {
@@ -220,11 +229,13 @@ const memoFileTools = (() => {
     }
     bridge.call('memofile.reveal', { path: el.dataset.path }).catch(console.error);
   }
+  // 경로를 클립보드로 (탐색기에 붙여넣기 가능)
   function copyToClipboard(list) {
     const paths = list.filter(isLink).map((el) => el.dataset.path);
     if (paths.length) bridge.call('files.copyClipboard', { paths }).catch(console.error);
   }
 
+  // 항목 제거 (링크는 원본이 남는다는 안내)
   function remove(list) {
     const hadLink = list.some(isLink);
     list.forEach((el) => el.remove());
@@ -243,11 +254,13 @@ const memoFileTools = (() => {
     }
     select(el, e.shiftKey);
   }
+  // 더블클릭 → 열기 (끊긴 링크면 안내)
   function onDblClick(e) {
     const el = e.target.closest && e.target.closest('.mfile');
     if (el && editor.contains(el)) { e.preventDefault(); open(el); }
   }
 
+  // 편집기에 붙이기
   function init(el, changeCb) {
     editor = el;
     onChange = changeCb;

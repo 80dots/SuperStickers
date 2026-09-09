@@ -11,6 +11,7 @@
   <script src="/common/early-theme.js"></script>
   <link rel="stylesheet" href="/common/base.css">
   <link rel="stylesheet" href="/common/theme.css">
+  <link rel="stylesheet" href="/common/aiwizard.css">
   <link rel="stylesheet" href="/sticker.css">
 </head>
 <body>
@@ -47,6 +48,9 @@
       <!-- 헤더 더보기: 폭이 모자라면 앞쪽 버튼들이 여기로 접혀 들어간다 -->
       <button class="tb-btn hidden" id="hdrMoreBtn" data-i18n-title="tt.more">
         <svg viewBox="0 0 16 16" width="14" height="14"><circle fill="currentColor" cx="3.2" cy="8" r="1.35"/><circle fill="currentColor" cx="8" cy="8" r="1.35"/><circle fill="currentColor" cx="12.8" cy="8" r="1.35"/></svg>
+      </button>
+      <button id="ttsBtn" class="tb-btn hidden" data-i18n-title="tt.tts">
+        <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2 6h3l4-3v10l-4-3H2z"/><path fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" d="M11 5.5a3.5 3.5 0 0 1 0 5M12.8 3.6a6 6 0 0 1 0 8.8"/></svg>
       </button>
       <button id="minBtn" class="tb-btn" data-i18n-title="tt.minimize">
         <svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M2.5 11.25h11v1.5h-11z"/></svg>
@@ -276,12 +280,16 @@
   <script src="/common/bridge.js"></script>
   <script src="/common/i18n.js"></script>
   <script src="/common/color.js"></script>
+  <script src="/common/style.js"></script>
   <script src="/common/prompts.js"></script>
+  <script src="/common/emoji-data.js"></script>
   <script src="/common/ollama-models.js"></script>
   <script src="/editor/editor.js"></script>
   <script src="/editor/table.js"></script>
   <script src="/editor/calendar.js"></script>
   <script src="/editor/memofile.js"></script>
+  <script src="/editor/memolink.js"></script>
+  <script src="/editor/emoji.js"></script>
   <script src="/editor/media.js"></script>
   <script src="/editor/viewer3d.js"></script>
   <script src="/editor/markdown.js"></script>

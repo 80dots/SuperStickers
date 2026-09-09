@@ -9,6 +9,7 @@
 
 namespace util {
 
+// UTF-8 → UTF-16
 std::wstring Utf8ToWide(const std::string& s) {
     if (s.empty()) return {};
     int len = MultiByteToWideChar(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0);
@@ -17,6 +18,7 @@ std::wstring Utf8ToWide(const std::string& s) {
     return out;
 }
 
+// UTF-16 → UTF-8
 std::string WideToUtf8(const std::wstring& s) {
     if (s.empty()) return {};
     int len = WideCharToMultiByte(CP_UTF8, 0, s.data(), (int)s.size(), nullptr, 0, nullptr, nullptr);
@@ -25,6 +27,7 @@ std::string WideToUtf8(const std::wstring& s) {
     return out;
 }
 
+// 새 GUID 문자열 (소문자, 중괄호 없음)
 std::wstring NewGuid() {
     GUID g{};
     CoCreateGuid(&g);
@@ -35,6 +38,7 @@ std::wstring NewGuid() {
     return buf;
 }
 
+// 현재 UTC 시각을 ISO 8601로
 std::wstring NowIso8601() {
     SYSTEMTIME st{};
     GetSystemTime(&st);
@@ -44,6 +48,7 @@ std::wstring NowIso8601() {
     return buf;
 }
 
+// 실행 파일이 있는 폴더
 std::wstring GetExeDir() {
     wchar_t path[MAX_PATH]{};
     GetModuleFileNameW(nullptr, path, MAX_PATH);
@@ -54,6 +59,7 @@ std::wstring GetExeDir() {
 
 std::wstring GetUiDir() { return GetExeDir() + L"\\ui"; }
 
+// %APPDATA%\SuperSticker
 std::wstring GetAppDataDir() {
     wchar_t* raw = nullptr;
     std::wstring dir;
@@ -64,6 +70,7 @@ std::wstring GetAppDataDir() {
     return dir + L"\\SuperSticker";
 }
 
+// 폴더 만들기 (이미 있으면 성공으로)
 bool EnsureDir(const std::wstring& path) {
     if (CreateDirectoryW(path.c_str(), nullptr)) return true;
     return GetLastError() == ERROR_ALREADY_EXISTS;
@@ -102,6 +109,7 @@ bool RemoveDirRecursive(const std::wstring& dir) {
     return RemoveDirectoryW(dir.c_str()) != 0;
 }
 
+// 폴더를 재귀적으로 복사
 bool CopyDirRecursive(const std::wstring& src, const std::wstring& dst) {
     if (!EnsureDir(dst)) return false;
     bool ok = true;
@@ -116,6 +124,7 @@ bool CopyDirRecursive(const std::wstring& src, const std::wstring& dst) {
     return ok;
 }
 
+// 폴더 이동 — rename이 안 되면 복사 후 원본 삭제
 bool MoveDirTo(const std::wstring& src, const std::wstring& dst) {
     // 같은 볼륨이면 rename 한 번으로 끝. 다른 볼륨이거나 잠긴 파일이 있으면
     // MOVEFILE_COPY_ALLOWED로도 폴더는 이동되지 않으므로 복사 후 원본 삭제로 폴백.
@@ -125,6 +134,7 @@ bool MoveDirTo(const std::wstring& src, const std::wstring& dst) {
     return RemoveDirRecursive(src);
 }
 
+// 사용자 국가 코드 ("KR" 등). 캘린더 국경일 표시에 쓴다
 std::string UserCountry() {
     // Win10 1709+. 실패하면 로케일 이름("ko-KR")의 뒤쪽을 쓴다.
     wchar_t geo[16]{};
@@ -138,6 +148,7 @@ std::string UserCountry() {
     return {};
 }
 
+// 프로세스를 실행하고 끝날 때까지 기다린다 (타임아웃)
 bool RunProcessWait(const std::wstring& cmdLine, DWORD timeoutMs) {
     STARTUPINFOW si{sizeof(si)};
     PROCESS_INFORMATION pi{};
@@ -154,6 +165,7 @@ bool RunProcessWait(const std::wstring& cmdLine, DWORD timeoutMs) {
     return code == 0;
 }
 
+// PowerShell 작은따옴표 문자열 안에 넣을 수 있게 이스케이프
 std::wstring PsQuote(const std::wstring& s) {
     std::wstring out;
     for (wchar_t c : s) {
@@ -173,6 +185,7 @@ bool ZipDir(const std::wstring& srcDir, const std::wstring& zipPath) {
            GetFileAttributesW(zipPath.c_str()) != INVALID_FILE_ATTRIBUTES;
 }
 
+// zip 풀기 (PowerShell Expand-Archive)
 bool UnzipDir(const std::wstring& zipPath, const std::wstring& destDir) {
     std::wstring cmd = L"powershell.exe -NoProfile -NonInteractive -Command \"Expand-Archive "
                        L"-Path '" + PsQuote(zipPath) + L"' -DestinationPath '" +
@@ -304,6 +317,7 @@ std::string Sha256File(const std::wstring& path) {
     return out;
 }
 
+// 임시 파일에 쓴 뒤 교체 — 쓰다 죽어도 원본이 남는다
 bool WriteFileAtomic(const std::wstring& path, const std::string& data) {
     std::wstring tmp = path + L".tmp";
     {
@@ -320,6 +334,7 @@ bool WriteFileAtomic(const std::wstring& path, const std::string& data) {
                        MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
 }
 
+// 파일 전체를 읽는다 (없으면 nullopt)
 std::optional<std::string> ReadFileBytes(const std::wstring& path) {
     std::ifstream f(path, std::ios::binary);
     if (!f) return std::nullopt;
@@ -327,6 +342,7 @@ std::optional<std::string> ReadFileBytes(const std::wstring& path) {
     return data;
 }
 
+// 사각형을 가장 가까운 모니터의 작업 영역 안으로 들인다
 bool ClampRectToWorkArea(int& x, int& y, int& w, int& h) {
     RECT r{x, y, x + w, y + h};
     HMONITOR mon = MonitorFromRect(&r, MONITOR_DEFAULTTONEAREST);
@@ -349,6 +365,7 @@ bool ClampRectToWorkArea(int& x, int& y, int& w, int& h) {
     return changed;
 }
 
+// Base64 → 바이트
 std::vector<BYTE> Base64Decode(const std::string& b64) {
     DWORD len = 0;
     if (!CryptStringToBinaryA(b64.c_str(), (DWORD)b64.size(), CRYPT_STRING_BASE64, nullptr, &len,
@@ -362,6 +379,7 @@ std::vector<BYTE> Base64Decode(const std::string& b64) {
     return out;
 }
 
+// 퍼센트 인코딩 해제
 std::string UriDecode(const std::string& s) {
     auto hex = [](char c) -> int {
         if (c >= '0' && c <= '9') return c - '0';

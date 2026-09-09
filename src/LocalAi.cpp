@@ -64,6 +64,7 @@ const std::vector<LocalAi::ModelInfo>& LocalAi::Catalog() {
     return kModels;
 }
 
+// id로 카탈로그의 모델 정보
 const LocalAi::ModelInfo* LocalAi::FindModel(const std::string& id) {
     for (const auto& m : Catalog()) {
         if (m.id == id) return &m;
@@ -71,6 +72,7 @@ const LocalAi::ModelInfo* LocalAi::FindModel(const std::string& id) {
     return nullptr;
 }
 
+// 엔진 변형 목록 (cpu / vulkan)
 const std::vector<LocalAi::EngineVariant>& LocalAi::Engines() {
     static const std::vector<EngineVariant> kEngines = {
         {"cpu", std::string("llama-") + kEngineBuild + "-bin-win-cpu-x64.zip",
@@ -81,6 +83,7 @@ const std::vector<LocalAi::EngineVariant>& LocalAi::Engines() {
     return kEngines;
 }
 
+// id로 엔진 변형
 const LocalAi::EngineVariant* LocalAi::FindEngine(const std::string& id) {
     for (const auto& e : Engines()) {
         if (e.id == id) return &e;
@@ -99,23 +102,28 @@ void LocalAi::SetDataDir(const std::wstring& dataDir) { dataDir_ = dataDir; }
 
 std::wstring LocalAi::AiDir() const { return dataDir_ + L"\\ai"; }
 
+// 엔진 설치 폴더
 std::wstring LocalAi::EngineDir(const std::string& variant) const {
     return AiDir() + L"\\engine-" + util::Utf8ToWide(variant) + L"-" +
            util::Utf8ToWide(kEngineBuild);
 }
 
+// llama-server.exe 경로
 std::wstring LocalAi::ServerExe(const std::string& variant) const {
     return EngineDir(variant) + L"\\llama-server.exe";
 }
 
+// 모델 파일 경로
 std::wstring LocalAi::ModelPath(const ModelInfo& m) const {
     return AiDir() + L"\\models\\" + util::Utf8ToWide(m.file);
 }
 
+// 엔진이 설치되어 있는지
 bool LocalAi::EngineInstalled(const std::string& variant) const {
     return GetFileAttributesW(ServerExe(variant).c_str()) != INVALID_FILE_ATTRIBUTES;
 }
 
+// 모델 파일이 온전히 있는지 (크기로 확인)
 bool LocalAi::ModelInstalled(const ModelInfo& m) const {
     WIN32_FILE_ATTRIBUTE_DATA fad{};
     if (!GetFileAttributesExW(ModelPath(m).c_str(), GetFileExInfoStandard, &fad)) return false;
@@ -124,6 +132,7 @@ bool LocalAi::ModelInstalled(const ModelInfo& m) const {
     return size > 0 && (m.sizeBytes == 0 || size >= m.sizeBytes - (m.sizeBytes / 20));
 }
 
+// 설치된 카탈로그 모델 id들
 std::vector<std::string> LocalAi::InstalledModels() const {
     std::vector<std::string> out;
     for (const auto& m : Catalog()) {
@@ -132,6 +141,7 @@ std::vector<std::string> LocalAi::InstalledModels() const {
     return out;
 }
 
+// Vulkan을 쓸 수 있는 GPU가 있는지 (힌트)
 bool LocalAi::HasVulkanCapableGpu() {
     // 정확한 판별은 Vulkan 로더를 열어야 하지만, 여기서는 힌트만 필요하다.
     // vulkan-1.dll이 있으면 드라이버가 Vulkan을 깔아 둔 것이다.
@@ -214,6 +224,7 @@ void LocalAi::InstallEngine(const std::string& variant, ProgressFn onProgress, D
     }).detach();
 }
 
+// 모델 내려받기 (워커 스레드, 진행률·완료 콜백)
 void LocalAi::DownloadModel(const std::string& modelId, ProgressFn onProgress, DoneFn onDone) {
     const ModelInfo* mi = FindModel(modelId);
     if (!mi) {
@@ -304,6 +315,7 @@ void LocalAi::DownloadModel(const std::string& modelId, ProgressFn onProgress, D
 
 void LocalAi::CancelDownloads() { abort_ = true; }
 
+// 모델 파일 삭제
 bool LocalAi::DeleteModel(const std::string& modelId) {
     const ModelInfo* m = FindModel(modelId);
     if (!m) return false;
@@ -316,6 +328,7 @@ bool LocalAi::DeleteModel(const std::string& modelId) {
 
 bool LocalAi::ServerRunning() const { return ServerState() == State::Ready; }
 
+// 서버 상태 — 죽은 프로세스를 감지해 Stopped로 되돌린다
 LocalAi::State LocalAi::ServerState() const {
     if (state_.load() == State::Ready) {
         bool alive = false;
@@ -335,6 +348,7 @@ LocalAi::State LocalAi::ServerState() const {
     return state_.load();
 }
 
+// 상태 이름 문자열 (페이지용)
 const char* LocalAi::ServerStateName() const {
     switch (ServerState()) {
         case State::Loading: return "loading";
@@ -343,24 +357,28 @@ const char* LocalAi::ServerStateName() const {
     }
 }
 
+// 모델 로딩 경과 ms
 uint64_t LocalAi::LoadingElapsedMs() const {
     if (state_.load() != State::Loading) return 0;
     uint64_t start = loadStartTick_.load();
     return start ? GetTickCount64() - start : 0;
 }
 
+// 상태 리스너 호출
 void LocalAi::NotifyState() const {
     if (!stateListener_) return;
     auto fn = stateListener_;
     PostUi([fn]() { fn(); });
 }
 
+// 떠 있는 서버의 엔드포인트 URL
 std::string LocalAi::Endpoint() const {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!process_ || port_ == 0) return "";
     return "http://127.0.0.1:" + std::to_string(port_);
 }
 
+// 떠 있는(또는 올리는 중인) 모델 id
 std::string LocalAi::RunningModel() const {
     std::lock_guard<std::mutex> lock(mutex_);
     // 로딩 중이면 올리는 중인 모델을 알려 준다 (UI가 "무엇을 올리는 중"인지 보여야 한다)
@@ -369,6 +387,7 @@ std::string LocalAi::RunningModel() const {
     return runningModel_;
 }
 
+// 서버 프로세스 종료
 void LocalAi::KillServer() {
     // 핸들만 락 안에서 떼어 내고, 종료 대기(최대 3초)는 락 밖에서 한다 —
     // 그 사이 UI 스레드가 상태를 물으며(ServerState/RunningModel) 멈추지 않도록.
@@ -391,6 +410,7 @@ void LocalAi::KillServer() {
     }
 }
 
+// 서버 중지 (기동 중이면 취소)
 void LocalAi::StopServer() {
     if (starting_.load()) cancelStart_ = true;  // 기동 스레드가 헬스 루프에서 보고 접는다
     KillServer();

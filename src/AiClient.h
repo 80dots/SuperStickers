@@ -24,6 +24,7 @@ public:
     // 채팅 프로토콜. 스트리밍 파싱 방식이 갈리는 유일한 지점이다.
     enum class Protocol { OllamaNdjson, OpenAiSse };
 
+    // 채팅 요청 옵션 (프로토콜, JSON 강제, 스키마)
     struct ChatOptions {
         Protocol protocol = Protocol::OllamaNdjson;
         bool jsonFormat = false;      // 응답을 유효한 JSON으로 강제 (AI Review)
@@ -67,6 +68,7 @@ public:
     // 진행 중인 모든 요청 중단 (앱 종료 시). 워커는 다음 청크 경계에서 빠져나온다.
     void AbortAll();
 
+    // 분해된 엔드포인트
     struct Url {
         std::wstring host;
         INTERNET_PORT port = 11434;
@@ -77,6 +79,7 @@ public:
 private:
     static Url ParseEndpoint(const std::string& endpoint);
 
+    // 워커에서 UI 스레드로 콜백을 넘긴다
     void PostUi(std::function<void()> fn) {
         if (uiPoster_) uiPoster_(std::move(fn));
     }

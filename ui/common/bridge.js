@@ -24,6 +24,7 @@ const bridge = (() => {
   }
 
   return {
+    // 네이티브 메서드 호출 → Promise
     call(method, params = {}) {
       if (!hasHost) return Promise.reject(new Error('no native host'));
       return new Promise((resolve, reject) => {
@@ -42,6 +43,7 @@ const bridge = (() => {
           { id, method, params: params || {} }, files);
       });
     },
+    // 네이티브 이벤트 구독 (해제 수단은 없다)
     on(event, cb) {
       if (!listeners.has(event)) listeners.set(event, []);
       listeners.get(event).push(cb);

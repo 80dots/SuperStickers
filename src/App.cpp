@@ -64,11 +64,13 @@ bool IsoToFiletime64(const std::string& iso, ULONGLONG& out) {
 }
 }  // namespace
 
+// 앱 싱글턴 — 창·설정·스토어·AI 클라이언트를 모두 가진 하나의 인스턴스
 App& App::I() {
     static App instance;
     return instance;
 }
 
+// 앱 초기화: 창 클래스 등록, 숨김 메시지 창·트레이 만들기, 설정 읽기, WebView2 환경 준비
 bool App::Init(HINSTANCE hinst, bool startHidden) {
     hinst_ = hinst;
 
@@ -120,6 +122,7 @@ bool App::Init(HINSTANCE hinst, bool startHidden) {
     return true;
 }
 
+// WebView2 환경이 준비된 뒤: 타이머·전역 단축키 등록, 저장된 메모·그룹 창 복원
 void App::OnEnvironmentReady(bool startHidden) {
     PurgeExpiredTrash();  // 보관 기간 지난 휴지통 항목 정리 (GC보다 먼저)
     SetTimer(hwnd_, kTrashTimerId, kTrashPurgeIntervalMs, nullptr);
@@ -171,10 +174,12 @@ void App::MaybeAutoLoadModel() {
 
 std::string App::EffectiveTheme() const { return theme::Effective(settings.theme); }
 
+// 예/아니오 네이티브 확인 대화상자 (로케일 키로 문구 지정)
 bool App::ConfirmYesNo(HWND owner, const std::string& msgKey) {
     return ConfirmYesNoText(owner, I().i18n.T(msgKey));
 }
 
+// 예/아니오 네이티브 확인 대화상자 (문구를 직접 준다)
 bool App::ConfirmYesNoText(HWND owner, const std::wstring& msg) {
     // TDF_POSITION_RELATIVE_TO_WINDOW: 소유자 창 중앙에 표시 (MessageBox는 소유자 기준
     // 배치가 보장되지 않음). 네이티브 대화상자라 그룹창 region 클리핑의 영향을 받지 않는다.
@@ -198,11 +203,13 @@ bool App::ConfirmYesNoText(HWND owner, const std::wstring& msg) {
     return btn == IDYES;
 }
 
+// 다른 스레드에서 UI 스레드로 작업을 넘긴다 (메시지 큐 경유)
 void App::RunOnUi(std::function<void()> fn) {
     auto* p = new std::function<void()>(std::move(fn));
     if (!PostMessageW(hwnd_, WM_APP_RUNNABLE, 0, (LPARAM)p)) delete p;
 }
 
+// delayMs 뒤에 UI 스레드에서 실행 (타이머 하나에 작업 하나)
 void App::RunOnUiDelayed(UINT delayMs, std::function<void()> fn) {
     UINT_PTR id = nextTimerId_++;
     delayedTasks_[id] = std::move(fn);
@@ -218,6 +225,7 @@ StickerWindow* App::CreateStickerWindow(const StickerData& d, bool show, bool ac
     return w;
 }
 
+// 새 메모 만들기: 종류별 기본 크기·계단식 위치로 저장한 뒤 창을 띄우고 본문에 커서를 둔다
 void App::NewSticker(const std::string& type) {
     StickerData d;
     d.id = util::WideToUtf8(util::NewGuid());
@@ -238,12 +246,14 @@ void App::NewSticker(const std::string& type) {
     CreateStickerWindow(d, true, true, true);
 }
 
+// id로 떠 있는 메모창 찾기 (그룹 안의 메모는 대상이 아니다)
 StickerWindow* App::FindSticker(const std::string& id) {
     for (auto* w : stickers_)
         if (w->data.id == id) return w;
     return nullptr;
 }
 
+// 메모 삭제: 휴지통이 켜져 있으면 trash\로 옮기고, 아니면 폴더째 지운다
 void App::DeleteSticker(const std::string& id) {
     // 휴지통 사용 시 완전 삭제 대신 trash\로 이동
     auto dispose = [this](const StickerData& d) {
@@ -326,6 +336,7 @@ void App::CheckCalendarAlarms() {
     for (auto& kv : groupedStickers_) scan(kv.second);
 }
 
+// 보관 기간이 지난 휴지통 메모를 완전히 지운다 (주기 타이머와 시작 시)
 void App::PurgeExpiredTrash() {
     if (settings.trashRetentionDays <= 0) return;  // 자동 삭제하지 않음
     ULONGLONG now = 0;
@@ -343,6 +354,7 @@ void App::PurgeExpiredTrash() {
     }
 }
 
+// 휴지통의 메모를 되살려 창으로 띄운다
 void App::RestoreTrashSticker(const std::string& id) {
     for (auto& d : store.LoadTrash()) {
         if (d.id != id) continue;
@@ -356,6 +368,7 @@ void App::RestoreTrashSticker(const std::string& id) {
     }
 }
 
+// 휴지통 비우기 — 개수를 보여 주고 확인을 받은 뒤 지운다
 void App::EmptyTrashInteractive(HWND owner) {
     int count = store.CountTrash();
     if (count == 0) {
@@ -406,6 +419,7 @@ int App::ImportStickerFiles(const std::vector<std::wstring>& paths,
     return count;
 }
 
+// 모든 데이터 삭제 (확인 포함). 실제로 지웠으면 true
 bool App::DeleteAllDataInteractive(HWND owner) {
     int count = store.CountAllData();
     if (count == 0) {
@@ -433,6 +447,7 @@ bool App::DeleteAllDataInteractive(HWND owner) {
     return true;
 }
 
+// 이 경로가 어느 메모의 파일 항목이나 본문 링크로 등록되어 있는지 (드롭 중복 판정용)
 bool App::IsRegisteredFilePath(const std::wstring& path) const {
     if (path.empty()) return false;
     auto norm = [](std::wstring p) {
@@ -456,6 +471,7 @@ bool App::IsRegisteredFilePath(const std::wstring& path) const {
     return false;
 }
 
+// 메모창 표시: 닫혀 있던 메모도 열고, 그룹 소속이면 그 그룹창을 띄운다
 void App::ShowSticker(const std::string& id) {
     if (auto* w = FindSticker(id)) {
         w->data.hidden = false;
@@ -475,6 +491,7 @@ void App::ShowSticker(const std::string& id) {
     }
 }
 
+// 화면에 보이는 메모창·그룹창이 하나라도 있는지
 bool App::AnyStickerVisible() const {
     for (auto* w : stickers_)
         if (w->VisibleNow()) return true;
@@ -483,6 +500,7 @@ bool App::AnyStickerVisible() const {
     return false;
 }
 
+// 모든 메모·그룹창 보이기/감추기 (트레이 메뉴, 두 번째 인스턴스 실행 시)
 void App::SetAllVisible(bool visible) {
     hotkeyHidden_.clear();  // 명시적인 전체 보이기/감추기가 우선한다
     // 상태가 실제로 바뀐 창만 저장한다 — 저장은 본문 전체 직렬화 + .bak 복사 + 원자적 쓰기라
@@ -505,6 +523,7 @@ void App::SetAllVisible(bool visible) {
 
 void App::ToggleAllVisible() { SetAllVisible(!AnyStickerVisible()); }
 
+// 보이는 창을 모두 맨 앞으로 올린다
 void App::BringAllToFront() {
     // 전경이 아닌 프로세스의 HWND_TOP 요청은 무시되므로 먼저 전경으로 전환
     // (트레이 클릭은 사용자 입력이라 SetForegroundWindow가 허용됨)
@@ -535,6 +554,7 @@ void App::BringAllToFront() {
     }
 }
 
+// 메모창이 파괴될 때: 목록에서 빼고 그 창이 시작한 AI 요청을 끊는다
 void App::OnStickerDestroyed(StickerWindow* w) {
     AbortOllamaByOwner(w->data.id);  // 진행 중인 AI 요청(리뷰·AI 패널) 취소
     stickers_.erase(std::remove(stickers_.begin(), stickers_.end(), w), stickers_.end());
@@ -542,6 +562,7 @@ void App::OnStickerDestroyed(StickerWindow* w) {
 
 namespace {
 
+// Ollama 데스크톱 앱 실행 파일 경로 (%LOCALAPPDATA%\Programs\Ollama)
 std::wstring OllamaAppExePath() {
     wchar_t* local = nullptr;
     std::wstring exe;
@@ -571,6 +592,7 @@ std::wstring PickFolder(HWND owner) {
 
 }  // namespace
 
+// 자체 엔진 변형(cpu/vulkan) 결정 — auto면 GPU 힌트로 고른다
 std::string App::ResolvedEngineVariant() const {
     if (settings.builtin.engine == "cpu" || settings.builtin.engine == "vulkan")
         return settings.builtin.engine;
@@ -581,6 +603,7 @@ std::string App::ResolvedEngineVariant() const {
     return LocalAi::HasVulkanCapableGpu() ? "vulkan" : "cpu";
 }
 
+// Ollama가 설치되어 있는지 (앱 exe 또는 PATH의 ollama.exe)
 bool App::IsOllamaInstalled() {
     std::wstring exe = OllamaAppExePath();
     if (!exe.empty() && GetFileAttributesW(exe.c_str()) != INVALID_FILE_ATTRIBUTES) return true;
@@ -588,16 +611,19 @@ bool App::IsOllamaInstalled() {
     return SearchPathW(nullptr, L"ollama.exe", nullptr, MAX_PATH, found, nullptr) > 0;
 }
 
+// Ollama 설치·모델 내려받기·자체 엔진 작업이 진행 중인지
 bool App::HasActiveOllamaTasks() const {
     return installingOllama_.load() || !activePulls_.empty() || localAi.Busy();
 }
 
+// 진행 중인 Ollama 관련 작업을 모두 중단
 void App::AbortOllamaTasks() {
     installAbort_ = true;  // 설치 다운로드 단계 중단 (설치 프로그램 실행 중이면 완주)
     for (auto& id : activePulls_) ai.Abort(id);
     localAi.CancelDownloads();
 }
 
+// Ollama 설치(내려받기 → 무인 설치 → 서버 시작)를 워커 스레드에서. 진행률은 ownerId 창으로
 void App::InstallOllama(const std::string& ownerId) {
     if (installingOllama_.exchange(true)) return;  // 중복 실행 방지
     installAbort_ = false;
@@ -693,6 +719,7 @@ void App::InstallOllama(const std::string& ownerId) {
 }
 
 
+// 특정 창이 시작한 AI 요청을 모두 중단 (그 창이 닫힐 때)
 void App::AbortOllamaByOwner(const std::string& ownerId) {
     if (ownerId.empty()) return;
     for (auto it = ollamaOwners_.begin(); it != ollamaOwners_.end();) {
@@ -713,12 +740,14 @@ GroupWindow* App::FindGroup(const std::string& id) {
     return nullptr;
 }
 
+// 그룹창을 만들고 목록에 등록
 GroupWindow* App::CreateGroupWindow(const GroupData& g, bool show, bool activate) {
     auto* w = GroupWindow::Create(hinst_, g, show, activate);
     if (w) groups_.push_back(w);
     return w;
 }
 
+// 새 그룹창을 커서 근처에 만든다
 void App::NewGroup() {
     GroupData g;
     g.id = util::WideToUtf8(util::NewGuid());
@@ -733,10 +762,12 @@ void App::NewGroup() {
     CreateGroupWindow(g, true, true);
 }
 
+// 그룹창 파괴 시 목록에서 제거
 void App::OnGroupDestroyed(GroupWindow* w) {
     groups_.erase(std::remove(groups_.begin(), groups_.end(), w), groups_.end());
 }
 
+// 그룹 삭제: 소속 메모를 개별 창으로 풀어 준 뒤 그룹을 지운다
 void App::DeleteGroupReleaseMembers(const std::string& groupId) {
     GroupWindow* g = FindGroup(groupId);
     if (!g) return;
@@ -759,6 +790,7 @@ void App::DeleteGroupReleaseMembers(const std::string& groupId) {
     store.DeleteGroup(groupId);
 }
 
+// 메모창을 그룹에 넣는다 (창을 닫고 그룹 멤버 데이터로 옮긴다)
 void App::AddStickerToGroup(StickerWindow* w, GroupWindow* g) {
     StickerData d = w->data;
     w->Destroy();
@@ -771,6 +803,7 @@ void App::AddStickerToGroup(StickerWindow* w, GroupWindow* g) {
     BroadcastEvent("group.membersChanged", {{"groupId", g->data.id}});
 }
 
+// 그룹 멤버를 지정 위치의 개별 메모창으로 꺼낸다
 void App::PopOutStickerAt(const std::string& stickerId, int x, int y) {
     auto it = groupedStickers_.find(stickerId);
     if (it == groupedStickers_.end()) return;
@@ -818,6 +851,7 @@ void App::PopOutStickerAt(const std::string& stickerId, int x, int y) {
     BroadcastEvent("group.membersChanged", {{"groupId", src ? src->data.id : ""}});
 }
 
+// 그룹 안에 새 메모 멤버를 만든다
 void App::NewMemoInGroup(const std::string& groupId, const std::string& type) {
     GroupWindow* g = FindGroup(groupId);
     if (!g) return;
@@ -834,6 +868,7 @@ void App::NewMemoInGroup(const std::string& groupId, const std::string& type) {
     BroadcastEvent("group.membersChanged", {{"groupId", groupId}});
 }
 
+// 그룹 멤버 순서 변경 (페이지의 드래그 정렬 결과)
 void App::ReorderGroupMembers(GroupWindow* g, const std::vector<std::string>& order) {
     // 안전장치: 기존 멤버 집합과 동일한 항목만 반영
     std::vector<std::string> next;
@@ -849,6 +884,7 @@ void App::ReorderGroupMembers(GroupWindow* g, const std::vector<std::string>& or
     g->SaveData();
 }
 
+// 그룹 카드에서 편집한 멤버 본문을 저장
 void App::SaveMemberContent(const nlohmann::json& p) {
     std::string id = p.value("id", "");
     auto it = groupedStickers_.find(id);
@@ -866,12 +902,14 @@ void App::SaveMemberContent(const nlohmann::json& p) {
     store.SaveSticker(d);
 }
 
+// id로 메모 데이터 찾기 — 떠 있는 창이든 그룹 멤버든
 StickerData* App::FindStickerData(const std::string& id) {
     if (auto* w = FindSticker(id)) return &w->data;
     auto it = groupedStickers_.find(id);
     return it != groupedStickers_.end() ? &it->second : nullptr;
 }
 
+// 화면 좌표 아래의 그룹창 (겹치면 z 순서상 위의 것)
 GroupWindow* App::GroupAtPoint(POINT pt) {
     // z-order 상단부터 검사해 겹친 그룹 중 위에 있는 것을 선택
     for (HWND h = GetTopWindow(nullptr); h; h = GetWindow(h, GW_HWNDNEXT)) {
@@ -885,12 +923,14 @@ GroupWindow* App::GroupAtPoint(POINT pt) {
     return nullptr;
 }
 
+// 커서 아래의 그룹창
 GroupWindow* App::GroupUnderCursor() {
     POINT pt{};
     GetCursorPos(&pt);
     return GroupAtPoint(pt);
 }
 
+// 메모창 드래그가 끝났을 때: 그룹 위에 놓였으면 잠시 뒤 그 그룹에 넣는다
 void App::HandleStickerMoveEnd(StickerWindow* w) {
     // 드래그 하이라이트 정리
     if (!lastDragHoverGroup_.empty()) {
@@ -908,6 +948,13 @@ void App::HandleStickerMoveEnd(StickerWindow* w) {
         GroupWindow* gw = FindGroup(groupId);
         if (sw && gw) AddStickerToGroup(sw, gw);
     });
+}
+
+// 스타일 설정을 페이지용 JSON으로
+json App::StyleJson() const {
+    return json{{"background", settings.style.background},
+                {"font", settings.style.font},
+                {"fontSize", settings.style.fontSize}};
 }
 
 // ---------- 전역 단축키 ----------
@@ -959,12 +1006,14 @@ bool ParseHotkey(const std::string& text, UINT* mods, UINT* vk) {
 
 }  // namespace
 
+// 등록해 둔 전역 단축키를 모두 해제
 void App::UnregisterHotkeys() {
     if (hwnd_)
         for (int id = kHotkeyFirstId; id <= kHotkeyLastId; ++id) UnregisterHotKey(hwnd_, id);
     failedHotkeys_.clear();
 }
 
+// 설정의 단축키 문자열을 해석해 RegisterHotKey. 실패한 항목은 failedHotkeys_에 남긴다
 void App::RegisterHotkeys() {
     UnregisterHotkeys();
     if (!hwnd_ || !settings.hotkeys.enabled) return;
@@ -985,6 +1034,7 @@ void App::RegisterHotkeys() {
     }
 }
 
+// WM_HOTKEY 분기 — 어느 단축키인지에 따라 동작
 void App::OnHotkey(int id) {
     if (id == kHotkeyToggleId) ToggleShowAllFront();
     else if (id == kHotkeyNewId) NewSticker("rich");
@@ -1035,6 +1085,7 @@ void App::ArrangeToEdge(bool right) {
     BringAllToFront();
 }
 
+// 보기/감추기 단축키 동작 (규칙은 App.h 선언의 설명 참고)
 void App::ToggleShowAllFront() {
     // 이 단축키가 감춘 것이 있으면 그것만 되돌린다. ×로 닫아 둔 메모(data.hidden)는
     // 화면에 없는 것이 사용자의 뜻이므로 꺼내지 않는다.
@@ -1079,6 +1130,7 @@ void App::RaiseAllAndRecord() {
     raiseFailed_ = pid != GetCurrentProcessId();
 }
 
+// 모든 창을 작업 영역 안으로 들인다 (해상도·모니터 구성이 바뀐 뒤)
 void App::ClampAllWindowsToScreen() {
     auto clampWindow = [](HWND hwnd) -> bool {
         RECT r{};
@@ -1112,12 +1164,14 @@ void App::SyncSelectionLook() {
     BroadcastEvent("selection.changed", {{"ids", ids}});
 }
 
+// 메모창 다중 선택 해제
 void App::ClearSelection() {
     if (selected_.empty()) return;
     selected_.clear();
     SyncSelectionLook();
 }
 
+// 메모창 클릭: Ctrl이면 선택 토글, 아니면 선택 해제
 void App::OnStickerClicked(const std::string& id, bool toggle) {
     if (toggle) {
         if (!selected_.insert(id).second) selected_.erase(id);  // 이미 있으면 해제
@@ -1132,6 +1186,7 @@ void App::OnStickerClicked(const std::string& id, bool toggle) {
     SyncSelectionLook();
 }
 
+// 선택된 메모창들을 감춘다 (Delete 키)
 void App::HideSelectedStickers() {
     if (selected_.empty()) return;
     std::vector<std::string> ids(selected_.begin(), selected_.end());
@@ -1146,6 +1201,7 @@ void App::HideSelectedStickers() {
     }
 }
 
+// 이동 중 자석: WM_MOVING의 제안 사각형을 이웃 창에 맞춘다
 void App::SnapStickerRect(StickerWindow* self, RECT* rect) {
     if (!settings.magnetEnabled || !rect) return;
     const RECT& me = *rect;
@@ -1193,6 +1249,7 @@ void App::SnapStickerRect(StickerWindow* self, RECT* rect) {
     OffsetRect(rect, bestDx, bestDy);
 }
 
+// 크기 변경 중 자석: WM_SIZING에서 잡고 있는 변만 이웃 창의 변에 맞춘다
 void App::SnapStickerResize(StickerWindow* self, RECT* rect, int edge) {
     if (!settings.magnetEnabled || !rect) return;
     // 잡고 있는 변 (모서리는 가로·세로를 한 변씩 동시에 끈다)
@@ -1257,6 +1314,7 @@ void App::SnapStickerResize(StickerWindow* self, RECT* rect, int edge) {
     if (dragB) rect->bottom += bestDy;
 }
 
+// 드래그 중 커서 아래 그룹의 드롭 하이라이트를 갱신
 void App::UpdateDragHover(StickerWindow*) {
     GroupWindow* g = GroupUnderCursor();
     std::string id = g ? g->data.id : "";
@@ -1412,6 +1470,36 @@ void App::ApplySettingsPatch(const json& patch) {
             BroadcastEvent("ui.revealModeChanged", {{"clickOnly", v}});
         }
     }
+    if (patch.contains("tts") && patch["tts"].is_object()) {
+        auto& t = patch["tts"];
+        if (t.contains("voice") && t["voice"].is_string()) settings.tts.voice = t["voice"];
+        if (t.contains("rate") && t["rate"].is_number()) {
+            int v = t["rate"];
+            settings.tts.rate = v < -10 ? -10 : (v > 10 ? 10 : v);
+        }
+    }
+    if (patch.contains("style") && patch["style"].is_object()) {
+        auto& st = patch["style"];
+        bool changed = false;
+        if (st.contains("background") && st["background"].is_string()) {
+            std::string v = st["background"];
+            // 프리셋 id와 파일명만 받는다 — 경로·URL은 페이지가 만들지 않는다
+            bool ok = v.empty() || v.rfind("preset:", 0) == 0 ||
+                      (v.rfind("file:", 0) == 0 && v.find('\\') == std::string::npos &&
+                       v.find('/') == std::string::npos && v.find("..") == std::string::npos);
+            if (ok && v != settings.style.background) { settings.style.background = v; changed = true; }
+        }
+        if (st.contains("font") && st["font"].is_string()) {
+            std::string v = st["font"];
+            if (v.size() <= 40 && v != settings.style.font) { settings.style.font = v; changed = true; }
+        }
+        if (st.contains("fontSize") && st["fontSize"].is_number()) {
+            int v = st["fontSize"];
+            if (v != 0 && (v < 11 || v > 24)) v = 0;
+            if (v != settings.style.fontSize) { settings.style.fontSize = v; changed = true; }
+        }
+        if (changed) BroadcastEvent("style.changed", StyleJson());  // 모든 창이 즉시 갈아입는다
+    }
     if (patch.contains("hotkeys") && patch["hotkeys"].is_object()) {
         auto& h = patch["hotkeys"];
         if (h.contains("enabled") && h["enabled"].is_boolean())
@@ -1495,6 +1583,7 @@ void App::ApplySettingsPatch(const json& patch) {
     }
 }
 
+// 모든 창(메모·그룹·설정)에 이벤트를 방송
 void App::BroadcastEvent(const std::string& ev, const json& data) {
     // 창마다 dump()를 반복하지 않도록 한 번만 직렬화해서 그대로 보낸다
     std::wstring payload = util::Utf8ToWide(json{{"event", ev}, {"data", data}}.dump());
@@ -1525,6 +1614,7 @@ void App::SendEventToOwner(const std::string& ownerId, const std::string& ev,
     SendEventToSticker(ownerId, ev, data);
 }
 
+// 설정(관리자) 창에 이벤트 — 창이 없으면 방송으로 폴백
 void App::SendEventToManager(const std::string& ev, const json& data) {
     if (manager_) {
         manager_->host().PostEvent(ev, data);
@@ -1548,6 +1638,7 @@ std::wstring RegStr(const wchar_t* subkey, const wchar_t* name) {
     return buf;
 }
 
+// HKLM 레지스트리 DWORD 값 읽기 (없으면 0)
 DWORD RegDword(const wchar_t* subkey, const wchar_t* name) {
     DWORD v = 0, cb = sizeof(v);
     if (RegGetValueW(HKEY_LOCAL_MACHINE, subkey, name, RRF_RT_REG_DWORD, nullptr, &v, &cb) !=
@@ -1578,6 +1669,7 @@ std::string OsVersionString() {
     return util::WideToUtf8(s);
 }
 
+// CPU 아키텍처 이름 (정보 탭 표시용)
 std::string CpuArchString() {
     SYSTEM_INFO si{};
     GetNativeSystemInfo(&si);
@@ -1596,6 +1688,7 @@ json App::MakeInitJson(const std::string& page, const std::string& stickerId,
     return json{{"page", page},
                 {"stickerId", stickerId},
                 {"focusEditor", focusEditor},  // 새 메모: 페이지가 본문에 커서를 놓는다
+                {"style", StyleJson()},         // 배경·서체·글자 크기 (깜빡임 없이 첫 그림부터)
                 {"theme", EffectiveTheme()},
                 {"lang", i18n.Lang()},
                 {"country", util::UserCountry()},  // 캘린더의 국경일 표시에 쓴다
@@ -1605,6 +1698,7 @@ json App::MakeInitJson(const std::string& page, const std::string& stickerId,
                 {"prompts", settings.prompts}};
 }
 
+// 모든 페이지가 함께 쓰는 브리지 메서드 등록 (설정·메모·그룹·AI·데이터·스타일·TTS)
 void App::SetupCommonBridge(WebViewHost& host) {
     Bridge& b = host.bridge();
 
@@ -1659,6 +1753,8 @@ void App::SetupCommonBridge(WebViewHost& host) {
                       {"uiScale", settings.uiScale},
                       {"autoHideUi", settings.autoHideUi},
                       {"uiRevealOnClick", settings.uiRevealOnClick},
+                      {"style", StyleJson()},
+                      {"tts", {{"voice", settings.tts.voice}, {"rate", settings.tts.rate}}},
                       {"hotkeys",
                        {{"enabled", settings.hotkeys.enabled},
                         {"toggleAll", settings.hotkeys.toggleAll},
@@ -1783,8 +1879,10 @@ void App::SetupCommonBridge(WebViewHost& host) {
 
     b.Register("stickers.show", [this](const json& p) {
         std::string id = p.value("id", "");
-        RunOnUi([this, id]() { ShowSticker(id); });
-        return json::object();
+        // 메모 링크가 지워진 메모를 가리킬 수 있다 — 있는지 먼저 알려 준다
+        bool known = FindSticker(id) != nullptr || groupedStickers_.count(id) > 0;
+        if (known) RunOnUi([this, id]() { ShowSticker(id); });
+        return json{{"shown", known}};
     });
 
     b.Register("stickers.delete", [this](const json& p) {
@@ -2181,6 +2279,70 @@ void App::SetupCommonBridge(WebViewHost& host) {
         return json::object();
     });
 
+    // ---------- 읽어주기 (TTS) ----------
+    b.Register("tts.voices", [this](const json&) {
+        json arr = json::array();
+        for (auto& v : tts.Voices())
+            arr.push_back({{"id", v.id}, {"name", v.name}, {"lang", v.lang}});
+        return json{{"voices", arr}};
+    });
+    // 읽기 시작. voice/rate를 주지 않으면 설정값을 쓴다 (설정 화면의 '시험 듣기'가 준다).
+    b.Register("tts.speak", [this](const json& p) {
+        std::string text = p.value("text", "");
+        if (text.empty()) return json{{"ok", false}};
+        std::string voice = p.value("voice", settings.tts.voice);
+        int rate = p.value("rate", settings.tts.rate);
+        return json{{"ok", tts.Speak(util::Utf8ToWide(text), voice, rate)}};
+    });
+    b.Register("tts.stop", [this](const json&) {
+        tts.Stop();
+        return json::object();
+    });
+    b.Register("tts.speaking", [this](const json&) {
+        return json{{"speaking", tts.Speaking()}};
+    });
+
+    // 배경 이미지 파일 고르기. 고른 파일은 데이터 폴더의 style\ 아래로 복사해 두고
+    // (원본이 옮겨져도 배경이 깨지지 않게) "file:<이름>"으로 저장한다. 이전 파일은 지운다.
+    b.Register("style.pickBackground", [this](const json& p) {
+        HWND owner = nullptr;
+        if (p.contains("hwnd") && p["hwnd"].is_number()) owner = (HWND)(intptr_t)p["hwnd"].get<int64_t>();
+        wil::com_ptr<IFileOpenDialog> dlg;
+        if (FAILED(CoCreateInstance(CLSID_FileOpenDialog, nullptr, CLSCTX_INPROC_SERVER,
+                                    IID_PPV_ARGS(&dlg))))
+            return json{{"changed", false}};
+        COMDLG_FILTERSPEC filters[] = {
+            {L"이미지 (*.png;*.jpg;*.jpeg;*.gif;*.webp;*.svg)", L"*.png;*.jpg;*.jpeg;*.gif;*.webp;*.svg"},
+            {L"모든 파일", L"*.*"}};
+        dlg->SetFileTypes(2, filters);
+        DWORD opts = 0;
+        dlg->GetOptions(&opts);
+        dlg->SetOptions(opts | FOS_FORCEFILESYSTEM | FOS_FILEMUSTEXIST);
+        if (FAILED(dlg->Show(owner))) return json{{"changed", false}};
+        wil::com_ptr<IShellItem> item;
+        wil::unique_cotaskmem_string path;
+        if (FAILED(dlg->GetResult(&item)) || FAILED(item->GetDisplayName(SIGDN_FILESYSPATH, &path)))
+            return json{{"changed", false}};
+        std::wstring src = path.get();
+        std::wstring ext = src.substr(src.find_last_of(L'.') == std::wstring::npos ? src.size()
+                                                                                  : src.find_last_of(L'.'));
+        for (auto& c : ext) c = (wchar_t)towlower(c);
+        std::wstring dir = store.AppDir() + L"\\style";
+        CreateDirectoryW(dir.c_str(), nullptr);
+        std::wstring name = L"bg-" + std::to_wstring(GetTickCount64()) + ext;
+        if (!CopyFileW(src.c_str(), (dir + L"\\" + name).c_str(), FALSE))
+            return json{{"changed", false}};
+        // 이전 사용자 파일 정리
+        if (settings.style.background.rfind("file:", 0) == 0) {
+            std::wstring old = dir + L"\\" + util::Utf8ToWide(settings.style.background.substr(5));
+            DeleteFileW(old.c_str());
+        }
+        settings.style.background = "file:" + util::WideToUtf8(name);
+        store.SaveSettings(settings);
+        BroadcastEvent("style.changed", StyleJson());
+        return json{{"changed", true}, {"background", settings.style.background}};
+    });
+
     b.Register("ollama.checkInstalled", [](const json&) {
         return json{{"installed", IsOllamaInstalled()}};
     });
@@ -2319,10 +2481,12 @@ void App::ShowTrayMenu() {
     DestroyMenu(menu);
 }
 
+// 앱 종료: 단축키·TTS·AI 작업을 정리하고, 페이지가 저장을 마칠 시간을 준 뒤 창을 부순다
 void App::Quit() {
     if (quitting_) return;
     quitting_ = true;
     UnregisterHotkeys();
+    tts.Shutdown();  // CoUninitialize 전에 SAPI 객체를 놓는다
     // 수 GB를 물고 있는 자식 프로세스를 남기지 않는다 (잡 오브젝트는 비정상 종료용 보험)
     localAi.CancelDownloads();
     localAi.StopServer();
@@ -2332,10 +2496,12 @@ void App::Quit() {
     SetTimer(hwnd_, kQuitTimerId, 350, nullptr);
 }
 
+// 정적 윈도우 프로시저 → 인스턴스 메서드로
 LRESULT CALLBACK App::SWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return App::I().WndProc(hwnd, msg, wp, lp);
 }
 
+// 숨김 앱 창의 메시지 처리 (트레이·타이머·전역 단축키·표시 변경·종료)
 LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     if (msg == taskbarCreatedMsg_ && taskbarCreatedMsg_ != 0) {
         tray_.Recreate();

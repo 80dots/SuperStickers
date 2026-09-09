@@ -4,6 +4,7 @@
 
 #include <string>
 
+// 시스템 트레이 아이콘
 class TrayIcon {
 public:
     void Create(HWND owner, UINT callbackMsg, HICON icon, const std::wstring& tip);

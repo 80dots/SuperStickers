@@ -34,6 +34,59 @@
   }
   applyMinimized(!!data.minimized);
   bridge.on('sticker.minimized', (d) => applyMinimized(!!d.on));
+  // 읽어주기(TTS): 본문을 윈도우 음성으로 읽는다. 읽는 동안은 버튼이 '멈춤'이 된다.
+  // 끝났는지는 네이티브가 알려 주지 않으므로 잠깐씩 물어본다 (SAPI 상태 조회).
+  if (isText) {
+    const ttsBtn = $('#ttsBtn');
+    ttsBtn.classList.remove('hidden');
+    let ttsTimer = 0;
+    // 읽기 상태 표시 — 켜지면 끝났는지 잠깐씩 물어보는 폴링을 돌린다
+    const setTts = (on) => {
+      ttsBtn.classList.toggle('on', on);
+      ttsBtn.title = i18n.t(on ? 'tt.ttsStop' : 'tt.tts');
+      clearInterval(ttsTimer);
+      ttsTimer = 0;
+      if (on) {
+        ttsTimer = setInterval(async () => {
+          try {
+            const r = await bridge.call('tts.speaking', {});
+            if (!r.speaking) setTts(false);
+          } catch { setTts(false); }
+        }, 600);
+      }
+    };
+    ttsBtn.addEventListener('mousedown', (e) => e.preventDefault());
+    ttsBtn.addEventListener('click', async () => {
+      if (ttsBtn.classList.contains('on')) {
+        bridge.call('tts.stop', {}).catch(() => {});
+        setTts(false);
+        return;
+      }
+      // 고른 글이 있으면 그것만, 아니면 본문 전체
+      const sel = type === 'markdown'
+        ? mdSource.value.slice(mdSource.selectionStart, mdSource.selectionEnd)
+        : String(window.getSelection() || '');
+      const text = (sel && sel.trim()) ? sel : noteText();
+      if (!text || !text.trim()) return;
+      try {
+        const r = await bridge.call('tts.speak', { text });
+        setTts(!!r.ok);
+      } catch (e) { console.error(e); }
+    });
+  }
+
+  // 스타일(배경·서체·글자 크기): 첫 그림부터 적용하고, 설정이 바뀌면 방송을 받아 갈아입는다
+  const applyStyle = (st) => {
+    appStyle.apply(st);
+    // 사용자 사진은 프리셋 패턴과 달리 꽉 채우므로 글 뒤에 색을 한 겹 깐다
+    document.documentElement.classList.toggle('bg-photo', !!(st && (st.background || '').startsWith('file:')));
+  };
+  applyStyle(init.style);
+  bridge.on('style.changed', applyStyle);
+
+  // 메모 사이 링크: 클릭 위임과 고르기 창. 텍스트 메모에서만 뜻이 있다.
+  memoLinkTools.init({ type, editor, mdSource, selfId: init.stickerId, onChange: scheduleSave });
+  emojiTools.init({ type, editor, mdSource, onChange: scheduleSave });
   $('#minBtn').addEventListener('mousedown', (e) => e.preventDefault());
   $('#minBtn').addEventListener('click', () => {
     bridge.call('sticker.setMinimized', {}).catch(console.error);  // 값 없이 부르면 토글
@@ -50,6 +103,7 @@
   // ---------- 자동 저장 (rich/markdown) ----------
   let saveTimer = null;
   let dirty = false;
+  // 자동 저장 예약 (800ms 디바운스) + AI Review 필요 표시
   function scheduleSave() {
     dirty = true;
     data.needsReview = true;  // 입력 즉시 AI Review 버튼 활성화
@@ -57,6 +111,7 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 800);
   }
+  // 지금 바로 저장 (본문·첨부 목록)
   function saveNow() {
     if (!dirty) return;
     dirty = false;
@@ -112,15 +167,18 @@
   // 색상 팝오버
   const popover = $('#colorPopover');
   const colorCustom = $('#colorCustom');
+  // 메모 색 적용·저장
   function setColor(color) {
     data.color = color;
     colorUtil.apply(color, isDark());
     updateColorDot();
     bridge.call('sticker.setColor', { color }).catch(console.error);
   }
+  // 타이틀바 색 점 갱신
   function updateColorDot() {
     $('#colorDot').style.background = colorUtil.effectiveBg(data.color, isDark());
   }
+  // 색 팔레트(프리셋 + 사용자 지정) 그리기
   function buildColorGrid() {
     const grid = $('#colorGrid');
     grid.innerHTML = '';
@@ -221,6 +279,7 @@
   // 캘린더가 바뀌면 알람 목록을 메모 메타에 넣어 둔다. 네이티브 타이머가 그걸 보고
   // 트레이 알림을 띄운다 — 메모창이 닫혀 있거나 그룹에 들어가 있어도 울려야 한다.
   let lastAlarms = null;
+  // 캘린더 알람을 뽑아 네이티브 메타로 넘긴다 (창이 없어도 울리도록)
   function syncCalendarAlarms() {
     scheduleSave();
     if (type !== 'rich' || typeof calendarTools === 'undefined') return;
@@ -230,6 +289,7 @@
     saveMeta({ calAlarms: json });
   }
 
+  // 메타(제목·태그·번역 등) 저장
   function saveMeta(patch) {
     bridge.call('sticker.setMeta', patch).catch(console.error);
   }
@@ -248,6 +308,7 @@
   //  - 다른 메뉴(더보기·새 메모)를 열 때: 선택은 그대로라 메뉴가 되살아났다
   let selMenuMuteAt = 0;
   const muteSelMenu = () => { selMenuMuteAt = Date.now(); window.__hideSelMenu?.(); };
+  // 본문에서 다음 검색어 위치로 이동·선택
   function findNextInBody(term) {
     if (!term) return;
     muteSelMenu();
@@ -312,6 +373,7 @@
     if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
   }
 
+  // 태그 칩 그리기 (사용자 태그 + AI 태그)
   function renderTags() {
     const chips = $('#tagChips');
     chips.innerHTML = '';
@@ -347,6 +409,7 @@
     (data.tags || []).forEach((t) => mkChip(t, false));   // 사용자 태그
     (data.aiTags || []).forEach((t) => mkChip(t, true));  // AI 생성 태그 (다른 색)
   }
+  // 태그 추가 (정규화·중복 제거)
   function addTags(list) {
     const cur = new Set(data.tags || []);
     let changed = false;
@@ -394,10 +457,13 @@
 
   // ---------- 표시 언어 (AI Review 후 한국어/영어 전환) ----------
   const viewLang = () => data.viewLang || data.srcLang || 'ko';
+  // 번역본이 있는지
   const hasTranslation = () =>
     !!data.srcLang && !!((data.transKo || '').trim() || (data.transEn || '').trim());
+  // 표시 언어에 맞는 제목
   const dispTitle = () =>
     viewLang() === 'en' ? (data.titleEn || data.title || '') : (data.title || data.titleEn || '');
+  // 표시 언어에 맞는 요약
   const dispSummary = () =>
     viewLang() === 'en' ? (data.summaryEn || data.summary || '')
                         : (data.summary || data.summaryEn || '');
@@ -408,6 +474,7 @@
     'd="M8 1l1.6 4.1L14 6.7l-4.4 1.6L8 12.4 6.4 8.3 2 6.7l4.4-1.6zM12.8 10.6l.8 2 2 .8-2 ' +
     '.8-.8 2-.8-2-2-.8 2-.8z"/></svg>';
 
+  // 원문/번역 언어 전환 세그먼트 표시
   function renderLangSeg() {
     const seg = $('#langSeg');
     const show = isText && hasTranslation();
@@ -471,6 +538,7 @@
     $('#stTitle').title = t;
     $('#stTitleEditBtn').classList.toggle('hidden', !t);
   }
+  // 제목 편집 모드 켜기/끄기
   function setTitleEditing(on) {
     if (on) {
       $('#stTitle').classList.add('hidden');
@@ -485,6 +553,7 @@
       renderStTitle();
     }
   }
+  // 편집한 제목 저장 (표시 언어의 필드에)
   function commitTitle() {
     const v = $('#stTitleInput').value.trim();
     // 현재 표시 언어의 제목 필드에 저장
@@ -517,6 +586,7 @@
   // AI Review 오류는 이 시간이 지나면 스스로 사라지고 원래 요약으로 돌아간다
   const SUMMARY_ERROR_MS = 5000;
   let summaryErrorTimer = 0;
+  // 요약 오류 자동 소멸 타이머 해제
   function clearSummaryErrorTimer() {
     clearTimeout(summaryErrorTimer);
     summaryErrorTimer = 0;
@@ -526,6 +596,7 @@
   function isSetupError(msg) {
     return /no model|connection failed|not found|http 404/i.test(msg || '');
   }
+  // 요약 상자 그리기 — 오류면 잠시 뒤 사라지고, 설정 오류면 마법사 버튼을 붙인다
   function renderSummary(errorMsg, setupError) {
     const box = $('#summaryBox');
     clearSummaryErrorTimer();
@@ -560,10 +631,12 @@
   // 모델 로딩 안내 + 경과 시간. llama-server가 진행률을 주지 않아 초 단위로만 알린다.
   // 로딩이 끝나는 시점은 네이티브의 ai.serverState(state:"ready") 방송으로 안다.
   let loadingTicker = 0;
+  // 모델 로딩 경과 표시 멈춤
   function stopLoadingTicker() {
     clearInterval(loadingTicker);
     loadingTicker = 0;
   }
+  // 모델 로딩 경과 시간을 초 단위로 표시
   function startLoadingTicker(render) {
     stopLoadingTicker();
     const started = Date.now();
@@ -604,6 +677,7 @@
     let i = 0;
     return translated.replace(re, () => from[i++]);
   }
+  // AI Review 버튼 상태 (진행 중 잠금, 새 내용이면 강조)
   function setReviewState() {
     if (!isText) return;
     const btn = $('#aiReviewBtn');
@@ -614,6 +688,7 @@
     btn.classList.toggle('need', need);  // 새 내용 입력 시에는 강조 표시 유지
     btn.classList.toggle('busy', busy);
   }
+  // 응답에서 JSON 부분만 잘라 파싱
   function parseReviewJson(text) {
     const s = text.indexOf('{');
     const e = text.lastIndexOf('}');
@@ -624,6 +699,7 @@
       return null;
     }
   }
+  // AI Review 실행 — 요약·제목·태그·번역을 한 번에
   function runAiReview() {
     const text = noteText();
     if (!text || reviewRequestId) return;
@@ -745,6 +821,7 @@
   // ==================================================================
   let mdView = 'edit';
 
+  // 마크다운 미리보기 렌더 (체크박스 토글 반영)
   function renderPreview() {
     mdTools.renderInto(mdPreview, mdSource.value, (idx, checked) => {
       mdSource.value = mdTools.toggleTaskInSource(mdSource.value, idx, checked);
@@ -752,6 +829,7 @@
     });
   }
 
+  // 마크다운 편집/미리보기 전환
   function applyMdView() {
     const showSource = mdView === 'edit';
     mdSource.classList.toggle('hidden', !showSource);
@@ -903,6 +981,7 @@
       const grid = $('#hlGrid');
       let userColors = Array.isArray(init.highlightColors) ? [...init.highlightColors] : [];
 
+      // 형광펜 색 견본 그리기
       function renderGrid() {
         grid.innerHTML = '';
         const make = (color, deletable) => {
@@ -945,6 +1024,7 @@
         return (r * 299 + g * 587 + b * 114) / 1000 < 128;
       };
 
+      // 형광펜 색 적용
       const apply = (color) => {
         // 마크다운은 원본에 <mark>를 감싼다 (프리뷰가 원시 HTML을 그대로 렌더한다).
         // 글자색은 형광펜 색의 밝기로 정해 함께 박아 둔다 — 소스만 보고도 대비가
@@ -963,6 +1043,7 @@
           else sp.style.removeProperty('color');
         });
       };
+      // 형광펜 팝오버 닫기
       const close = () => {
         pop.classList.add('hidden');
         $('#hlPicker').classList.add('hidden');
@@ -996,6 +1077,7 @@
       // HSV 상태 (h 0-360, s/v 0-1). 기본값은 형광펜다운 파스텔 노랑.
       let hsv = { h: 50, s: 0.55, v: 1 };
 
+      // HSV → #RRGGBB
       const hsvToHex = ({ h, s, v }) => {
         const f = (n) => {
           const k = (n + h / 60) % 6;
@@ -1004,6 +1086,7 @@
         };
         return ('#' + f(5) + f(3) + f(1)).toUpperCase();
       };
+      // #RRGGBB → HSV
       const hexToHsv = (hex) => {
         const n = parseInt(hex.slice(1), 16);
         const r = (n >> 16) / 255, g = ((n >> 8) & 255) / 255, b = (n & 255) / 255;
@@ -1062,6 +1145,7 @@
         }
       });
 
+      // 컬러 휠 표시/숨김
       const togglePicker = (show) => {
         picker.classList.toggle('hidden', !show);
         $('#hlAddBtn').classList.toggle('on', show);
@@ -1130,6 +1214,7 @@
       return ['| ' + h + ' 1 | ' + h + ' 2 |', '| --- | --- |', '|  |  |', '|  |  |', '', '']
         .join(String.fromCharCode(10));
     };
+    // 표 삽입 (리치는 표 요소, 마크다운은 표 문법)
     function insertTable() {
       if (type === 'markdown') { mdTools.insertText(mdTableSource()); return; }
       if (type !== 'rich') return;
@@ -1154,6 +1239,7 @@
     (() => {
       const menu = $('#ctxMenu');
       const hide = () => menu.classList.add('hidden');
+      // 우클릭 메뉴 열기 (항목 목록으로, 창 밖으로 나가지 않게)
       function open(x, y, items) {
         menu.innerHTML = '';
         items.forEach((it) => {
@@ -1189,6 +1275,7 @@
         const p = tableTools.cellPos(table, cell);
         return p.row > 0 ? [p.row - 1] : [];
       }
+      // 지울 열 대상: 고른 셀이 있으면 그것, 없으면 커서 셀
       function targetCols(table, cell) {
         const sel = tableTools.selectedCols(table);
         return sel.length ? sel : [tableTools.cellPos(table, cell).col];
@@ -1220,12 +1307,14 @@
         return out;
       }
 
+      // 파일/폴더 고르기 대화상자 → 본문에 추가
       function addFilesFromPicker(folders) {
         bridge.call('memofile.pick', { folders })
           .then((r) => memoFileTools.addPaths(r.paths))
           .catch(console.error);
       }
 
+      // 캘린더 우클릭 메뉴 항목
       function calItems(cal) {
         const after = (fn) => () => { fn(); scheduleSave(); };
         const view = calendarTools.viewOf(cal);
@@ -1245,6 +1334,7 @@
         ];
       }
 
+      // 표 우클릭 메뉴 항목
       function tableItems(table, cell) {
         const pos = tableTools.cellPos(table, cell);
         const bodyRow = Math.max(0, pos.row - 1);
@@ -1298,6 +1388,7 @@
         { cls: 'media-m', key: 'media.sizeM' },
         { cls: 'media-l', key: 'media.sizeL' },
       ];
+      // 미디어(동영상·이미지·3D·캘린더) 크기 메뉴 항목
       function mediaItems(el) {
         return MEDIA_SIZES.map((s) => ({
           label: i18n.t(s.key) + (el.classList.contains(s.cls) ? '  ✓' : ''),
@@ -1362,6 +1453,9 @@
         if (picked || !inBody) return;
         e.preventDefault();
         open(e.clientX, e.clientY, [
+          { label: i18n.t('emoji.add'), run: () => emojiTools.pick() },
+          { label: i18n.t('link.memo'), run: () => memoLinkTools.pick() },
+          { sep: true },
           { label: i18n.t('table.insert'), run: insertTable },
           ...(type === 'rich' ? [
             { label: i18n.t('cal.insert'), run: insertCalendar },
@@ -1417,12 +1511,14 @@
     const thumbReqSize = new Map();    // requestId → 요청한 썸네일 크기
     const thumbSize = () => (view === 'list' ? 32 : view === 'thumbS' ? 96 : 192);
 
+    // 파일 메모 보기 방식 버튼 상태
     function applyViewButtons() {
       $('#viewListBtn').classList.toggle('on', view === 'list');
       $('#viewThumbSBtn').classList.toggle('on', view === 'thumbS');
       $('#viewThumbLBtn').classList.toggle('on', view === 'thumbL');
     }
 
+    // 파일 메모 목록 그리기
     function renderFiles() {
       fileListEl.className = view;
       fileListEl.innerHTML = '';
@@ -1493,6 +1589,7 @@
       }
     });
 
+    // 파일 목록 갱신·저장
     function setItems(list) {
       items = list;
       renderFiles();
@@ -1511,6 +1608,7 @@
       selection.clear();
       setItems(list);
     });
+    // 파일 메모 보기 방식 바꾸기
     const setView = (v) => {
       view = v;
       applyViewButtons();
@@ -1551,6 +1649,7 @@
     } catch {}
     urlInput.value = state.lastUrl || state.url || '';
 
+    // 웹 메모: 입력한 주소로 이동
     function go() {
       const u = urlInput.value.trim();
       if (!u) return;
@@ -1588,6 +1687,7 @@
     const pdfArea = $('#pdfArea');
     pdfArea.classList.remove('hidden');
 
+    // PDF 메모: 파일을 뷰어에 표시
     function showPdf(r) {
       if (!r || !r.url) return;
       $('#pdfFrame').src = r.url;
@@ -1628,10 +1728,12 @@
     // 자동 숨김 쪽에서 "지금 응답을 받는 중인가"를 물어본다.
     window.__aiStreaming = () => streaming;
 
+    // 붙잡아 둔 선택 범위가 있는지
     function hasSelection() {
       if (type === 'markdown') return savedMdSel && savedMdSel[0] !== savedMdSel[1];
       return savedRange && !savedRange.collapsed;
     }
+    // AI 패널 버튼 상태 (실행/중단 겸용, 삽입·바꾸기 가능 여부)
     function setActionsState() {
       // 질문의 '실행' 버튼이 응답을 받는 동안 '중단'을 겸한다 (별도 중단 버튼은 없앴다)
       const runBtn = $('#aiRunBtn');
@@ -1661,6 +1763,7 @@
       if (currentRequestId) bridge.call('ai.abort', { requestId: currentRequestId });
       aiPanel.classList.add('hidden');
     });
+    // 지금 선택 범위를 붙잡아 둔다 (패널이 포커스를 가져가도 되살리려고)
     function captureSelection() {
       savedRange = null;
       savedMdSel = null;
@@ -1681,6 +1784,7 @@
         savedRange = sel.getRangeAt(0).cloneRange();
       }
     }
+    // 선택한 글이 있으면 그것, 없으면 본문 전체
     function selectedOrAllText() {
       if (type === 'markdown') {
         if (savedMdSel && savedMdSel[0] !== savedMdSel[1])
@@ -1710,6 +1814,7 @@
       mdTools.renderReadonlyInto(aiOutput, text);
     }
 
+    // AI 요청 시작 (직전 요청은 끊는다)
     function startRequest(messages) {
       // 직전 작업이 아직 흐르고 있으면 끊는다 — 두지 않으면 서버가 옛 요청을 끝까지 생성한
       // 뒤에야 새 요청을 처리해 "작업 중"이 두 배로 길어진다
@@ -1734,6 +1839,7 @@
         setActionsState();
       });
     }
+    // AI 작업 실행 (요약·다듬기·번역·질문)
     function runTask(task) {
       lastTask = task;
       captureSelection();
@@ -1881,6 +1987,7 @@
     };
     // 마크다운 보기 모드는 렌더된 결과라 편집할 수 없다 — 서식 줄을 감춘다
     const canFormat = () => type !== 'markdown' || mdView === 'edit';
+    // 선택 메뉴의 서식 적용
     function applyFormat(cmd) {
       // 형광펜은 색을 골라야 하므로 서식 툴바의 팝오버를 그대로 연다 (rich·markdown 공통)
       if (cmd === 'highlight') { $('#hlBtn').click(); return; }
@@ -1990,6 +2097,7 @@
       selMenu.appendChild(b);
     });
 
+    // 선택 메뉴 숨기기
     function hideSelMenu() { selMenu.classList.add('hidden'); }
     window.__hideSelMenu = hideSelMenu;  // 다른 메뉴가 열릴 때 닫기 위해
 
@@ -2041,6 +2149,7 @@
       return { left: box.left, top: box.top, width: box.width };
     }
 
+    // 선택 메뉴 위치·표시 갱신 (선택이 있을 때만)
     function updateSelMenu() {
       // 태그 이동·다른 메뉴 열기 직후면 띄우지 않는다 (muteSelMenu 참고).
       // 한 번 쓰면 바로 푼다 — 막아야 할 것은 그때 예약돼 있던 갱신 하나뿐이다.
@@ -2121,6 +2230,7 @@
       });
     }
 
+    // 툴바 넘침 계산 — 안 들어가는 버튼을 더보기로 접는다
     function layout() {
       // 숨겨졌거나 아직 배치 전이면 잴 수 없다 (UI 자동 숨김 중에는 폭이 0이다)
       if (bar.classList.contains('hidden') || !bar.clientWidth) return;
@@ -2257,6 +2367,7 @@
       if (type === 'web') bridge.call('window.setUiHidden', { hidden: on }).catch(() => {});
     };
 
+    // UI 자동 숨김: 헤더·툴바 감추기
     async function hide() {
       if (!enabled || hidden || !canHide()) return;
       const my = ++seq;
@@ -2276,6 +2387,7 @@
       });
     }
 
+    // UI 자동 숨김: 헤더·툴바 보이기
     async function show() {
       clearTimeout(timer);
       if (!hidden) {
@@ -2298,6 +2410,7 @@
       });
     }
 
+    // 숨김 예약 (마우스가 벗어난 뒤 잠시 후)
     const schedule = () => {
       if (!enabled) return;
       clearTimeout(timer);

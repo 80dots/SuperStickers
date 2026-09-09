@@ -599,3 +599,27 @@ progress.indeterminate { animation: progPulse 1.2s ease-in-out infinite; }
   background-repeat: no-repeat;
   background-position: right 4px bottom 4px;
 }
+
+/* ---------- 스타일: 배경 타일 ---------- */
+.bg-tiles { display: grid; grid-template-columns: repeat(6, 74px); gap: 8px; }
+.bg-tile {
+  position: relative;
+  width: 74px; height: 54px;
+  border: 2px solid var(--border); border-radius: 8px;
+  background-color: #FFF4B8;   /* 메모의 기본 노랑 위에 어떻게 보이는지 */
+  background-size: cover; background-position: center; background-repeat: repeat;
+  cursor: pointer; overflow: hidden;
+}
+.bg-tile:hover { border-color: var(--accent); }
+.bg-tile.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.bg-tile.none { display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); background: var(--panel-bg); }
+.bg-tile .bg-name {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  padding: 2px 4px; font-size: 10px; line-height: 1.2;
+  background: rgba(0, 0, 0, 0.45); color: #fff;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.font-preview {
+  padding: 8px 12px; border: 1px dashed var(--border); border-radius: var(--r-sm);
+  font-size: 16px; line-height: 1.5; min-width: 240px;
+}

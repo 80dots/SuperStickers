@@ -57,6 +57,7 @@ std::vector<std::wstring> PickFilesOrFolders(HWND owner, bool folders) {
     return out;
 }
 
+// 경로 구분자를 백슬래시로 (셸 API가 슬래시를 거부한다)
 std::wstring BackslashPath(std::wstring p) {
     for (auto& c : p)
         if (c == L'/') c = L'\\';
@@ -92,6 +93,7 @@ void CopyFilesToClipboard(HWND owner, std::vector<std::wstring> paths) {
     }
 }
 
+// GDI+ PNG 인코더 CLSID (한 번만 조회)
 CLSID PngEncoderClsid() {
     static CLSID clsid = []() {
         CLSID result{};
@@ -189,6 +191,7 @@ std::string NormalizeUrl(std::string url) {
 
 }  // namespace
 
+// 메모창 윈도우 클래스 등록
 void StickerWindow::RegisterWndClass(HINSTANCE hinst) {
     WNDCLASSEXW wc{sizeof(wc)};
     wc.lpfnWndProc = SWndProc;
@@ -377,6 +380,7 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
     return self;
 }
 
+// 창 표시/숨김 + WebView 가시성 동기화 (숨긴 창의 렌더링을 멈춘다)
 void StickerWindow::ShowWin(bool show, bool activate) {
     if (show) {
         // 생성 실패·프로세스 크래시로 비어 있으면 표시 시점에 복구
@@ -392,6 +396,7 @@ void StickerWindow::ShowWin(bool show, bool activate) {
     if (show && activate) host_.Focus();
 }
 
+// 항상 위 켜기/끄기
 void StickerWindow::SetTopmost(bool on) {
     data.topmost = on;
     SetWindowPos(hwnd_, on ? HWND_TOPMOST : HWND_NOTOPMOST, 0, 0, 0, 0,
@@ -399,6 +404,7 @@ void StickerWindow::SetTopmost(bool on) {
     SaveData();
 }
 
+// 메모 색 변경 (밴드·DWM 테두리 색도 함께)
 void StickerWindow::SetColor(const std::string& color) {
     data.color = color;
     UpdateBandBrush();
@@ -406,11 +412,13 @@ void StickerWindow::SetColor(const std::string& color) {
     SaveData();
 }
 
+// 테마 변경: 밴드 브러시·테두리 다시 칠하기
 void StickerWindow::OnThemeChanged() {
     UpdateBandBrush();
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
+// 메모 저장 (수정 시각 갱신)
 void StickerWindow::SaveData() {
     data.updatedAt = util::WideToUtf8(util::NowIso8601());
     App::I().store.SaveSticker(data);
@@ -418,6 +426,7 @@ void StickerWindow::SaveData() {
 
 void StickerWindow::Destroy() { DestroyWindow(hwnd_); }
 
+// 리사이즈 밴드 브러시와 DWM 테두리 색을 메모 색으로 맞춘다
 void StickerWindow::UpdateBandBrush() {
     if (bandBrush_) DeleteObject(bandBrush_);
     bool dark = App::I().EffectiveTheme() == "dark";
@@ -427,6 +436,7 @@ void StickerWindow::UpdateBandBrush() {
     if (hwnd_) theme::SetWindowBorderColor(hwnd_, c);
 }
 
+// 다중 선택 테두리 표시 켜기/끄기
 void StickerWindow::SetSelectedLook(bool on) {
     if (selected_ == on) return;
     selected_ = on;
@@ -441,6 +451,7 @@ void StickerWindow::SetSelectedLook(bool on) {
 
 int StickerWindow::BandPx() const { return MulDiv(kBandDip, dpi_, 96); }
 
+// CSS px → 물리 px (UI 배율·DPI 반영)
 int StickerWindow::CssPx(int cssPx) const {
     return (int)llround(cssPx * App::I().settings.uiScale * dpi_ / 96.0);
 }
@@ -448,6 +459,7 @@ int StickerWindow::CssPx(int cssPx) const {
 // 최소화 높이 = 타이틀바(34 CSS px, 배율 반영) + 위아래 리사이즈 밴드
 int StickerWindow::MinimizedHeightPx() const { return CssPx(34) + 2 * BandPx(); }
 
+// 최소화/복원 — 타이틀바 높이로 줄이고 페이지에 알린다 (StickerWindow.h 참고)
 void StickerWindow::SetMinimized(bool on) {
     if (on == data.minimized) return;
     RECT r{};
@@ -473,6 +485,7 @@ void StickerWindow::SetMinimized(bool on) {
     host_.PostEvent("sticker.minimized", json{{"on", data.minimized}});
 }
 
+// 창의 현재 위치·크기를 data에 옮겨 적는다
 void StickerWindow::StoreGeometryFromWindow() {
     RECT r{};
     GetWindowRect(hwnd_, &r);
@@ -482,6 +495,7 @@ void StickerWindow::StoreGeometryFromWindow() {
     data.h = r.bottom - r.top;
 }
 
+// UI 배율 적용 (WebView 줌 + 레이아웃)
 void StickerWindow::ApplyUiScale() {
     double s = App::I().settings.uiScale;
     host_.SetZoomFactor(s);
@@ -489,6 +503,7 @@ void StickerWindow::ApplyUiScale() {
     LayoutWebView();  // 웹 스트립 높이가 배율에 따라 달라짐
 }
 
+// WebView를 밴드 안쪽에 배치 (웹 메모는 상단 스트립과 사이트 뷰로 나눈다)
 void StickerWindow::LayoutWebView() {
     RECT rc{};
     GetClientRect(hwnd_, &rc);
@@ -972,6 +987,7 @@ void StickerWindow::RegisterTypeBridges() {
     });
 }
 
+// 정적 프로시저: WM_NCCREATE에서 this를 창에 붙인다
 LRESULT CALLBACK StickerWindow::SWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     StickerWindow* self;
     if (msg == WM_NCCREATE) {
@@ -985,6 +1001,7 @@ LRESULT CALLBACK StickerWindow::SWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
     return self->WndProc(hwnd, msg, wp, lp);
 }
 
+// 메모창 메시지 처리 (밴드 리사이즈·자석·최소 크기·DPI·선택 테두리·드래그 종료)
 LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_NCCALCSIZE:

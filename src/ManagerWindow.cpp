@@ -10,6 +10,7 @@ namespace {
 const wchar_t* kClassName = L"SuperStickerManager";
 }
 
+// 설정(관리자) 창 클래스 등록
 void ManagerWindow::RegisterWndClass(HINSTANCE hinst) {
     WNDCLASSEXW wc{sizeof(wc)};
     wc.lpfnWndProc = SWndProc;
@@ -21,6 +22,7 @@ void ManagerWindow::RegisterWndClass(HINSTANCE hinst) {
     RegisterClassExW(&wc);
 }
 
+// 설정 창 생성 (지정 탭으로)
 ManagerWindow* ManagerWindow::Create(HINSTANCE hinst, const std::string& tab) {
     auto* self = new ManagerWindow();
 
@@ -52,16 +54,19 @@ ManagerWindow* ManagerWindow::Create(HINSTANCE hinst, const std::string& tab) {
     return self;
 }
 
+// 탭 전환 (최소화되어 있으면 복원)
 void ManagerWindow::ShowTab(const std::string& tab) {
     if (IsIconic(hwnd_)) ShowWindow(hwnd_, SW_RESTORE);
     SetForegroundWindow(hwnd_);
     host_.PostEvent("manager.showTab", json{{"tab", tab}});
 }
 
+// 테마 변경 시 타이틀바 색
 void ManagerWindow::OnThemeChanged() {
     theme::ApplyDarkTitlebar(hwnd_, App::I().EffectiveTheme() == "dark");
 }
 
+// 정적 프로시저
 LRESULT CALLBACK ManagerWindow::SWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     ManagerWindow* self;
     if (msg == WM_NCCREATE) {
@@ -75,6 +80,7 @@ LRESULT CALLBACK ManagerWindow::SWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM 
     return self->WndProc(hwnd, msg, wp, lp);
 }
 
+// 설정 창 메시지 처리 (닫을 때 진행 중인 내려받기 확인)
 LRESULT ManagerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_SIZE: {

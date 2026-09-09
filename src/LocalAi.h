@@ -96,6 +96,7 @@ public:
     void SetStateListener(std::function<void()> fn) { stateListener_ = std::move(fn); }
 
 private:
+    // 워커에서 UI 스레드로 콜백을 넘긴다
     void PostUi(std::function<void()> fn) const {
         if (uiPoster_) uiPoster_(std::move(fn));
     }

@@ -15,6 +15,7 @@
 #include "LocalAi.h"
 #include "Store.h"
 #include "TrayIcon.h"
+#include "Tts.h"
 
 class StickerWindow;
 class GroupWindow;
@@ -24,6 +25,7 @@ class WebViewHost;
 constexpr UINT WM_APP_TRAY = WM_APP + 1;
 constexpr UINT WM_APP_RUNNABLE = WM_APP + 2;
 
+// 앱 전역 — 창 관리·설정·트레이·브리지·이벤트 방송·단축키·AI·TTS
 class App {
 public:
     static App& I();
@@ -36,6 +38,7 @@ public:
     I18n i18n;
     AiClient ai;      // Ollama·내장 공통 HTTP 클라이언트
     LocalAi localAi;  // 내장 백엔드(llama-server) 관리
+    Tts tts;          // 읽어주기 (윈도우 SAPI 음성)
 
     std::string EffectiveTheme() const;  // "light" | "dark"
     // 삭제 확인 네이티브 대화상자. 그룹 콘텐츠 창은 SetWindowRgn으로 잘려 있어
@@ -115,6 +118,8 @@ public:
     // 맨 앞으로만, 우리 창이 이미 앞이면 모두 감춘다.
     void ToggleShowAllFront();
     void ArrangeToEdge(bool right);
+    // 스타일 설정을 페이지가 그대로 쓰는 JSON으로 (init·getState·style.changed가 같은 모양)
+    nlohmann::json StyleJson() const;
     void RaiseAllAndRecord();
     const std::set<std::string>& FailedHotkeys() const { return failedHotkeys_; }
 

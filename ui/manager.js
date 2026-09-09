@@ -108,6 +108,8 @@
       url: 'https://github.com/orioncactus/pretendard' },
     { name: 'Poly Haven HDRI', version: 'quarry_01 · royal_esplanade · venice_sunset',
       license: 'CC0 1.0', url: 'https://polyhaven.com/hdris' },
+    { name: 'Google Fonts 한글 서체 10종', version: 'Gowun Dodum · Gowun Batang · Nanum Myeongjo · Nanum Pen Script · Gaegu · Jua · Do Hyeon · Black Han Sans · Hi Melody · Sunflower',
+      license: 'SIL Open Font License 1.1 (ui/fonts/licenses)', url: 'https://github.com/google/fonts' },
   ];
 
   // MIT 전문. 설치 폴더의 LICENSE.txt와 같은 내용이며, 저작권 줄만 app.info로 채운다.
@@ -135,6 +137,7 @@ SOFTWARE.`;
 
   let appInfo = null;
 
+  // 정보 탭 그리기 (버전·환경·서드파티 고지)
   async function renderAbout() {
     try {
       appInfo = await bridge.call('app.info');
@@ -263,6 +266,7 @@ SOFTWARE.`;
     return (doc.body.textContent || '').trim();
   }
 
+  // 날짜 표시 형식
   function fmtDate(iso) {
     if (!iso) return '';
     const d = new Date(iso);
@@ -290,6 +294,7 @@ SOFTWARE.`;
     return el;
   }
 
+  // 아이콘 버튼 요소
   function iconBtn(icon, titleKey, onClick, danger) {
     const b = document.createElement('button');
     b.className = 'icon-btn' + (danger ? ' del' : '');
@@ -324,6 +329,7 @@ SOFTWARE.`;
     return card;
   }
 
+  // 메모 목록 갱신
   async function refreshList() {
     let stickers = [];
     try {
@@ -376,6 +382,7 @@ SOFTWARE.`;
 
   // ---------- .ssticker 내보내기 / 가져오기 ----------
   let hintTimer = 0;
+  // 목록 상태 문구 (가져오기 결과 등)
   function showListStatus(msg, ok) {
     const el = $('#importHint');
     el.textContent = msg;
@@ -561,6 +568,7 @@ SOFTWARE.`;
     });
   }
 
+  // 설정값을 화면 컨트롤에 반영
   function applySettingsUi() {
     const s = state.settings;
     document.querySelectorAll('#themeSeg button').forEach((b) =>
@@ -578,6 +586,8 @@ SOFTWARE.`;
     $('#revealClickCheck').disabled = !$('#autoHideCheck').checked;
     $('#revealClickRow').classList.toggle('disabled', !$('#autoHideCheck').checked);
     applyHotkeyUi();
+    applyStyleUi();
+    applyTtsUi();
     const mg = s.magnet || {};
     $('#magnetCheck').checked = mg.enabled !== false;      // 기본값 On
     $('#magnetGapSelect').value = String(mg.gap == null ? 10 : mg.gap);
@@ -617,6 +627,7 @@ SOFTWARE.`;
     $('#trashDaysSeg').classList.toggle('disabled', !t.enabled);
   }
 
+  // 휴지통 개수 갱신
   async function refreshTrashCount() {
     try {
       const r = await bridge.call('trash.count');
@@ -641,6 +652,7 @@ SOFTWARE.`;
     sel.value = selected || '';
   }
   const setModelOptions = (models, selected) => fillModelSelect($('#modelSelect'), models, selected);
+  // LM Studio 모델 콤보 채우기
   const setLmModelOptions = (models, selected) =>
     fillModelSelect($('#lmModelSelect'), models, selected);
 
@@ -679,6 +691,146 @@ SOFTWARE.`;
     bridge.call('settings.set', { uiRevealOnClick: e.target.checked }).catch(console.error);
   });
 
+  // ---------- 읽어주기 (TTS) ----------
+  let ttsVoices = null;   // 네이티브에서 한 번 받아 둔 음성 목록
+  // 음성 목록을 한 번만 받아 둔다
+  async function loadTtsVoices() {
+    if (ttsVoices) return ttsVoices;
+    try { ttsVoices = (await bridge.call('tts.voices', {})).voices || []; }
+    catch { ttsVoices = []; }
+    return ttsVoices;
+  }
+  // 읽어주기 설정을 화면에
+  async function applyTtsUi() {
+    const t = state.settings.tts || {};
+    const voices = await loadTtsVoices();
+    const sel = $('#ttsVoiceSelect');
+    sel.innerHTML = '';
+    const def = document.createElement('option');
+    def.value = '';
+    def.textContent = i18n.t('tts.voiceDefault');
+    sel.appendChild(def);
+    voices.forEach((v) => {
+      const o = document.createElement('option');
+      o.value = v.id;
+      o.textContent = v.lang ? `${v.name} (${v.lang})` : v.name;
+      sel.appendChild(o);
+    });
+    sel.value = voices.some((v) => v.id === t.voice) ? t.voice : '';
+    $('#ttsStatus').textContent = voices.length ? '' : i18n.t('tts.noVoices');
+    const rate = Number(t.rate) || 0;
+    document.querySelectorAll('#ttsRateSeg button').forEach((b) => {
+      // 세 단계 중 가장 가까운 것을 켠다 (설정값은 -10~10 어디든 올 수 있다)
+      const r = Number(b.dataset.rate);
+      b.classList.toggle('on', Math.abs(r - rate) <= 2 && (r !== 0 || Math.abs(rate) <= 2));
+    });
+  }
+  $('#ttsVoiceSelect').addEventListener('change', (e) => {
+    state.settings.tts = Object.assign({}, state.settings.tts || {}, { voice: e.target.value });
+    bridge.call('settings.set', { tts: { voice: e.target.value } }).catch(console.error);
+  });
+  document.querySelectorAll('#ttsRateSeg button').forEach((b) =>
+    b.addEventListener('click', () => {
+      const rate = Number(b.dataset.rate);
+      state.settings.tts = Object.assign({}, state.settings.tts || {}, { rate });
+      applyTtsUi();
+      bridge.call('settings.set', { tts: { rate } }).catch(console.error);
+    }));
+  $('#ttsTestBtn').addEventListener('click', () => {
+    const t = state.settings.tts || {};
+    bridge.call('tts.speak', { text: i18n.t('tts.sample'), voice: $('#ttsVoiceSelect').value,
+                               rate: Number(t.rate) || 0 }).catch(console.error);
+  });
+
+  // ---------- 스타일 (배경·서체·글자 크기) ----------
+  function buildStyleUi() {
+    const tiles = $('#bgTiles');
+    tiles.innerHTML = '';
+    const none = document.createElement('button');
+    none.className = 'bg-tile none';
+    none.dataset.bg = '';
+    none.textContent = i18n.t('style.bgNone');
+    tiles.appendChild(none);
+    appStyle.PRESETS.forEach((id) => {
+      const b = document.createElement('button');
+      b.className = 'bg-tile';
+      b.dataset.bg = 'preset:' + id;
+      b.style.backgroundImage = `url("${appStyle.presetUrl(id)}")`;
+      const name = document.createElement('span');
+      name.className = 'bg-name';
+      name.textContent = i18n.t('style.bg.' + id);
+      b.appendChild(name);
+      b.title = name.textContent;
+      tiles.appendChild(b);
+    });
+    tiles.querySelectorAll('.bg-tile').forEach((b) => b.addEventListener('click', () => {
+      setStyle({ background: b.dataset.bg });
+    }));
+
+    const fs = $('#fontSelect');
+    fs.innerHTML = '';
+    const def = document.createElement('option');
+    def.value = '';
+    def.textContent = i18n.t('style.fontDefault');
+    fs.appendChild(def);
+    appStyle.FONTS.forEach((f) => {
+      const o = document.createElement('option');
+      o.value = f.id;
+      o.textContent = `${i18n.t('style.font.' + f.id)} · ${i18n.t('style.kind.' + f.kind)}`;
+      fs.appendChild(o);
+    });
+
+    const ss = $('#fontSizeSelect');
+    ss.innerHTML = '';
+    const sd = document.createElement('option');
+    sd.value = '0';
+    sd.textContent = i18n.t('style.fontSizeDefault').replace('{px}', appStyle.DEFAULT_SIZE);
+    ss.appendChild(sd);
+    for (let px = 11; px <= 24; px++) {
+      const o = document.createElement('option');
+      o.value = String(px);
+      o.textContent = px + ' px';
+      ss.appendChild(o);
+    }
+  }
+
+  // 스타일 설정을 화면에
+  function applyStyleUi() {
+    const st = state.settings.style || {};
+    const bg = st.background || '';
+    document.querySelectorAll('#bgTiles .bg-tile').forEach((b) => {
+      b.classList.toggle('on', b.dataset.bg === bg || (bg.startsWith('file:') && b.dataset.bg === '__file'));
+    });
+    $('#bgFileName').textContent = bg.startsWith('file:') ? i18n.t('style.bgFileOn') : '';
+    $('#fontSelect').value = appStyle.fontOf(st.font) ? st.font : '';
+    const f = appStyle.fontOf(st.font);
+    if (f) appStyle.ensureFace(f);
+    $('#fontPreview').style.fontFamily = appStyle.familyOf(st.font);
+    const size = Number(st.fontSize) || 0;
+    $('#fontPreview').style.fontSize = (size || appStyle.DEFAULT_SIZE) + 'px';
+    $('#fontSizeSelect').value = String(size >= 11 && size <= 24 ? size : 0);
+  }
+
+  // 스타일 값 저장·반영
+  function setStyle(patch) {
+    state.settings.style = Object.assign({}, state.settings.style || {}, patch);
+    applyStyleUi();
+    bridge.call('settings.set', { style: patch }).catch(console.error);
+  }
+
+  buildStyleUi();
+  $('#bgFileBtn').addEventListener('click', async () => {
+    try {
+      const r = await bridge.call('style.pickBackground', {});
+      if (r && r.changed) {
+        state.settings.style = Object.assign({}, state.settings.style || {}, { background: r.background });
+        applyStyleUi();
+      }
+    } catch (e) { console.error(e); }
+  });
+  $('#fontSelect').addEventListener('change', (e) => setStyle({ font: e.target.value }));
+  $('#fontSizeSelect').addEventListener('change', (e) => setStyle({ fontSize: Number(e.target.value) }));
+
   // ---------- 단축키 ----------
   // 칸을 누르면 '키를 누르세요' 상태가 되고, 다음에 누른 조합을 그대로 저장한다.
   // 수정자(Ctrl/Shift/Alt/Win) 없이 누른 키는 다른 앱의 타자를 먹으므로 받지 않는다.
@@ -692,6 +844,7 @@ SOFTWARE.`;
                  'Left', 'Right', 'Up', 'Down', 'Tab', 'Enter', 'Esc'];
   let hkCapturing = null;  // 지금 키를 기다리는 항목 이름
 
+  // 단축키 설정을 화면에 (실패 항목 안내 포함)
   function applyHotkeyUi() {
     const hk = state.settings.hotkeys || {};
     const on = hk.enabled !== false;  // 기본값 On
@@ -715,6 +868,7 @@ SOFTWARE.`;
     warn.textContent = i18n.t('settings.hotkeyFailed').replace('{items}', failed.join(', '));
   }
 
+  // 단축키 값 저장
   function hkSet(name, value) {
     if (!state.settings.hotkeys) state.settings.hotkeys = {};
     state.settings.hotkeys[name] = value;
@@ -766,6 +920,17 @@ SOFTWARE.`;
   }, true);
 
   // 자석 정렬: 켜져 있을 때만 간격 설정을 쓸 수 있다
+  // 설정에서도 마법사를 부를 수 있다. 마치면 모델 목록·선택을 새로 읽는다.
+  $('#runWizardBtn').addEventListener('click', async () => {
+    const done = await aiWizard.ensureReady('', { force: true });
+    if (done) {
+      const st = await bridge.call('app.getState', {});
+      state.settings = st.settings;
+      applySettingsUi();
+      runConnectTest();
+    }
+  });
+
   $('#magnetCheck').addEventListener('change', (e) => {
     if (!state.settings.magnet) state.settings.magnet = {};
     state.settings.magnet.enabled = e.target.checked;
@@ -832,6 +997,7 @@ SOFTWARE.`;
 
   const fmtSize = (bytes) => (bytes / 1073741824).toFixed(1) + ' GB';
 
+  // 자체 모델 백엔드 상태 갱신
   async function refreshBuiltin() {
     try {
       aiConfig = await bridge.call('ai.getConfig');
@@ -875,6 +1041,7 @@ SOFTWARE.`;
   // 오며 문구를 "중지됨"으로 되돌리므로, stopped를 그릴 때 이 값을 우선 보여 준다.
   let serverError = '';
 
+  // 자체 서버 상태 표시
   function applyServerState(state, model, elapsedMs) {
     const loading = state === 'loading';
     const ready = state === 'ready';
@@ -905,6 +1072,7 @@ SOFTWARE.`;
     loadTimer = setInterval(tick, 1000);
   }
 
+  // 자체 모델 카드 그리기
   function renderModelCards() {
     const host = $('#modelCards');
     if (!host || !aiConfig) return;
@@ -997,6 +1165,7 @@ SOFTWARE.`;
     });
   }
 
+  // 자체 모델 선택
   function selectModel(id) {
     if (!aiConfig) return;
     aiConfig.builtin.modelId = id;
@@ -1004,6 +1173,7 @@ SOFTWARE.`;
     renderModelCards();
   }
 
+  // 자체 모델 내려받기
   async function downloadModel(id) {
     // 엔진이 없으면 모델만 받아도 못 돌린다 — 엔진부터 받도록 안내한다
     const resolved = aiConfig.builtin.resolvedEngine;
@@ -1024,6 +1194,7 @@ SOFTWARE.`;
     }
   }
 
+  // 자체 모델 삭제
   async function deleteModel(id) {
     try {
       await bridge.call('ai.deleteModel', { id });
@@ -1171,6 +1342,7 @@ SOFTWARE.`;
   // OpenAI 호환 서버라 목록은 /v1/models, 채팅은 내장 백엔드와 같은 경로를 쓴다.
   let lmRequestId = null;
 
+  // LM Studio 연결 시험
   function runLmTest() {
     const status = $('#lmStatus');
     status.className = 'status busy';
@@ -1196,6 +1368,7 @@ SOFTWARE.`;
 
   // 연결 테스트 → 모델 목록 로드
   let testRequestId = null;
+  // Ollama 연결 시험 + 모델 목록
   function runConnectTest() {
     const status = $('#ollamaStatus');
     status.className = 'status busy';  // 결과 도착 시 ok/err로 교체되며 스피너가 사라진다
@@ -1253,6 +1426,7 @@ SOFTWARE.`;
   // ---------- 접이식 다운로드 섹션 ----------
   // 다운로드 가능한 모델: 엄선된 고정 목록만 제공
   const PULL_MODELS = ollamaModels.names();  // ui/common/ollama-models.js가 단일 출처
+  // 내려받을 모델 콤보 채우기
   function buildPullCombo() {
     const sel = $('#pullModelSelect');
     sel.innerHTML = '';
@@ -1269,6 +1443,7 @@ SOFTWARE.`;
   }
   buildPullCombo();
 
+  // 내려받기 섹션 펼치기
   function openDlPanel() {
     if (!$('#dlPanel').classList.contains('hidden')) return;
     $('#dlPanel').classList.remove('hidden');
@@ -1282,6 +1457,7 @@ SOFTWARE.`;
     }
   });
 
+  // 바이트 → 읽기 좋은 크기
   function fmtBytes(n) {
     if (n >= 1e9) return (n / 1e9).toFixed(1) + ' GB';
     if (n >= 1e6) return (n / 1e6).toFixed(0) + ' MB';
@@ -1349,6 +1525,7 @@ SOFTWARE.`;
   // ---------- 모델 다운로드 (ollama pull) ----------
   let pullRequestId = null;
   let pullingName = '';  // 받는 중인 모델 — 완료 시 콤보 현재값이 아니라 이걸 쓴다
+  // 내려받기로 고른 모델 이름
   function pullModelName() {
     return $('#pullModelSelect').value;
   }
@@ -1480,6 +1657,7 @@ SOFTWARE.`;
     document.documentElement.dataset.theme = d.effective;
   });
   bridge.on('locale.changed', async (d) => {
+    setTimeout(buildStyleUi, 0);  // 스타일 목록의 이름도 새 언어로
     await i18n.load(d.lang);
     i18n.apply();
     applySettingsUi();

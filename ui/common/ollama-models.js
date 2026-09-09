@@ -4,11 +4,11 @@ const ollamaModels = (() => {
   const LIST = [
     { name: 'gemma3:4b',   size: '3.3 GB',  note: 'light' },
     { name: 'qwen3.5:4b',  size: '2.6 GB',  note: 'light' },
-    { name: 'llama3:8b',   size: '4.7 GB',  note: 'balanced', recommended: true },
+    { name: 'llama3:8b',   size: '4.7 GB',  note: 'balanced' },
     { name: 'qwen3.5:9b',  size: '5.6 GB',  note: 'balanced' },
     { name: 'gemma3:12b',  size: '8.1 GB',  note: 'quality' },
     { name: 'gemma4:12b',  size: '9.6 GB',  note: 'quality' },
-    { name: 'gpt-oss:20b', size: '14 GB',   note: 'quality' },
+    { name: 'gpt-oss:20b', size: '14 GB',   note: 'quality', recommended: true },
   ];
   return {
     list: () => LIST.slice(),

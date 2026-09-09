@@ -2,6 +2,7 @@
 
 using json = nlohmann::json;
 
+// JSON-RPC 요청 하나를 처리해 응답 JSON을 만든다 (예외는 error로)
 std::string Bridge::HandleMessage(const std::string& msg) {
     json req = json::parse(msg, nullptr, false);
     if (req.is_discarded() || !req.is_object() || !req.contains("id")) return {};

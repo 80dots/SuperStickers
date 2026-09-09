@@ -6,6 +6,7 @@
 
 using json = nlohmann::json;
 
+// 로케일 JSON 읽기 (없으면 en으로 폴백)
 bool I18n::Load(const std::string& lang) {
     auto tryLoad = [this](const std::string& l) -> bool {
         auto bytes = util::ReadFileBytes(util::GetUiDir() + L"\\locales\\" + util::Utf8ToWide(l) +
@@ -21,12 +22,14 @@ bool I18n::Load(const std::string& lang) {
     return tryLoad("en");
 }
 
+// 키 → 문구 (없으면 키를 그대로)
 std::wstring I18n::T(const std::string& key) const {
     if (dict_.contains(key) && dict_[key].is_string())
         return util::Utf8ToWide(dict_[key].get<std::string>());
     return util::Utf8ToWide(key);
 }
 
+// OS UI 언어 → "ko" 또는 "en"
 std::string I18n::DetectOsLanguage() {
     LANGID id = GetUserDefaultUILanguage();
     return (PRIMARYLANGID(id) == LANG_KOREAN) ? "ko" : "en";

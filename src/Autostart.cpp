@@ -11,12 +11,14 @@ const wchar_t* kValueName = L"SuperSticker";
 
 namespace autostart {
 
+// 시작 프로그램에 등록되어 있는지 (HKCU Run)
 bool IsEnabled() {
     DWORD size = 0;
     return RegGetValueW(HKEY_CURRENT_USER, kRunKey, kValueName, RRF_RT_REG_SZ, nullptr, nullptr,
                         &size) == ERROR_SUCCESS;
 }
 
+// 시작 프로그램 등록/해제
 bool SetEnabled(bool enable) {
     HKEY key = nullptr;
     if (RegOpenKeyExW(HKEY_CURRENT_USER, kRunKey, 0, KEY_SET_VALUE, &key) != ERROR_SUCCESS)

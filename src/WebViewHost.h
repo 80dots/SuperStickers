@@ -18,6 +18,7 @@ public:
     // 공유 환경 준비 (이미 준비됐으면 즉시 콜백)
     static void EnsureEnvironment(std::function<void(HRESULT)> done);
 
+    // 웹뷰 생성 옵션
     struct Options {
         bool transparentBg = false;  // 기본 배경 투명 (페이지 알파 픽셀이 창 뒤를 보이게)
         bool browserMode = false;    // 자유 탐색 브라우저 (내비게이션 제한·브리지 없음)

@@ -11,6 +11,7 @@
   <script src="/common/early-theme.js"></script>
   <link rel="stylesheet" href="/common/base.css">
   <link rel="stylesheet" href="/common/theme.css">
+  <link rel="stylesheet" href="/common/aiwizard.css">
   <link rel="stylesheet" href="/manager.css">
 </head>
 <body>
@@ -128,6 +129,54 @@
             <option value="30">30 px</option>
           </select>
         </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="style.title"></h2>
+      <p class="desc" data-i18n="style.desc"></p>
+      <div class="row" style="align-items:flex-start">
+        <label data-i18n="style.background"></label>
+        <div id="bgTiles" class="bg-tiles"></div>
+      </div>
+      <div class="row">
+        <label></label>
+        <button id="bgFileBtn" data-i18n="style.bgFile"></button>
+        <span id="bgFileName" class="status"></span>
+      </div>
+      <div class="row">
+        <label for="fontSelect" data-i18n="style.font"></label>
+        <select id="fontSelect"></select>
+      </div>
+      <div class="row">
+        <label></label>
+        <div id="fontPreview" class="font-preview" data-i18n="style.fontPreview"></div>
+      </div>
+      <div class="row">
+        <label for="fontSizeSelect" data-i18n="style.fontSize"></label>
+        <select id="fontSizeSelect"></select>
+      </div>
+    </section>
+
+    <section>
+      <h2 data-i18n="tts.title"></h2>
+      <p class="desc" data-i18n="tts.desc"></p>
+      <div class="row">
+        <label for="ttsVoiceSelect" data-i18n="tts.voice"></label>
+        <select id="ttsVoiceSelect"></select>
+      </div>
+      <div class="row">
+        <label data-i18n="tts.rate"></label>
+        <div class="seg" id="ttsRateSeg">
+          <button data-rate="-4" data-i18n="tts.rateSlow"></button>
+          <button data-rate="0" data-i18n="tts.rateNormal"></button>
+          <button data-rate="4" data-i18n="tts.rateFast"></button>
+        </div>
+      </div>
+      <div class="row">
+        <label></label>
+        <button id="ttsTestBtn" data-i18n="tts.test"></button>
+        <span id="ttsStatus" class="status"></span>
+      </div>
     </section>
 
     <section>
@@ -284,6 +333,10 @@
     <section id="ollamaSection">
       <h2 data-i18n="settings.ollama"></h2>
       <p class="desc" data-i18n="settings.ollamaDesc"></p>
+      <div class="row">
+        <label></label>
+        <button id="runWizardBtn" data-i18n="settings.runWizard"></button>
+      </div>
       <div class="row">
         <label data-i18n="settings.endpoint"></label>
         <input type="text" id="endpointInput" spellcheck="false">
@@ -468,7 +521,9 @@
   <script src="/common/i18n.js"></script>
   <script src="/common/color.js"></script>
   <script src="/common/prompts.js"></script>
+  <script src="/common/style.js"></script>
   <script src="/common/ollama-models.js"></script>
+  <script src="/aiwizard.js"></script>
   <script src="/manager.js"></script>
 </body>
 </html>

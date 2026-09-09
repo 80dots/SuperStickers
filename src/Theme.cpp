@@ -4,6 +4,7 @@
 
 namespace theme {
 
+// 시스템이 다크 모드인지 (레지스트리 AppsUseLightTheme)
 bool SystemIsDark() {
     DWORD value = 1, size = sizeof(value);
     RegGetValueW(HKEY_CURRENT_USER,
@@ -12,22 +13,26 @@ bool SystemIsDark() {
     return value == 0;
 }
 
+// 설정값(light/dark/system) → 실제 테마
 std::string Effective(const std::string& setting) {
     if (setting == "light") return "light";
     if (setting == "dark") return "dark";
     return SystemIsDark() ? "dark" : "light";
 }
 
+// DWM 다크 타이틀바
 void ApplyDarkTitlebar(HWND hwnd, bool dark) {
     BOOL v = dark ? TRUE : FALSE;
     DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &v, sizeof(v));
 }
 
+// DWM 둥근 모서리 (안티앨리어싱)
 void ApplyRoundCorners(HWND hwnd) {
     DWM_WINDOW_CORNER_PREFERENCE pref = DWMWCP_ROUND;
     DwmSetWindowAttribute(hwnd, DWMWA_WINDOW_CORNER_PREFERENCE, &pref, sizeof(pref));
 }
 
+// DWM 테두리 색 (배경색과 같게 주면 테두리가 안 보인다)
 void SetWindowBorderColor(HWND hwnd, COLORREF color) {
     DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, &color, sizeof(color));
 }
@@ -44,6 +49,7 @@ const char* LegacyNameToHex(const std::string& name) {
     return nullptr;
 }
 
+// "#RRGGBB" 파싱
 bool ParseHex(const std::string& hex, int& r, int& g, int& b) {
     if (hex.size() != 7 || hex[0] != '#') return false;
     auto nib = [](char c) -> int {

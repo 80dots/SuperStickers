@@ -24,6 +24,7 @@ constexpr int kBandDip = 6;
 constexpr int kMinWDip = 280;
 constexpr int kMinHDip = 220;
 
+// 그룹 바탕색 (지정 색이 없으면 테마 기본색)
 COLORREF GroupBaseColor(const GroupData& d, bool /*dark*/) {
     if (!d.color.empty()) return theme::StickerColor(d.color, false);
     // group 기본 배경 — 앱 테마와 무관하게 라이트 --bg 값으로 고정
@@ -31,6 +32,7 @@ COLORREF GroupBaseColor(const GroupData& d, bool /*dark*/) {
 }
 }  // namespace
 
+// 그룹창(배경 창·콘텐츠 창) 윈도우 클래스 등록
 void GroupWindow::RegisterWndClass(HINSTANCE hinst) {
     WNDCLASSEXW wc{sizeof(wc)};
     wc.lpfnWndProc = SBackProc;
@@ -47,6 +49,7 @@ void GroupWindow::RegisterWndClass(HINSTANCE hinst) {
     RegisterClassExW(&wc2);
 }
 
+// 그룹창 생성: 반투명 배경 창 + WebView 콘텐츠 창, 브리지 등록
 GroupWindow* GroupWindow::Create(HINSTANCE hinst, const GroupData& g, bool show, bool activate) {
     auto* self = new GroupWindow();
     self->data = g;
@@ -223,6 +226,7 @@ GroupWindow* GroupWindow::Create(HINSTANCE hinst, const GroupData& g, bool show,
     return self;
 }
 
+// 표시/숨김 (두 창을 함께)
 void GroupWindow::ShowWin(bool show, bool activate) {
     if (show) host_.EnsureCreated();  // 비어 버린 창 복구
     ShowWindow(hwnd_, show ? SW_SHOWNA : SW_HIDE);
@@ -243,6 +247,7 @@ void GroupWindow::ShowWin(bool show, bool activate) {
 
 void GroupWindow::OnThemeChanged() { ApplyAppearance(); }
 
+// 색·투명도·DWM 테두리 적용
 void GroupWindow::ApplyAppearance() {
     if (bgBrush_) DeleteObject(bgBrush_);
     bool dark = App::I().EffectiveTheme() == "dark";
@@ -258,6 +263,7 @@ void GroupWindow::ApplyAppearance() {
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
+// 메모를 끌어다 놓을 때의 하이라이트
 void GroupWindow::SetDropHover(bool on) {
     if (dropHover_ == on) return;
     dropHover_ = on;
@@ -268,6 +274,7 @@ void GroupWindow::SetDropHover(bool on) {
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
+// 항상 위 켜기/끄기
 void GroupWindow::SetTopmost(bool on) {
     data.topmost = on;
     HWND ins = on ? HWND_TOPMOST : HWND_NOTOPMOST;
@@ -277,6 +284,7 @@ void GroupWindow::SetTopmost(bool on) {
     SaveData();
 }
 
+// 그룹 저장 (수정 시각 갱신)
 void GroupWindow::SaveData() {
     data.updatedAt = util::WideToUtf8(util::NowIso8601());
     App::I().store.SaveGroup(data);
@@ -286,6 +294,7 @@ void GroupWindow::Destroy() { DestroyWindow(hwnd_); }
 
 int GroupWindow::BandPx() const { return MulDiv(kBandDip, dpi_, 96); }
 
+// 창의 위치·크기를 data에
 void GroupWindow::StoreGeometryFromWindow() {
     RECT r{};
     GetWindowRect(hwnd_, &r);
@@ -295,6 +304,7 @@ void GroupWindow::StoreGeometryFromWindow() {
     data.h = r.bottom - r.top;
 }
 
+// 콘텐츠 창을 배경 창 위치·크기에 맞춘다
 void GroupWindow::SyncContent() {
     if (!contentHwnd_) return;
     RECT r{};
@@ -305,6 +315,7 @@ void GroupWindow::SyncContent() {
                  SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+// WebView 배치
 void GroupWindow::LayoutWebView() {
     if (!contentHwnd_) return;
     RECT rc{};
@@ -312,6 +323,7 @@ void GroupWindow::LayoutWebView() {
     host_.SetBounds(rc);
 }
 
+// 페이지가 보낸 사각형 목록으로 콘텐츠 창의 region을 만든다 (헤더·카드만 남긴다)
 void GroupWindow::ApplyShape(const json& p) {
     if (!contentHwnd_) return;
     HRGN rgn = CreateRectRgn(0, 0, 0, 0);
@@ -331,6 +343,7 @@ void GroupWindow::ApplyShape(const json& p) {
     SetWindowRgn(contentHwnd_, rgn, TRUE);  // 소유권은 시스템으로 이전됨
 }
 
+// 배경 창 정적 프로시저
 LRESULT CALLBACK GroupWindow::SBackProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     GroupWindow* self;
     if (msg == WM_NCCREATE) {
@@ -344,6 +357,7 @@ LRESULT CALLBACK GroupWindow::SBackProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM l
     return self->BackProc(hwnd, msg, wp, lp);
 }
 
+// 콘텐츠 창 정적 프로시저
 LRESULT CALLBACK GroupWindow::SContentProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     GroupWindow* self;
     if (msg == WM_NCCREATE) {
@@ -356,6 +370,7 @@ LRESULT CALLBACK GroupWindow::SContentProc(HWND hwnd, UINT msg, WPARAM wp, LPARA
     return self->ContentProc(hwnd, msg, wp, lp);
 }
 
+// 배경 창 메시지 처리 (이동·크기·그리기·드롭 하이라이트)
 LRESULT GroupWindow::BackProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_NCCALCSIZE:
@@ -466,6 +481,7 @@ LRESULT GroupWindow::BackProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     return DefWindowProcW(hwnd, msg, wp, lp);
 }
 
+// 콘텐츠 창 메시지 처리
 LRESULT GroupWindow::ContentProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_NCPAINT:

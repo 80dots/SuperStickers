@@ -7,6 +7,7 @@
 
 using json = nlohmann::json;
 
+// 엔드포인트 URL 분해 (host·port·https). localhost는 127.0.0.1로 바꾼다
 AiClient::Url AiClient::ParseEndpoint(const std::string& endpoint) {
     Url u;
     std::wstring w = util::Utf8ToWide(endpoint);
@@ -29,6 +30,7 @@ AiClient::Url AiClient::ParseEndpoint(const std::string& endpoint) {
 
 namespace {
 
+// WinHTTP 핸들 묶음 — 소멸할 때 모두 닫힌다
 struct Session {
     HINTERNET session = nullptr, connect = nullptr, request = nullptr;
     ~Session() {
@@ -53,6 +55,7 @@ void OpenRequest(Session& s, const AiClient::Url& u, const wchar_t* verb,
                                    u.https ? WINHTTP_FLAG_SECURE : 0);
 }
 
+// 응답 본문을 끝까지 읽는다
 std::string ReadAll(HINTERNET request) {
     std::string body;
     DWORD avail = 0;
@@ -67,6 +70,7 @@ std::string ReadAll(HINTERNET request) {
     return body;
 }
 
+// HTTP 상태 코드
 DWORD StatusCode(HINTERNET request) {
     DWORD code = 0, size = sizeof(code);
     WinHttpQueryHeaders(request, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
@@ -142,6 +146,7 @@ bool StreamLines(HINTERNET request, const std::atomic<bool>& aborted,
 
 }  // namespace
 
+// 모델 목록 조회 (Ollama /api/tags 또는 OpenAI /v1/models). 결과는 UI 스레드 콜백
 void AiClient::ListModels(
     const std::string& endpoint, Protocol protocol,
     std::function<void(bool, std::vector<std::string>, std::string)> done) {
@@ -183,6 +188,7 @@ void AiClient::ListModels(
     }).detach();
 }
 
+// 모델이 메모리에 올라와 있는지 조회 (Ollama /api/ps, LM Studio /api/v0/models)
 void AiClient::ModelLoaded(const std::string& endpoint, Protocol protocol,
                            const std::string& model,
                            std::function<void(bool, bool)> done) {
@@ -241,6 +247,7 @@ void AiClient::ModelLoaded(const std::string& endpoint, Protocol protocol,
     }).detach();
 }
 
+// 요청 id에 중단 플래그를 등록하고 돌려준다
 std::shared_ptr<std::atomic<bool>> AiClient::Track(const std::string& requestId) {
     auto aborted = std::make_shared<std::atomic<bool>>(false);
     std::lock_guard<std::mutex> lock(shared_->mutex);
@@ -248,6 +255,7 @@ std::shared_ptr<std::atomic<bool>> AiClient::Track(const std::string& requestId)
     return aborted;
 }
 
+// 채팅 스트리밍 요청 (NDJSON 또는 SSE). 청크·완료는 UI 스레드 콜백
 void AiClient::Chat(const std::string& requestId, const std::string& endpoint,
                     const std::string& model, const json& messages, const ChatOptions& opts,
                     std::function<void(std::string)> onChunk,
@@ -360,6 +368,7 @@ void AiClient::Chat(const std::string& requestId, const std::string& endpoint,
     }).detach();
 }
 
+// Ollama 모델 내려받기 (/api/pull) — 진행률을 스트리밍으로 받는다
 void AiClient::Pull(const std::string& requestId, const std::string& endpoint,
                     const std::string& model,
                     std::function<void(std::string, uint64_t, uint64_t)> onProgress,
@@ -440,12 +449,14 @@ void AiClient::Pull(const std::string& requestId, const std::string& endpoint,
     }).detach();
 }
 
+// 요청 중단 (플래그를 세우면 워커가 다음 읽기에서 접는다)
 void AiClient::Abort(const std::string& requestId) {
     std::lock_guard<std::mutex> lock(shared_->mutex);
     auto it = shared_->active.find(requestId);
     if (it != shared_->active.end()) it->second->store(true);
 }
 
+// 모든 요청 중단 (앱 종료 시)
 void AiClient::AbortAll() {
     std::lock_guard<std::mutex> lock(shared_->mutex);
     for (auto& kv : shared_->active) kv.second->store(true);

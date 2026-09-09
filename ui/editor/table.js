@@ -13,6 +13,7 @@
 const tableTools = (() => {
   let editor = null;
   let onChange = null;
+  // 로케일 문구 (사전에 없으면 폴백)
   const T = (k, fallback) => {
     const v = typeof i18n !== 'undefined' ? i18n.t(k) : k;
     return v === k ? fallback : v;
@@ -34,6 +35,7 @@ const tableTools = (() => {
   const bodyRows = (table) => [...table.tBodies[0].rows];
   const colCount = (table) => table.tHead.rows[0].cells.length;
 
+  // 텍스트 노드에서도 동작하는 closest
   function closest(node, sel) {
     let el = node && node.nodeType === 3 ? node.parentElement : node;
     return el && el.closest ? el.closest(sel) : null;
@@ -49,6 +51,7 @@ const tableTools = (() => {
     return c;
   }
 
+  // cols×rows 표 요소 만들기
   function create(cols = 2, rows = 2) {
     const wrap = document.createElement('div');
     wrap.className = 'mtable-wrap';
@@ -113,6 +116,7 @@ const tableTools = (() => {
     return tr;
   }
 
+  // 본문 행 삭제
   function deleteRows(table, indices) {
     const rows = bodyRows(table);
     // 뒤에서부터 지워야 인덱스가 밀리지 않는다. 본문 행은 최소 하나 남긴다.
@@ -122,6 +126,7 @@ const tableTools = (() => {
     });
   }
 
+  // 열 삽입
   function insertCol(table, at, right = true) {
     // 타이틀 열은 언제나 맨 왼쪽, 통계 열은 언제나 맨 오른쪽에 남아야 한다
     const lo = hasRowHeader(table) ? 1 : 0;
@@ -143,6 +148,7 @@ const tableTools = (() => {
     }
   }
 
+  // 열 삭제
   function deleteCols(table, indices) {
     const statAt = statColIndex(table);
     [...new Set(indices)].sort((a, b) => b - a).forEach((i) => {
@@ -162,6 +168,7 @@ const tableTools = (() => {
     while (cur < n) { insertRow(table, cur - 1, true); cur++; }
     while (cur > n) { bodyRows(table)[cur - 1].remove(); cur--; }
   }
+  // 열 수를 n으로 맞춘다 (손잡이 드래그)
   function setColCount(table, n) {
     n = Math.max(1, n);
     let cur = colCount(table);
@@ -176,6 +183,7 @@ const tableTools = (() => {
     return m ? parseFloat(m[0]) : null;
   };
 
+  // 열의 통계값 계산 (합계·평균·개수 등)
   function computeStat(table, col, fn) {
     const texts = bodyRows(table)
       .map((tr) => (tr.cells[col] ? cellText(tr.cells[col]) : '').trim());
@@ -192,8 +200,10 @@ const tableTools = (() => {
     return '';
   }
 
+  // 통계 행이 있는지
   function hasStats(table) { return !!table.tFoot; }
 
+  // 통계 행 켜기/끄기
   function toggleStats(table) {
     if (table.tFoot) { table.tFoot.remove(); return; }
     const tfoot = table.createTFoot();
@@ -212,6 +222,7 @@ const tableTools = (() => {
     return !!(r && r.cells[0] && r.cells[0].tagName === 'TH');
   }
 
+  // 타이틀 열 켜기/끄기
   function toggleRowHeader(table) {
     const on = hasRowHeader(table);
     bodyRows(table).forEach((tr) => {
@@ -233,6 +244,7 @@ const tableTools = (() => {
   }
   const hasStatCol = (table) => statColIndex(table) >= 0;
 
+  // 통계 열 켜기/끄기
   function toggleStatCol(table) {
     const at = statColIndex(table);
     if (at >= 0) {  // 끄기 — 일반 열 삭제 규칙(통계 열 보호)을 피해 직접 지운다
@@ -276,6 +288,7 @@ const tableTools = (() => {
     return '';
   }
 
+  // 통계 열 값 갱신
   function renderStatCol(table) {
     const at = statColIndex(table);
     if (at < 0) return;
@@ -294,6 +307,7 @@ const tableTools = (() => {
     });
   }
 
+  // 통계 열 함수 순환
   function cycleStatCol(table) {
     const at = statColIndex(table);
     if (at < 0) return;
@@ -307,6 +321,7 @@ const tableTools = (() => {
   // 장식이 아니므로 저장 HTML에 그대로 남는다.
   const hasCaption = (table) => !!table.caption;
 
+  // 표 제목 켜기/끄기
   function toggleCaption(table) {
     if (table.caption) { table.caption.remove(); return; }
     const cap = document.createElement('caption');
@@ -319,6 +334,7 @@ const tableTools = (() => {
   const descOf = (table) => table.parentElement.querySelector(':scope > .mtable-desc');
   const hasDesc = (table) => !!descOf(table);
 
+  // 표 설명 켜기/끄기
   function toggleDesc(table) {
     const cur = descOf(table);
     if (cur) { cur.remove(); return; }
@@ -335,11 +351,13 @@ const tableTools = (() => {
     renderStats(table);
   }
 
+  // 통계 셀 함수 순환 (없음→합계→평균→…)
   function cycleStat(cell) {
     const cur = cell.dataset.fn || 'none';
     cell.dataset.fn = FNS[(FNS.indexOf(cur) + 1) % FNS.length];
   }
 
+  // 통계 행 값 갱신
   function renderStats(table) {
     if (!table.tFoot) return;
     const tr = table.tFoot.rows[0];
@@ -377,6 +395,7 @@ const tableTools = (() => {
     (root || editor).querySelectorAll('.tsel').forEach((c) => c.classList.remove('tsel'));
   }
 
+  // 두 셀 사이 범위 선택
   function selectRange(table, a, b) {
     clearSelection(table);
     const r0 = Math.min(a.row, b.row), r1 = Math.max(a.row, b.row);
@@ -394,11 +413,13 @@ const tableTools = (() => {
   function selectedCells(table) {
     return [...table.querySelectorAll('.tsel')];
   }
+  // 셀의 행·열 번호
   function cellPos(table, cell) {
     const rows = [table.tHead.rows[0], ...bodyRows(table)];
     const r = rows.indexOf(cell.parentElement);
     return { row: r, col: cell.cellIndex };
   }
+  // 선택된 셀이 걸친 본문 행들
   function selectedRows(table) {
     const set = new Set();
     selectedCells(table).forEach((c) => {
@@ -407,6 +428,7 @@ const tableTools = (() => {
     });
     return [...set];
   }
+  // 선택된 셀이 걸친 열들
   function selectedCols(table) {
     return [...new Set(selectedCells(table).map((c) => cellPos(table, c).col))];
   }
@@ -420,6 +442,7 @@ const tableTools = (() => {
     return el;
   }
 
+  // 장식(정렬 버튼·손잡이·통계) 다시 붙이기
   function refresh(table) {
     // 이전 장식을 걷고 다시 붙인다 (행·열 수가 바뀌면 자리도 바뀐다)
     table.parentElement.querySelectorAll('[data-chrome]').forEach((el) => el.remove());
@@ -459,6 +482,7 @@ const tableTools = (() => {
     recompute(table);
   }
 
+  // 모든 표 갱신
   function refreshAll() {
     if (!editor) return;
     tables().forEach(refresh);
@@ -506,6 +530,7 @@ const tableTools = (() => {
     startCellDrag(e, table, cell);
   }
 
+  // 손잡이 드래그로 행·열 수 늘리고 줄이기
   function startGripDrag(e, grip) {
     e.preventDefault();
     const table = tableOf(grip) || grip.parentElement.querySelector('table.mtable');
@@ -563,6 +588,7 @@ const tableTools = (() => {
     if (table) recompute(table);
   }
 
+  // 편집기에 붙이기 (클릭·드래그 처리)
   function init(el, changeCb) {
     editor = el;
     onChange = changeCb;
@@ -580,6 +606,7 @@ const tableTools = (() => {
     return copy.textContent;
   }
 
+  // 표 → 마크다운 문법
   function toMarkdown(table) {
     const line = (cells) => '| ' + cells.map((c) =>
       cellText(c).replace(/\|/g, '\\|').trim() || ' ').join(' | ') + ' |';

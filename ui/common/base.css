@@ -14,9 +14,10 @@
 
 html, body {
   height: 100%;
-  /* Pretendard가 한글·라틴을 모두 담당. 없으면 시스템 서체로 폴백 */
-  font-family: "Pretendard Variable", "Segoe UI Variable", "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
-  font-size: 14px;
+  /* Pretendard가 한글·라틴을 모두 담당. 없으면 시스템 서체로 폴백.
+     설정의 스타일(서체·글자 크기)은 변수로 덮어쓴다 — ui/common/style.js */
+  font-family: var(--memo-font, "Pretendard Variable", "Segoe UI Variable", "Segoe UI", "Malgun Gothic", system-ui, sans-serif);
+  font-size: var(--memo-font-size, 14px);
   line-height: 1.55;
   color: var(--fg);
   -webkit-font-smoothing: antialiased;

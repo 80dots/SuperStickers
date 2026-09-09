@@ -19,10 +19,12 @@ wil::com_ptr<ICoreWebView2Environment> g_env;
 bool g_envCreating = false;
 std::vector<std::function<void(HRESULT)>> g_envWaiters;
 
+// http(s) URL인지
 bool IsHttpUrl(const std::wstring& uri) {
     return uri.rfind(L"http://", 0) == 0 || uri.rfind(L"https://", 0) == 0;
 }
 
+// 확장자 → Content-Type (data.sticker 응답용)
 const wchar_t* MimeForPath(const std::wstring& path) {
     size_t dot = path.find_last_of(L'.');
     std::wstring ext = (dot == std::wstring::npos) ? L"" : path.substr(dot + 1);
@@ -98,6 +100,7 @@ void ServeDataRequest(ICoreWebView2WebResourceRequestedEventArgs* args) {
 
 }  // namespace
 
+// WebView2 환경을 한 번만 만들고 준비되면 콜백
 void WebViewHost::EnsureEnvironment(std::function<void(HRESULT)> done) {
     if (g_env) {
         done(S_OK);
@@ -128,6 +131,7 @@ void WebViewHost::EnsureEnvironment(std::function<void(HRESULT)> done) {
             .Get());
 }
 
+// WebView 생성 요청: 페이지 URL·init JSON·준비 콜백을 보관하고 생성을 시작
 void WebViewHost::Create(HWND hwnd, const std::wstring& url, const json& initJson,
                          std::function<void()> onReady, Options opts) {
     hostHwnd_ = hwnd;
@@ -154,6 +158,7 @@ void WebViewHost::EnsureCreated() {
     }
 }
 
+// 컨트롤러·웹뷰 실제 생성과 설정 (프로세스 실패 복구, CSP, 리소스 서빙, 메시지 브리지)
 void WebViewHost::CreateInternal() {
     if (!g_env || !hostHwnd_) return;
     if (!alive_ || !*alive_) alive_ = std::make_shared<bool>(true);
@@ -389,37 +394,45 @@ void WebViewHost::CreateInternal() {
             .Get());
 }
 
+// 표시 여부 (숨기면 렌더링이 멈춘다)
 void WebViewHost::SetVisible(bool visible) {
     if (controller_) controller_->put_IsVisible(visible ? TRUE : FALSE);
 }
 
+// URL로 이동
 void WebViewHost::Navigate(const std::wstring& url) {
     if (webview_) webview_->Navigate(url.c_str());
 }
 
+// 위치·크기
 void WebViewHost::SetBounds(const RECT& r) {
     if (controller_) controller_->put_Bounds(r);
 }
 
+// 줌 배율
 void WebViewHost::SetZoomFactor(double zoom) {
     if (controller_) controller_->put_ZoomFactor(zoom);
 }
 
+// 페이지에 이벤트 JSON 전달
 void WebViewHost::PostEvent(const std::string& event, const json& data) {
     if (!webview_) return;
     json j = {{"event", event}, {"data", data}};
     webview_->PostWebMessageAsJson(util::Utf8ToWide(j.dump()).c_str());
 }
 
+// 미리 직렬화한 이벤트 전달 (방송 시 창마다 dump()를 피한다)
 void WebViewHost::PostEventRaw(const std::wstring& payload) {
     if (!webview_) return;
     webview_->PostWebMessageAsJson(payload.c_str());
 }
 
+// 포커스를 웹뷰로
 void WebViewHost::Focus() {
     if (controller_) controller_->MoveFocus(COREWEBVIEW2_MOVE_FOCUS_REASON_PROGRAMMATIC);
 }
 
+// 웹뷰 닫기 — 아직 오지 않은 생성 콜백을 무효화한다
 void WebViewHost::Close() {
     if (alive_) *alive_ = false;  // 아직 도착하지 않은 생성·재시도 콜백을 무효화
     if (controller_) {

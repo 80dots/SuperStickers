@@ -3,6 +3,7 @@ const i18n = (() => {
   let dict = {};
   let lang = 'en';
 
+  // 로케일 사전 읽기
   async function load(newLang) {
     lang = newLang;
     try {
@@ -14,6 +15,7 @@ const i18n = (() => {
     document.documentElement.lang = lang;
   }
 
+  // 키 → 문구 (없으면 키 그대로)
   function t(key) {
     return dict[key] !== undefined ? dict[key] : key;
   }

@@ -542,10 +542,57 @@ IPv4 `127.0.0.1`에만 붙는다. 그래서 `localhost`로는 `::1`을 두드렸
   같은 규칙 — `HasActiveOllamaTasks()`면 네이티브 확인 후에만 끝낸다.
 - 내려받을 수 있는 모델 목록은 `ui/common/ollama-models.js`가 단일 출처다(설정 화면의
   콤보와 마법사가 같은 목록을 쓴다).
+- **UX 보조**: 단계 표시기(1─2─3에 짧은 이름), Enter로 '다음', 2단계에서 설치된 모델
+  이름을 누르면 그 모델로 곧장 3단계, 방금 내려받은 모델이 3단계의 기본 선택, 내려받기
+  진행률에 MB. 설정 → Ollama의 '마법사 실행'은 `ensureReady('', {force:true})`로 준비되어
+  있어도 띄운다(설정 창에서는 ownerId가 없으니 이벤트가 설정 창으로 온다).
 - **오류 옆 버튼**: 마법사를 지나쳤는데(예: 확인 직후 Ollama가 죽음) `ai.chat`이 "no model"·
   "connection failed"로 실패하면 `isSetupError()`가 판정해 요약 상자·AI 패널의 오류 옆에
   `wizard.openBtn` 버튼을 붙인다. 이 오류는 5초 자동 소멸을 하지 않는다(누를 시간을 준다).
   버튼은 마법사를 띄우고, 마치면 같은 작업(리뷰 또는 마지막 `runTask`)을 다시 돌린다.
+
+### 메모 링크 (`ui/editor/memolink.js`)
+
+본문 우클릭 → '메모 링크…'가 `stickers.list`로 받은 목록(자기 자신 제외, 최근 수정순)을
+띄우고, 고르면 커서 자리에 넣는다. **저장 형식은 두 가지**: 리치 메모는
+`<a class="memo-link" href="memo:<id>">제목</a>`(본문 HTML 그대로), 마크다운은
+`[제목](memo:<id>)`(미리보기가 `<a href="memo:…">`로 그린다). 클릭은 **문서 단위 위임
+처리기 하나**가 `a[href^="memo:"]`를 캡처 단계에서 잡아 `stickers.show`를 부른다 — 편집기·
+미리보기·번역 보기·AI 출력·그룹 카드 어디에 있어도 같은 길이다(미리보기는 `target=_blank`라
+가로채지 않으면 새 창 탐색이 일어난다). `stickers.show`는 `{shown}`을 돌려주고, 지워진 메모면
+페이지가 토스트로 알린다. 커서 자리는 고르기 창이 포커스를 가져가기 전에 `Range`/
+`selectionStart`로 붙잡아 두었다가 넣을 때 되살린다.
+
+### 이모지 (`ui/editor/emoji.js`, `ui/common/emoji-data.js`)
+
+분류·이름을 든 고정 데이터(유니코드 표준 이모지, emojiall.com의 분류를 따름)를 탭·검색·최근
+사용(localStorage `ss.emoji.recent`)으로 보여 주고 커서 자리에 **글자로** 넣는다(리치는
+텍스트 노드, 마크다운은 `setRangeText`). 그림은 시스템 이모지 글꼴(Segoe UI Emoji)이 그리므로
+이미지 자산이 없다. 창은 고른 뒤에도 열려 있어 여러 개를 이어 넣고, 넣을 때마다 커서 자리를
+그 뒤로 갱신한다.
+
+### 읽어주기 (`src/Tts.*`, 설정 → 읽어주기)
+
+WebView2의 Web Speech API는 **음성 목록이 비어 있다**(실측 `speechSynthesis.getVoices()`가 0개)
+— 그래서 네이티브 **SAPI 5**(`ISpVoice`)로 읽는다. 음성 목록은 예전 'Desktop' 음성
+(`HKLM\...\Speech\Voices`)과 윈도우 설정의 최신 OneCore 음성(`Speech_OneCore\Voices`) 두
+범주를 `ISpObjectTokenCategory`로 열거해 합친다(이름 중복 제거, 한국어 우선 정렬).
+`sphelper.h`는 ATL을 끌어오므로 쓰지 않고 토큰 id → 토큰은 `CLSID_SpObjectToken::SetId`로
+직접 만든다. 읽기는 `SPF_ASYNC | SPF_PURGEBEFORESPEAK | SPF_IS_NOT_XML`(메모의 `<`·`>`가
+태그로 읽히지 않게). 끝났는지는 알림 대신 페이지가 600ms마다 `tts.speaking`으로 묻는다
+(`GetStatus`). 종료(`Quit`) 때 `Stop()`으로 끊는다.
+
+### 스타일 (`ui/common/style.js`, 설정 → 스타일)
+
+`settings.style`(background·font·fontSize)이 단일 출처. 페이지는 init JSON으로 첫 그림부터
+적용하고 `style.changed` 방송으로 갈아입는다. 값은 **CSS 변수로만** 흘린다 —
+`--memo-font`/`--memo-font-size`는 `base.css`의 `html, body`가 읽고(없으면 기본), `--memo-bg-image`는
+`sticker.css`가 `html.has-bg body`에 그린다. 배경 프리셋은 **이 앱을 위해 그린 원본 SVG**
+(`ui/bg/*.svg`, 투명 배경의 잔잔한 패턴이라 메모 색이 비친다 — 외부 이미지의 라이선스 부담을
+피했다)이고, 사용자 파일은 `AppDir\style\bg-<tick>.<ext>`로 복사해 `https://data.sticker/style/…`로
+읽는다(꽉 채우는 사진은 글이 읽히도록 `html.bg-photo`가 메모 색을 반투명으로 한 겹 덮는다).
+서체는 OFL 10종을 WOFF2로 번들(`ui/fonts`, 합계 4MB)하고 **처음 쓸 때만 `@font-face`를 붙인다**.
+그룹 카드는 서체·크기만 따르고 배경은 메모창만이다.
 
 ### AI 프롬프트 편집 (설정 → AI 탭)
 

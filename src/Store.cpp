@@ -13,6 +13,7 @@ using util::Utf8ToWide;
 using util::WideToUtf8;
 using util::WriteFileAtomic;
 
+// 데이터 폴더 준비 (datadir.txt가 가리키는 사용자 지정 폴더 포함)
 void Store::Init() {
     util::EnsureDir(util::GetAppDataDir());
     // datadir.txt가 있으면 그 폴더를 데이터 저장 위치로 사용
@@ -33,6 +34,7 @@ void Store::Init() {
     CleanupLegacyLayout();
 }
 
+// 데이터 폴더 바꾸기 — datadir.txt에 기록 (빈 값이면 기본 폴더로)
 bool Store::SetCustomDataDir(const std::wstring& dir) {
     std::wstring pointer = util::GetAppDataDir() + L"\\datadir.txt";
     if (dir.empty()) {
@@ -46,6 +48,7 @@ bool Store::SetCustomDataDir(const std::wstring& dir) {
     return true;
 }
 
+// 현재 데이터 폴더
 std::wstring Store::AppDir() const {
     return customDir_.empty() ? util::GetAppDataDir() : customDir_;
 }
@@ -54,6 +57,7 @@ std::wstring Store::GroupsDir() const { return AppDir() + L"\\groups"; }
 std::wstring Store::AttachmentsDir() const { return AppDir() + L"\\attachments"; }
 std::wstring Store::TrashDir() const { return AppDir() + L"\\trash"; }
 
+// 바이트 → JSON. 없거나 깨졌으면 null/discarded
 static json ParseOr(const std::optional<std::string>& bytes) {
     if (!bytes) return nullptr;
     return json::parse(*bytes, nullptr, false);  // 예외 대신 discarded 반환
@@ -67,6 +71,7 @@ static bool IsHexColor(const std::string& c) {
     return true;
 }
 
+// 설정 읽기 (파일이 손상됐으면 기본값)
 Settings Store::LoadSettings() {
     // json::value()는 필드 타입이 어긋나면(예: "x": "100") type_error를 던진다.
     // 설정 파일 하나가 손상됐다고 앱이 뜨지 않으면 안 된다 — 기본값으로 연다.
@@ -77,6 +82,7 @@ Settings Store::LoadSettings() {
     }
 }
 
+// 설정 읽기 본체 — 타입 오류는 그대로 던진다
 Settings Store::LoadSettingsUnchecked() {
     Settings s;
     std::wstring path = AppDir() + L"\\settings.json";
@@ -134,6 +140,20 @@ Settings Store::LoadSettingsUnchecked() {
             s.hotkeys.arrangeLeft = h.value("arrangeLeft", s.hotkeys.arrangeLeft);
             s.hotkeys.arrangeRight = h.value("arrangeRight", s.hotkeys.arrangeRight);
         }
+        if (j.contains("tts") && j["tts"].is_object()) {
+            s.tts.voice = j["tts"].value("voice", s.tts.voice);
+            s.tts.rate = j["tts"].value("rate", s.tts.rate);
+            if (s.tts.rate < -10) s.tts.rate = -10;
+            if (s.tts.rate > 10) s.tts.rate = 10;
+        }
+        if (j.contains("style") && j["style"].is_object()) {
+            const json& st = j["style"];
+            s.style.background = st.value("background", s.style.background);
+            s.style.font = st.value("font", s.style.font);
+            s.style.fontSize = st.value("fontSize", s.style.fontSize);
+            if (s.style.fontSize != 0 && (s.style.fontSize < 11 || s.style.fontSize > 24))
+                s.style.fontSize = 0;
+        }
         if (j.contains("magnet") && j["magnet"].is_object()) {
             s.magnetEnabled = j["magnet"].value("enabled", s.magnetEnabled);
             s.magnetGap = j["magnet"].value("gap", s.magnetGap);
@@ -159,6 +179,7 @@ Settings Store::LoadSettingsUnchecked() {
     return s;
 }
 
+// 설정 저장 (원자적 쓰기)
 void Store::SaveSettings(const Settings& s) {
     json j = {
         {"version", 1},
@@ -185,6 +206,11 @@ void Store::SaveSettings(const Settings& s) {
           {"list", s.hotkeys.list},
           {"arrangeLeft", s.hotkeys.arrangeLeft},
           {"arrangeRight", s.hotkeys.arrangeRight}}},
+        {"tts", {{"voice", s.tts.voice}, {"rate", s.tts.rate}}},
+        {"style",
+         {{"background", s.style.background},
+          {"font", s.style.font},
+          {"fontSize", s.style.fontSize}}},
         {"magnet",
          {{"enabled", s.magnetEnabled},
           {"gap", s.magnetGap},
@@ -195,6 +221,7 @@ void Store::SaveSettings(const Settings& s) {
     WriteFileAtomic(AppDir() + L"\\settings.json", j.dump(2));
 }
 
+// 메모 데이터 → JSON
 json Store::ToJson(const StickerData& d) {
     return json{
         {"version", 1},   {"id", d.id},           {"type", d.type},
@@ -244,6 +271,7 @@ static std::wstring SanitizeExt(std::wstring ext) {
     return ext;
 }
 
+// JSON → 메모 데이터 (잘못된 값은 기본값으로)
 StickerData Store::FromJson(const json& j) {
     StickerData d;
     d.id = j.value("id", "");
@@ -305,9 +333,11 @@ StickerData Store::FromJson(const json& j) {
 // 메모 폴더 구조: stickers/<id>/memo.json + Image, Video, PDF, 3D 하위 폴더
 static const wchar_t* kMemoFile = L"\\memo.json";
 
+// 메모 폴더 경로
 std::wstring Store::StickerDir(const std::string& id) const {
     return StickersDir() + L"\\" + Utf8ToWide(id);
 }
+// 휴지통 안 메모 폴더 경로
 std::wstring Store::TrashStickerDir(const std::string& id) const {
     return TrashDir() + L"\\" + Utf8ToWide(id);
 }
@@ -338,10 +368,12 @@ static std::vector<StickerData> LoadStickersFromDir(const std::wstring& dir, boo
     return out;
 }
 
+// 모든 메모 읽기
 std::vector<StickerData> Store::LoadAllStickers(bool* hadErrors) {
     return LoadStickersFromDir(StickersDir(), hadErrors);
 }
 
+// 메모 저장 — .bak을 남기고 원자적으로 쓴다
 void Store::SaveSticker(const StickerData& d) {
     if (d.id.empty()) return;
     std::wstring dir = StickerDir(d.id);
@@ -349,11 +381,13 @@ void Store::SaveSticker(const StickerData& d) {
     WriteFileAtomic(dir + kMemoFile, ToJson(d).dump());
 }
 
+// 메모 폴더 완전 삭제
 void Store::DeleteSticker(const StickerData& d) {
     if (d.id.empty()) return;
     util::RemoveDirRecursive(StickerDir(d.id));
 }
 
+// 메모 폴더를 휴지통으로 옮기고 삭제 시각을 기록
 void Store::MoveStickerToTrash(StickerData d) {
     if (d.id.empty()) return;
     d.deletedAt = WideToUtf8(util::NowIso8601());
@@ -368,10 +402,12 @@ void Store::MoveStickerToTrash(StickerData d) {
     }
 }
 
+// 휴지통 메모 읽기
 std::vector<StickerData> Store::LoadTrash(bool* hadErrors) {
     return LoadStickersFromDir(TrashDir(), hadErrors);
 }
 
+// 휴지통 폴더를 stickers\로 되돌린다
 bool Store::RestoreTrashEntry(const std::string& id) {
     if (id.empty()) return false;
     std::wstring src = TrashStickerDir(id);
@@ -379,11 +415,13 @@ bool Store::RestoreTrashEntry(const std::string& id) {
     return util::MoveDirTo(src, StickerDir(id));
 }
 
+// 휴지통 메모 완전 삭제
 void Store::PurgeTrashSticker(const StickerData& d) {
     if (d.id.empty()) return;
     util::RemoveDirRecursive(TrashStickerDir(d.id));
 }
 
+// 휴지통 비우기, 지운 개수 반환
 int Store::EmptyTrash() {
     int count = 0;
     for (auto& [name, isDir] : util::ListDirEntries(TrashDir())) {
@@ -424,6 +462,7 @@ static int PurgeDirEntries(const std::wstring& dir) {
     return count;
 }
 
+// 메모·휴지통·그룹을 전부 지우고 개수 반환
 int Store::DeleteAllData() {
     int count = 0;
     count += PurgeDirEntries(StickersDir());
@@ -433,6 +472,7 @@ int Store::DeleteAllData() {
     return count;
 }
 
+// 메모 + 휴지통 + 그룹 개수
 int Store::CountAllData() {
     bool err = false;
     int n = (int)LoadAllStickers(&err).size();
@@ -441,6 +481,7 @@ int Store::CountAllData() {
     return n;
 }
 
+// 휴지통 항목 수
 int Store::CountTrash() {
     int count = 0;
     for (auto& [name, isDir] : util::ListDirEntries(TrashDir()))
@@ -496,6 +537,7 @@ std::string Store::ImportAttachment(const std::string& stickerId, const std::wst
     return WideToUtf8(sub + L"/" + file);
 }
 
+// 메모 폴더에서 아무 데도 참조되지 않는 첨부 파일을 정리
 void Store::GarbageCollectMemoFiles(const StickerData& d) {
     if (d.id.empty()) return;
     // 참조 판정은 attachments 목록 + 본문에 등장하는 파일명 (목록 누락 시에도 지워지지 않게)
@@ -521,6 +563,7 @@ void Store::GarbageCollectMemoFiles(const StickerData& d) {
     }
 }
 
+// 구버전 저장 구조(단일 json·공용 attachments)를 정리
 void Store::CleanupLegacyLayout() {
     // 구버전 레이아웃: stickers\<id>.json / trash\<id>.json / 공용 attachments 폴더
     for (auto dir : {StickersDir(), TrashDir()}) {
@@ -543,6 +586,7 @@ static std::wstring TempWorkDir() {
     return dir;
 }
 
+// 메모 폴더를 zip 하나로 내보내기
 bool Store::ExportSticker(const std::string& id, const std::wstring& destFile) {
     std::wstring src = StickerDir(id);
     if (GetFileAttributesW(src.c_str()) == INVALID_FILE_ATTRIBUTES) return false;
@@ -569,6 +613,7 @@ bool Store::ExportSticker(const std::string& id, const std::wstring& destFile) {
     return ok;
 }
 
+// zip에서 메모 가져오기 (새 id 부여). 실패한 단계는 err로
 StickerData Store::ImportSticker(const std::wstring& srcFile, std::string* err) {
     auto fail = [err](const char* stage) { if (err) *err = stage; };
     StickerData d;
@@ -644,6 +689,7 @@ StickerData Store::ImportSticker(const std::wstring& srcFile, std::string* err) 
     return d;
 }
 
+// 그룹 데이터 → JSON
 json Store::GroupToJson(const GroupData& g) {
     return json{
         {"version", 1}, {"id", g.id},     {"title", g.title},   {"layout", g.layout},
@@ -656,6 +702,7 @@ json Store::GroupToJson(const GroupData& g) {
     };
 }
 
+// JSON → 그룹 데이터
 GroupData Store::GroupFromJson(const json& j) {
     GroupData g;
     g.id = j.value("id", "");
@@ -685,6 +732,7 @@ GroupData Store::GroupFromJson(const json& j) {
     return g;
 }
 
+// 모든 그룹 읽기
 std::vector<GroupData> Store::LoadAllGroups() {
     std::vector<GroupData> out;
     WIN32_FIND_DATAW fd{};
@@ -709,10 +757,12 @@ std::vector<GroupData> Store::LoadAllGroups() {
     return out;
 }
 
+// 그룹 저장
 void Store::SaveGroup(const GroupData& g) {
     WriteFileAtomic(GroupsDir() + L"\\" + Utf8ToWide(g.id) + L".json", GroupToJson(g).dump());
 }
 
+// 그룹 파일 삭제
 void Store::DeleteGroup(const std::string& id) {
     std::wstring base = GroupsDir() + L"\\" + Utf8ToWide(id) + L".json";
     DeleteFileW(base.c_str());

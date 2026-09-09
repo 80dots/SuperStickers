@@ -5,6 +5,25 @@ body {
   flex-direction: column;
   overflow: hidden;
 }
+/* 배경 이미지(설정 → 스타일): 메모 색 위에 얹는다. 프리셋은 투명 패턴이라 색이 비친다.
+   사용자 이미지는 꽉 채우고, 글이 읽히도록 메모 색을 살짝 덮어 준다. */
+html.has-bg body {
+  background-image: var(--memo-bg-image);
+  background-color: var(--note-bg);
+  background-size: cover;
+  background-position: center;
+  background-repeat: repeat;
+}
+html.has-bg.bg-photo body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: var(--note-bg);
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 0;
+}
+html.has-bg.bg-photo body > * { position: relative; z-index: 1; }
 
 .hidden { display: none !important; }
 
@@ -1382,93 +1401,6 @@ th[data-sort] .mtable-sort { opacity: 1; color: var(--accent); }
   opacity: 0.75;
 }
 
-/* ---------- AI 설정 마법사 ---------- */
-/* 메모창 안에 뜨는 모달. 창이 작을 수 있으므로 본문만 스크롤한다. */
-.wiz-back {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px;
-  background: rgba(0, 0, 0, 0.42);
-}
-.wiz-box {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-  max-width: 460px;
-  max-height: 100%;
-  border-radius: 12px;
-  background: var(--panel-bg, #fff);
-  color: var(--fg, #222);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-  overflow: hidden;
-}
-.wiz-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border, #e2e2e2);
-}
-.wiz-title { flex: 1; font-size: 14px; font-weight: 600; }
-.wiz-step { font-size: 12px; color: var(--muted, #777); }
-.wiz-close {
-  width: 26px; height: 26px;
-  border: none; border-radius: 6px;
-  background: transparent; color: var(--muted, #777);
-  font-size: 13px; cursor: pointer;
-}
-.wiz-close:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); }
-.wiz-body { flex: 1; overflow-y: auto; padding: 14px; }
-.wiz-h { margin: 0 0 6px; font-size: 13px; font-weight: 600; }
-.wiz-desc { margin: 0 0 10px; font-size: 12px; line-height: 1.55; color: var(--muted, #777); }
-.wiz-status { margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
-.wiz-actions { display: flex; gap: 8px; margin-bottom: 10px; }
-.wiz-prog { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-.wiz-prog progress { flex: 1; height: 8px; }
-.wiz-pct { font-size: 12px; color: var(--muted, #777); min-width: 34px; }
-.wiz-list { display: flex; flex-direction: column; gap: 4px; }
-.wiz-item {
-  display: flex; align-items: flex-start; gap: 9px;
-  padding: 8px; border-radius: 8px; cursor: pointer;
-}
-.wiz-item:hover { background: var(--hover, rgba(0, 0, 0, 0.05)); }
-.wiz-item input { margin-top: 2px; }
-.wiz-item-main { flex: 1; min-width: 0; }
-.wiz-item-name { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-.wiz-item-sub { font-size: 11px; color: var(--muted, #777); }
-.wiz-tag {
-  padding: 1px 6px; border-radius: 999px;
-  background: var(--hover, rgba(0, 0, 0, 0.08));
-  font-size: 10px; color: var(--muted, #777);
-}
-.wiz-tag.ok { background: rgba(45, 150, 90, 0.16); color: #2d965a; }
-.wiz-foot {
-  display: flex; justify-content: flex-end; gap: 8px;
-  padding: 11px 14px; border-top: 1px solid var(--border, #e2e2e2);
-}
-.wiz-btn {
-  padding: 7px 14px;
-  border: 1px solid var(--border-strong, #c9c9c9);
-  border-radius: 7px;
-  background: transparent; color: inherit;
-  font-size: 12px; cursor: pointer;
-}
-.wiz-btn:hover:not(:disabled) { background: var(--hover, rgba(0, 0, 0, 0.06)); }
-.wiz-btn:disabled { opacity: 0.42; cursor: default; }
-.wiz-btn.primary {
-  border-color: transparent;
-  background: var(--accent, #3b7ddd);
-  color: var(--accent-fg, #fff);
-}
-.wiz-btn.danger { border-color: transparent; background: #d9534f; color: #fff; }
-.wiz-ask { padding: 12px 14px; border-top: 1px solid var(--border, #e2e2e2); }
-.wiz-ask-text { margin: 0 0 10px; font-size: 12px; line-height: 1.5; }
-.wiz-ask-row { display: flex; justify-content: flex-end; gap: 8px; }
-
 /* ---------- 최소화 ---------- */
 /* 창은 네이티브가 타이틀바 높이로 줄인다. 페이지는 타이틀바만 남기고, 자동 숨김이
    타이틀바를 지우지 못하게 막는다 (제목 한 줄이 곧 이 창의 전부다). */
@@ -1489,3 +1421,110 @@ html.minimized #toolbar { display: none !important; }
   cursor: pointer;
 }
 .wiz-inline:hover { background: var(--accent, #3b7ddd); color: var(--accent-fg, #fff); }
+
+/* ---------- 메모 링크 ---------- */
+a.memo-link, .md-body a[href^="memo:"] {
+  display: inline-block;
+  padding: 0 6px 0 4px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--accent, #3b7ddd) 14%, transparent);
+  color: var(--accent, #3b7ddd);
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+a.memo-link::before, .md-body a[href^="memo:"]::before { content: "\1F4DD\00A0"; font-size: 0.9em; }
+a.memo-link:hover, .md-body a[href^="memo:"]:hover {
+  background: color-mix(in srgb, var(--accent, #3b7ddd) 26%, transparent);
+}
+
+/* 링크할 메모 고르기 */
+.ml-back {
+  position: fixed; inset: 0; z-index: 61;
+  display: flex; align-items: center; justify-content: center; padding: 10px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.ml-box {
+  display: flex; flex-direction: column;
+  width: 100%; max-width: 380px; max-height: 100%;
+  border-radius: 12px; overflow: hidden;
+  background: var(--panel-bg, #fff); color: var(--fg, #222);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.ml-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
+.ml-title { flex: 1; font-size: 13px; font-weight: 600; }
+.ml-close { width: 24px; height: 24px; border: none; border-radius: 6px; background: transparent;
+            color: var(--muted, #777); cursor: pointer; }
+.ml-close:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); }
+.ml-filter {
+  margin: 0 12px 8px; padding: 6px 9px;
+  border: 1px solid var(--border-strong, #c9c9c9); border-radius: 7px;
+  background: var(--panel-bg, #fff); color: inherit; font-size: 12px;
+}
+.ml-filter:focus { outline: none; border-color: var(--accent, #3b7ddd); }
+.ml-list { flex: 1; overflow-y: auto; padding: 0 6px 8px; display: flex; flex-direction: column; }
+.ml-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 8px; border: none; border-radius: 7px;
+  background: transparent; color: inherit; font-size: 12px; text-align: left; cursor: pointer;
+}
+.ml-item:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); }
+.ml-badge { flex: none; min-width: 30px; font-size: 10px; color: var(--muted, #777); }
+.ml-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ml-empty { padding: 14px; font-size: 12px; color: var(--muted, #777); text-align: center; }
+.ml-toast {
+  position: fixed; left: 50%; bottom: 46px; transform: translateX(-50%) translateY(8px);
+  z-index: 62; padding: 7px 12px; border-radius: 8px;
+  background: rgba(30, 30, 30, 0.92); color: #fff; font-size: 12px;
+  opacity: 0; pointer-events: none; transition: opacity 0.16s ease, transform 0.16s ease;
+}
+.ml-toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+/* ---------- 이모지 고르기 ---------- */
+.em-back {
+  position: fixed; inset: 0; z-index: 61;
+  display: flex; align-items: center; justify-content: center; padding: 10px;
+  background: rgba(0, 0, 0, 0.25);
+}
+.em-box {
+  display: flex; flex-direction: column;
+  width: 100%; max-width: 360px; height: min(420px, 100%);
+  border-radius: 12px; overflow: hidden;
+  background: var(--panel-bg, #fff); color: var(--fg, #222);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.em-head { display: flex; align-items: center; gap: 6px; padding: 8px 8px 4px; }
+.em-search {
+  flex: 1; padding: 6px 9px;
+  border: 1px solid var(--border-strong, #c9c9c9); border-radius: 7px;
+  background: var(--panel-bg, #fff); color: inherit; font-size: 12px;
+}
+.em-search:focus { outline: none; border-color: var(--accent, #3b7ddd); }
+.em-close { width: 24px; height: 24px; border: none; border-radius: 6px; background: transparent;
+            color: var(--muted, #777); cursor: pointer; }
+.em-close:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); }
+.em-tabs { display: flex; gap: 2px; padding: 0 8px 4px; overflow-x: auto; }
+.em-tab {
+  flex: none; width: 30px; height: 28px; border: none; border-radius: 6px;
+  background: transparent; font-size: 16px; cursor: pointer; opacity: 0.6;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+}
+.em-tab:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); opacity: 1; }
+.em-tab.on { background: color-mix(in srgb, var(--accent, #3b7ddd) 16%, transparent); opacity: 1; }
+.em-grid {
+  flex: 1; overflow-y: auto; padding: 4px 8px;
+  display: grid; grid-template-columns: repeat(auto-fill, 34px); gap: 2px; align-content: start;
+}
+.em-item {
+  width: 34px; height: 34px; border: none; border-radius: 6px; background: transparent;
+  font-size: 20px; line-height: 1; cursor: pointer;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+}
+.em-item:hover { background: var(--hover, rgba(0, 0, 0, 0.08)); transform: scale(1.15); }
+.em-empty { grid-column: 1 / -1; padding: 16px; font-size: 12px; color: var(--muted, #777); text-align: center; }
+.em-foot { padding: 4px 10px 8px; min-height: 22px; font-size: 11px; color: var(--muted, #777);
+           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

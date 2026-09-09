@@ -19,12 +19,14 @@ const aiWizard = (() => {
   const handlers = {};               // 지금 단계가 붙여 둔 이벤트 처리기
 
   const t = (k) => i18n.t(k);
+  // 요소 만들기
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
     if (cls) e.className = cls;
     if (text != null) e.textContent = text;
     return e;
   };
+  // 버튼 만들기
   const btn = (label, cls, fn) => {
     const b = el('button', 'wiz-btn' + (cls ? ' ' + cls : ''), label);
     b.addEventListener('click', fn);
@@ -92,6 +94,15 @@ const aiWizard = (() => {
     head.appendChild(badge);
     head.appendChild(close);
 
+    // 단계 표시기: 1 ─ 2 ─ 3 에 짧은 이름을 달아 어디쯤인지 보여 준다
+    const steps = el('div', 'wiz-steps');
+    for (let i = 1; i <= STEPS; i++) {
+      const s = el('div', 'wiz-stepdot');
+      s.appendChild(el('span', 'wiz-stepnum', String(i)));
+      s.appendChild(el('span', 'wiz-stepname', t('wizard.stepName' + i)));
+      steps.appendChild(s);
+    }
+
     const body = el('div', 'wiz-body');
     const foot = el('div', 'wiz-foot');
     const back = btn(t('wizard.prev'), '', () => { if (step > 1) { step--; render(); } });
@@ -107,6 +118,7 @@ const aiWizard = (() => {
     ask.appendChild(askRow);
 
     box.appendChild(head);
+    box.appendChild(steps);
     box.appendChild(body);
     box.appendChild(foot);
     box.appendChild(ask);
@@ -116,14 +128,22 @@ const aiWizard = (() => {
     // 배경 클릭도 '닫기'로 본다 (바로 닫지 않고 물어본다)
     root.addEventListener('mousedown', (e) => { if (e.target === root) requestClose(); });
     document.addEventListener('keydown', (e) => {
-      if (e.key !== 'Escape' || !root || root.classList.contains('hidden')) return;
-      e.preventDefault();
-      e.stopPropagation();
-      requestClose();
+      if (!root || root.classList.contains('hidden')) return;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        requestClose();
+      } else if (e.key === 'Enter' && !busy && root._ask.classList.contains('hidden') &&
+                 !root._next.disabled) {
+        e.preventDefault();
+        e.stopPropagation();
+        onNext();
+      }
     }, true);
 
     Object.assign(root, { _badge: badge, _body: body, _back: back, _next: next,
-                          _foot: foot, _ask: ask, _askText: askText, _askRow: askRow });
+                          _foot: foot, _ask: ask, _askText: askText, _askRow: askRow,
+                          _steps: steps });
   }
 
   // ---------- 닫기 확인 ----------
@@ -145,6 +165,7 @@ const aiWizard = (() => {
     root._foot.classList.add('hidden');
   }
 
+  // 마법사 끝내기 — 결과를 ensureReady에 돌려준다
   function finish(ok) {
     busy = null;
     pullId = null;
@@ -166,6 +187,7 @@ const aiWizard = (() => {
     root._next.disabled = !enabled;
   }
 
+  // 진행률 막대 요소
   function progressBox(parent) {
     const wrap = el('div', 'wiz-prog hidden');
     const bar = el('progress');
@@ -178,8 +200,13 @@ const aiWizard = (() => {
     return { wrap, bar, pct };
   }
 
+  // 현재 단계 그리기
   function render() {
     root._badge.textContent = t('wizard.stepOf').replace('{n}', step).replace('{total}', STEPS);
+    [...root._steps.children].forEach((d, i) => {
+      d.classList.toggle('done', i + 1 < step);
+      d.classList.toggle('now', i + 1 === step);
+    });
     root._back.disabled = step === 1 || !!busy;
     root._body.innerHTML = '';
     delete handlers['ollama.installProgress'];
@@ -191,6 +218,7 @@ const aiWizard = (() => {
     else renderStep3();
   }
 
+  // 다음 단계 (마지막이면 저장하고 마침)
   function onNext() {
     if (step < STEPS) { step++; render(); return; }
     // 3단계의 '완료' — 고른 모델을 저장하고 마친다
@@ -212,6 +240,7 @@ const aiWizard = (() => {
     const prog = progressBox(b);
     setNext(t('wizard.next'), false);
 
+    // Ollama 설치 시작
     const startInstall = () => {
       busy = 'install';
       actions.innerHTML = '';
@@ -246,6 +275,7 @@ const aiWizard = (() => {
       await check();
     };
 
+    // Ollama 상태 확인 (미설치 / 무응답 / 준비됨)
     async function check() {
       status.textContent = t('wizard.checking');
       actions.innerHTML = '';
@@ -283,8 +313,16 @@ const aiWizard = (() => {
     const status = el('p', 'wiz-status', '');
     b.appendChild(status);
     const showHave = () => {
-      status.textContent = models.length ? `${t('wizard.s2Have')}: ${models.join(', ')}`
-                                         : t('wizard.s2None');
+      status.innerHTML = '';
+      if (!models.length) { status.textContent = t('wizard.s2None'); return; }
+      status.appendChild(document.createTextNode(t('wizard.s2Have') + ': '));
+      models.forEach((m) => {
+        // 설치된 모델 이름을 누르면 그것을 쓰기로 하고 곧바로 3단계로 간다
+        const chip = el('button', 'wiz-chip', m);
+        chip.addEventListener('click', () => { chosen = m; step = 3; render(); });
+        status.appendChild(chip);
+      });
+      status.appendChild(el('span', 'wiz-hint', ' ' + t('wizard.s2HaveHint')));
     };
     showHave();
 
@@ -337,8 +375,12 @@ const aiWizard = (() => {
         const p = Math.round((d.completed / d.total) * 100);
         prog.bar.value = p;
         prog.pct.textContent = p + '%';
+        const mb = (n) => (n / 1048576).toFixed(0);
+        status.textContent =
+          `${t('wizard.s2Downloading')} — ${pick} · ${mb(d.completed)} / ${mb(d.total)} MB`;
+      } else {
+        status.textContent = `${t('wizard.s2Downloading')} — ${pick} (${d.status || ''})`;
       }
-      status.textContent = `${t('wizard.s2Downloading')} — ${pick} (${d.status || ''})`;
     };
     handlers['ollama.pullDone'] = async (d) => {
       if (d.requestId !== pullId) return;
@@ -350,6 +392,11 @@ const aiWizard = (() => {
       root._back.disabled = false;
       const r = await listModels();             // 실제로 들어왔는지 다시 확인한다
       if (r.ok) models = r.models;
+      if (d.ok) {
+        // 방금 받은 모델이 3단계의 기본 선택이 된다 (같은 이름이 ':latest'로 들어오기도 한다)
+        chosen = models.find((m) => m === pick || m === pick + ':latest' ||
+                                    m.split(':')[0] === pick.split(':')[0]) || chosen;
+      }
       if (d.ok || aborted) showHave();
       else status.textContent = `${t('wizard.s2Failed')}: ${d.error || ''}`;
       setNext(t('wizard.next'), models.length > 0);
@@ -379,7 +426,8 @@ const aiWizard = (() => {
       const info = el('div', 'wiz-item-main');
       info.appendChild(el('div', 'wiz-item-name', name));
       const known = ollamaModels.find(name);
-      if (known) info.appendChild(el('div', 'wiz-item-sub', known.size));
+      if (known) info.appendChild(el('div', 'wiz-item-sub',
+                                     `${known.size} · ${t('wizard.note.' + known.note)}`));
       row.appendChild(info);
       list.appendChild(row);
     });
@@ -390,7 +438,7 @@ const aiWizard = (() => {
   // ---------- 공개 API ----------
 
   // AI를 쓸 수 있으면 곧바로 true. 아니면 마법사를 띄우고, 다 마치면 true, 닫으면 false.
-  async function ensureReady(stickerId) {
+  async function ensureReady(stickerId, opts) {
     if (resolveRun) return false;   // 이미 떠 있다 — 겹쳐 띄우지 않는다
     ownerId = stickerId || '';
     let info;
@@ -399,7 +447,9 @@ const aiWizard = (() => {
     } catch {
       return true;  // 상태를 못 읽으면 막지 않는다 — 기존 오류 안내에 맡긴다
     }
-    if (info.ready) return true;
+    const force = !!(opts && opts.force);   // 설정에서 부를 때: 준비되어 있어도 띄운다
+    if (info.ready && !force) return true;
+    if (info.ready) info = { ready: false, from: 1, models: [] };
     if (!root) build();
     models = info.models || [];
     chosen = '';

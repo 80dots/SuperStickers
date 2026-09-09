@@ -32,6 +32,7 @@ const viewer3d = (() => {
     { id: 'quarry_01_1k.hdr', label: 'Quarry' },
   ];
 
+  // 확장자 → three.js 로더
   function loaderFor(url) {
     const ext = (url.split('.').pop() || '').toLowerCase();
     if (ext === 'glb' || ext === 'gltf') return 'gltf';
@@ -40,6 +41,7 @@ const viewer3d = (() => {
     return null;
   }
 
+  // Base64 → ArrayBuffer
   function base64ToBuffer(b64) {
     const bin = atob(b64);
     const buf = new Uint8Array(bin.length);
@@ -268,6 +270,7 @@ const viewer3d = (() => {
       let envRT = null;
       const envCache = new Map();
 
+      // 환경맵(HDRI) 로드 (캐시)
       async function loadEnv(id) {
         if (envCache.has(id)) return envCache.get(id);
         const tex = await new Promise((res, rej) =>
@@ -279,6 +282,7 @@ const viewer3d = (() => {
         return rt;
       }
 
+      // 렌더 모드(조명·IBL) 적용
       async function applyMode(mode, iblId) {
         el.dataset.mode = mode;
         shadow.querySelectorAll('.seg.mode button').forEach((b) =>
@@ -375,6 +379,7 @@ const viewer3d = (() => {
         cv.addEventListener('pointercancel', end);
       })();
 
+      // 캔버스 크기 맞추기
       function resize() {
         const w = wrap.clientWidth, h = wrap.clientHeight;
         if (w === 0 || h === 0) return;
@@ -388,6 +393,7 @@ const viewer3d = (() => {
       resize();
 
       let raf = 0;
+      // 렌더 루프 (요소가 떨어지면 정리)
       function loop() {
         if (!el.isConnected) {
           // 키보드 삭제(Backspace·Ctrl+X)나 본문 교체로 떨어져 나갔다 — 휴지통 버튼을 거치지
@@ -411,6 +417,7 @@ const viewer3d = (() => {
       // 그룹에 넣으면 창이 즉시 파괴되므로, 렌더링 중에 미리 캡처해 메모에 저장해 둔다.
       let thumbTimer = null;
       let capturing = false;
+      // 썸네일 캡처 (저장용)
       async function captureThumb() {
         if (capturing) return;
         capturing = true;
@@ -436,6 +443,7 @@ const viewer3d = (() => {
           capturing = false;
         }
       }
+      // 썸네일 캡처 예약
       function scheduleThumb(delay) {
         clearTimeout(thumbTimer);
         thumbTimer = setTimeout(captureThumb, delay);
