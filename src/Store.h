@@ -50,6 +50,15 @@ struct Settings {
     // 자동 숨김이 켜져 있을 때만 의미 있음. true면 창을 클릭해야 UI가 나타나고,
     // false면 마우스를 올리기만 해도 나타난다.
     bool uiRevealOnClick = true;
+    // 전역 단축키. 다른 앱을 쓰는 중에도 동작한다. 빈 문자열이면 그 항목은 쓰지 않는다.
+    // 형식은 "Ctrl+Shift+S"처럼 수정자와 키를 +로 이은 문자열.
+    struct Hotkeys {
+        bool enabled = true;
+        std::string toggleAll = "Ctrl+Shift+S";  // 메모 모두 보이기 / 감추기
+        std::string newMemo = "Ctrl+Shift+N";    // 새 메모
+        std::string list = "Ctrl+Shift+L";       // 메모 목록
+    };
+    Hotkeys hotkeys;
     bool magnetEnabled = true;     // 메모창끼리 자석처럼 붙고 가장자리가 정렬됨
     int magnetGap = 10;            // 자석으로 붙을 때 유지할 간격 (논리 px, UI 배율 적용)
     // 자석이 당기기 시작하는 거리. "high"면 멀리서도 붙는다. "low" | "medium" | "high"

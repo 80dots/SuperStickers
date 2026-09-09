@@ -104,6 +104,17 @@ public:
     // 해상도/모니터 변경 시 모든 창을 작업 영역 안으로 보정
     void ClampAllWindowsToScreen();
 
+    // ---- 전역 단축키 ----
+    // 설정이 바뀔 때마다 전부 풀고 다시 건다. 다른 앱이 이미 잡고 있는 조합은 등록에
+    // 실패하는데, 설정 화면이 그 사실을 알려 줘야 하므로 실패한 항목을 기억해 둔다.
+    void RegisterHotkeys();
+    void UnregisterHotkeys();
+    void OnHotkey(int id);
+    // 감춰진 메모가 있으면 모두 꺼내 맨 앞으로, 이미 다 보이는데 다른 앱에 가려져 있으면
+    // 맨 앞으로만, 우리 창이 이미 앞이면 모두 감춘다.
+    void ToggleShowAllFront();
+    const std::set<std::string>& FailedHotkeys() const { return failedHotkeys_; }
+
     // 진행 중인 Ollama 요청을 소유 창(스티커 id) 기준으로 중단
     // — 스티커 삭제/창 파괴 시 낭비되는 생성 요청을 취소
     void AbortOllamaByOwner(const std::string& ownerId);
@@ -180,6 +191,8 @@ private:
     std::atomic<bool> installAbort_{false};       // 설치 다운로드 중단 플래그
     std::set<std::string> activePulls_;           // 진행 중인 모델 다운로드 requestId
     std::set<std::string> firedAlarms_;           // 이번 실행에서 이미 띄운 알람 (id@시각)
+    std::set<std::string> failedHotkeys_;         // 등록에 실패한 단축키 ("toggleAll" 등)
+    DWORD lastRaiseTick_ = 0;                     // 보기 단축키로 마지막에 앞으로 올린 시각
     UINT_PTR nextTimerId_ = 100;
     UINT taskbarCreatedMsg_ = 0;
     bool quitting_ = false;

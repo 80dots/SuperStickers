@@ -721,6 +721,18 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
   - **해제 경로**: 선택 밖 메모창 평범한 클릭 / 그룹·설정 창의 Ctrl 없는 클릭
     (`selection.clear`) / 다른 앱·바탕화면으로 포커스 이동(`WM_ACTIVATEAPP` wParam=FALSE).
 
+- **전역 단축키** (`settings.hotkeys`, `App::RegisterHotkeys`): 숨김 앱 창(`hwnd_`,
+  클래스 `SuperStickerApp`)에 `RegisterHotKey`로 걸고 `WM_HOTKEY`에서 처리한다. 설정
+  문자열("Ctrl+Shift+S")은 `ParseHotkey`가 수정자 비트와 가상 키로 옮기며, **수정자 없는
+  단일 키는 거부한다**(전역으로 잡으면 다른 앱의 타자를 먹는다). 항상 `MOD_NOREPEAT`를
+  붙인다 — 없으면 키를 누르고 있는 동안 창이 깜빡인다. 설정이 바뀌면 전부 풀고 다시 걸고,
+  실패한 항목 이름을 `failedHotkeys_`에 남겨 `app.getState`와 `hotkeys.changed` 이벤트로
+  설정 화면에 알린다(다른 프로그램이 이미 쓰는 조합, OS 예약 조합 `Win+L` 등).
+  - **보이기/감추기 규칙** (`ToggleShowAllFront`): 감춰진 메모가 하나라도 있으면 모두
+    보이고 맨 앞으로 / 전부 보이지만 전경이 우리 프로세스가 아니면 맨 앞으로만 /
+    전경이 우리 것이면 모두 감춘다. **함정**: `SetForegroundWindow`는 다른 앱이 방금
+    입력을 받았으면 거부될 수 있고, 그러면 아무리 눌러도 감춰지지 않는다. 그래서 앞으로
+    올린 시각(`lastRaiseTick_`)을 남겨 1.5초 안의 재차 누름은 감추기로 본다.
 - **창 자석 정렬** (`settings.magnet.enabled` 기본 On, `.gap` 기본 10 논리 px): 메모창을
   드래그해 다른 메모창 근처로 가져가면 정해진 간격으로 붙고 가장자리가 맞춰진다.
   `WM_MOVING`이 준 제안 사각형을 `App::SnapStickerRect`가 보정한 뒤 TRUE를 반환하는

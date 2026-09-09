@@ -210,6 +210,36 @@ select:focus, input[type="text"]:focus {
 /* 상위 옵션에 딸린 하위 행 — 들여써서 종속 관계를 보여준다 */
 .row.sub { margin-left: 22px; }
 
+/* 단축키: 칸을 누르면 키 입력을 기다리는 상태가 된다 */
+.row.hk > label { width: 170px; }
+.hk-key {
+  min-width: 160px;
+  padding: 7px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-sm);
+  background: var(--panel-bg);
+  font-size: 13px;
+  text-align: center;
+}
+.hk-key:hover:not(:disabled) { border-color: var(--accent); }
+.hk-key.capturing {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  color: var(--muted);
+}
+.hk-key.none { color: var(--muted); }
+.hk-clear {
+  margin-left: 8px;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 12px;
+  color: var(--muted);
+}
+.hk-clear:hover:not(:disabled) { background: var(--hover); }
+.hk-key:disabled, .hk-clear:disabled { opacity: 0.45; cursor: default; }
+.hk-warn { margin: 4px 0 0; color: #d9534f; }
+
 /* 상위 옵션이 꺼져 있어 조작할 수 없는 행 */
 .row.disabled { opacity: 0.45; }
 .row.disabled input { cursor: default; }

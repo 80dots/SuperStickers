@@ -577,6 +577,7 @@ SOFTWARE.`;
     $('#revealClickCheck').checked = s.uiRevealOnClick !== false;  // 기본값 On
     $('#revealClickCheck').disabled = !$('#autoHideCheck').checked;
     $('#revealClickRow').classList.toggle('disabled', !$('#autoHideCheck').checked);
+    applyHotkeyUi();
     const mg = s.magnet || {};
     $('#magnetCheck').checked = mg.enabled !== false;      // 기본값 On
     $('#magnetGapSelect').value = String(mg.gap == null ? 10 : mg.gap);
@@ -678,6 +679,91 @@ SOFTWARE.`;
     bridge.call('settings.set', { uiRevealOnClick: e.target.checked }).catch(console.error);
   });
 
+  // ---------- 단축키 ----------
+  // 칸을 누르면 '키를 누르세요' 상태가 되고, 다음에 누른 조합을 그대로 저장한다.
+  // 수정자(Ctrl/Shift/Alt/Win) 없이 누른 키는 다른 앱의 타자를 먹으므로 받지 않는다.
+  const HK_FIELDS = { toggleAll: 'ToggleAll', newMemo: 'NewMemo', list: 'List' };
+  const HK_NAMED = {
+    ' ': 'Space', Escape: 'Esc', ArrowLeft: 'Left', ArrowRight: 'Right',
+    ArrowUp: 'Up', ArrowDown: 'Down',
+  };
+  const HK_OK = ['Space', 'Insert', 'Delete', 'Home', 'End', 'PageUp', 'PageDown',
+                 'Left', 'Right', 'Up', 'Down', 'Tab', 'Enter', 'Esc'];
+  let hkCapturing = null;  // 지금 키를 기다리는 항목 이름
+
+  function applyHotkeyUi() {
+    const hk = state.settings.hotkeys || {};
+    const on = hk.enabled !== false;  // 기본값 On
+    $('#hotkeyEnabledCheck').checked = on;
+    for (const [name, id] of Object.entries(HK_FIELDS)) {
+      const btn = $('#hk' + id);
+      if (!btn) continue;
+      const capturing = hkCapturing === name;
+      btn.textContent = capturing ? i18n.t('settings.hotkeyPress')
+        : (hk[name] || i18n.t('settings.hotkeyNone'));
+      btn.classList.toggle('capturing', capturing);
+      btn.classList.toggle('none', !capturing && !hk[name]);
+      btn.disabled = !on;
+      $('#hkClear' + id).disabled = !on || !hk[name];
+      $('#hkRow' + id).classList.toggle('disabled', !on);
+    }
+    // 다른 프로그램이 이미 잡고 있는 조합은 등록에 실패한다 - 그대로 알려 준다
+    const failed = (hk.failed || []).map((n) => i18n.t('settings.hotkey' + (HK_FIELDS[n] || n)));
+    const warn = $('#hkWarn');
+    warn.hidden = !on || failed.length === 0;
+    warn.textContent = i18n.t('settings.hotkeyFailed').replace('{items}', failed.join(', '));
+  }
+
+  function hkSet(name, value) {
+    if (!state.settings.hotkeys) state.settings.hotkeys = {};
+    state.settings.hotkeys[name] = value;
+    hkCapturing = null;
+    applyHotkeyUi();
+    bridge.call('settings.set', { hotkeys: { [name]: value } }).catch(console.error);
+  }
+
+  $('#hotkeyEnabledCheck').addEventListener('change', (e) => {
+    if (!state.settings.hotkeys) state.settings.hotkeys = {};
+    state.settings.hotkeys.enabled = e.target.checked;
+    hkCapturing = null;
+    applyHotkeyUi();
+    bridge.call('settings.set', { hotkeys: { enabled: e.target.checked } }).catch(console.error);
+  });
+
+  document.querySelectorAll('[data-hk]').forEach((b) =>
+    b.addEventListener('click', () => {
+      hkCapturing = hkCapturing === b.dataset.hk ? null : b.dataset.hk;
+      applyHotkeyUi();
+      if (hkCapturing) b.focus();
+    }));
+
+  document.querySelectorAll('[data-hkclear]').forEach((b) =>
+    b.addEventListener('click', () => hkSet(b.dataset.hkclear, '')));
+
+  // 캡처 중에는 키 입력을 통째로 가로챈다 (탭 이동·설정 화면 단축키가 끼어들지 않도록)
+  window.addEventListener('keydown', (e) => {
+    if (!hkCapturing) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.key === 'Escape') { hkCapturing = null; applyHotkeyUi(); return; }
+    if (e.key === 'Backspace' || e.key === 'Delete') { hkSet(hkCapturing, ''); return; }
+    if (['Control', 'Shift', 'Alt', 'Meta', 'OS'].includes(e.key)) return;  // 수정자만 누른 상태
+    const parts = [];
+    if (e.ctrlKey) parts.push('Ctrl');
+    if (e.shiftKey) parts.push('Shift');
+    if (e.altKey) parts.push('Alt');
+    if (e.metaKey) parts.push('Win');
+    let key = e.key;
+    if (key.length === 1) key = key.toUpperCase();
+    key = HK_NAMED[key] || key;
+    // 네이티브가 해석할 수 있는 키만 통과시킨다 (A-Z, 0-9, F1-F24, 이름 있는 키)
+    const ok = /^[A-Z0-9]$/.test(key) || /^F([1-9]|1[0-9]|2[0-4])$/.test(key) ||
+      HK_OK.includes(key);
+    if (!ok || parts.length === 0) return;  // 수정자 없는 단일 키는 받지 않는다
+    parts.push(key);
+    hkSet(hkCapturing, parts.join('+'));
+  }, true);
+
   // 자석 정렬: 켜져 있을 때만 간격 설정을 쓸 수 있다
   $('#magnetCheck').addEventListener('change', (e) => {
     if (!state.settings.magnet) state.settings.magnet = {};
@@ -724,6 +810,12 @@ SOFTWARE.`;
       const r = await bridge.call('trash.empty');
       $('#trashCount').textContent = i18n.t('settings.trashCount').replace('{n}', r.count);
     } catch (e) { console.error(e); }
+  });
+
+  bridge.on('hotkeys.changed', (d) => {
+    if (!state.settings.hotkeys) state.settings.hotkeys = {};
+    state.settings.hotkeys.failed = d.failed || [];
+    applyHotkeyUi();
   });
 
   bridge.on('trash.changed', (d) => {

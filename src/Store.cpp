@@ -121,6 +121,13 @@ Settings Store::LoadSettingsUnchecked() {
         s.autoHideUi = j.value("autoHideUi", s.autoHideUi);
         s.hideLinkDeleteNotice = j.value("hideLinkDeleteNotice", s.hideLinkDeleteNotice);
         s.uiRevealOnClick = j.value("uiRevealOnClick", s.uiRevealOnClick);
+        if (j.contains("hotkeys") && j["hotkeys"].is_object()) {
+            const json& h = j["hotkeys"];
+            s.hotkeys.enabled = h.value("enabled", s.hotkeys.enabled);
+            s.hotkeys.toggleAll = h.value("toggleAll", s.hotkeys.toggleAll);
+            s.hotkeys.newMemo = h.value("newMemo", s.hotkeys.newMemo);
+            s.hotkeys.list = h.value("list", s.hotkeys.list);
+        }
         if (j.contains("magnet") && j["magnet"].is_object()) {
             s.magnetEnabled = j["magnet"].value("enabled", s.magnetEnabled);
             s.magnetGap = j["magnet"].value("gap", s.magnetGap);
@@ -165,6 +172,11 @@ void Store::SaveSettings(const Settings& s) {
         {"autoHideUi", s.autoHideUi},
         {"hideLinkDeleteNotice", s.hideLinkDeleteNotice},
         {"uiRevealOnClick", s.uiRevealOnClick},
+        {"hotkeys",
+         {{"enabled", s.hotkeys.enabled},
+          {"toggleAll", s.hotkeys.toggleAll},
+          {"newMemo", s.hotkeys.newMemo},
+          {"list", s.hotkeys.list}}},
         {"magnet",
          {{"enabled", s.magnetEnabled},
           {"gap", s.magnetGap},

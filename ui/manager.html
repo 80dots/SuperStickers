@@ -131,6 +131,36 @@
     </section>
 
     <section>
+      <h2 data-i18n="settings.hotkeys"></h2>
+      <p class="desc" data-i18n="settings.hotkeysDesc"></p>
+      <div class="row">
+        <label class="check-label">
+          <input type="checkbox" id="hotkeyEnabledCheck">
+          <span data-i18n="settings.hotkeysEnabled"></span>
+        </label>
+      </div>
+      <div class="row hk" id="hkRowToggleAll">
+        <label data-i18n="settings.hotkeyToggleAll"></label>
+        <button class="hk-key" id="hkToggleAll" data-hk="toggleAll"></button>
+        <button class="hk-clear" id="hkClearToggleAll" data-hkclear="toggleAll"
+                data-i18n="settings.hotkeyClear"></button>
+      </div>
+      <div class="row hk" id="hkRowNewMemo">
+        <label data-i18n="settings.hotkeyNewMemo"></label>
+        <button class="hk-key" id="hkNewMemo" data-hk="newMemo"></button>
+        <button class="hk-clear" id="hkClearNewMemo" data-hkclear="newMemo"
+                data-i18n="settings.hotkeyClear"></button>
+      </div>
+      <div class="row hk" id="hkRowList">
+        <label data-i18n="settings.hotkeyList"></label>
+        <button class="hk-key" id="hkList" data-hk="list"></button>
+        <button class="hk-clear" id="hkClearList" data-hkclear="list"
+                data-i18n="settings.hotkeyClear"></button>
+      </div>
+      <p class="desc hk-warn" id="hkWarn" hidden></p>
+    </section>
+
+    <section>
       <h2 data-i18n="settings.trash"></h2>
       <p class="desc" data-i18n="settings.trashDesc"></p>
       <div class="row">

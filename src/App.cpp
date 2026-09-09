@@ -35,6 +35,12 @@ constexpr UINT_PTR kTrashTimerId = 2;
 constexpr UINT_PTR kTrayClickTimerId = 3;  // 트레이 단일/더블클릭 구분용
 constexpr UINT kTrashPurgeIntervalMs = 60 * 60 * 1000;  // 1시간마다 만료 항목 정리
 constexpr UINT_PTR kAlarmTimerId = 5;
+// 전역 단축키 id (RegisterHotKey). 창 하나에서만 쓰므로 작은 수로 충분하다.
+constexpr int kHotkeyToggleId = 1;
+constexpr int kHotkeyNewId = 2;
+constexpr int kHotkeyListId = 3;
+constexpr int kHotkeyFirstId = 1;
+constexpr int kHotkeyLastId = 3;
 constexpr UINT kAlarmIntervalMs = 30 * 1000;  // 캘린더 알람 확인 주기
 // 자석이 당기기 시작하는 거리 (논리 px). 민감도가 높을수록 멀리서도 붙는다.
 constexpr int kSnapThresholdLowDip = 6;
@@ -116,6 +122,7 @@ void App::OnEnvironmentReady(bool startHidden) {
     PurgeExpiredTrash();  // 보관 기간 지난 휴지통 항목 정리 (GC보다 먼저)
     SetTimer(hwnd_, kTrashTimerId, kTrashPurgeIntervalMs, nullptr);
     SetTimer(hwnd_, kAlarmTimerId, kAlarmIntervalMs, nullptr);
+    RegisterHotkeys();
     auto all = store.LoadAllStickers();
     for (auto& d : all) store.GarbageCollectMemoFiles(d);  // 메모 폴더의 미참조 첨부 정리
     auto allGroups = store.LoadAllGroups();
@@ -896,6 +903,115 @@ void App::HandleStickerMoveEnd(StickerWindow* w) {
     });
 }
 
+// ---------- 전역 단축키 ----------
+namespace {
+
+// "Ctrl+Shift+S" -> 수정자 비트와 가상 키. 해석할 수 없으면 false.
+bool ParseHotkey(const std::string& text, UINT* mods, UINT* vk) {
+    static const std::map<std::string, UINT> kNamed = {
+        {"SPACE", VK_SPACE},   {"INSERT", VK_INSERT}, {"DELETE", VK_DELETE},
+        {"HOME", VK_HOME},     {"END", VK_END},       {"PAGEUP", VK_PRIOR},
+        {"PAGEDOWN", VK_NEXT}, {"LEFT", VK_LEFT},     {"RIGHT", VK_RIGHT},
+        {"UP", VK_UP},         {"DOWN", VK_DOWN},     {"TAB", VK_TAB},
+        {"ENTER", VK_RETURN},  {"ESC", VK_ESCAPE},
+    };
+    *mods = 0;
+    *vk = 0;
+    std::string cur;
+    auto flush = [&]() -> bool {
+        if (cur.empty()) return true;
+        std::string k;
+        for (char c : cur) k += (char)toupper((unsigned char)c);
+        cur.clear();
+        if (k == "CTRL" || k == "CONTROL") { *mods |= MOD_CONTROL; return true; }
+        if (k == "SHIFT") { *mods |= MOD_SHIFT; return true; }
+        if (k == "ALT") { *mods |= MOD_ALT; return true; }
+        if (k == "WIN") { *mods |= MOD_WIN; return true; }
+        if (*vk) return false;  // 키는 하나만
+        if (k.size() == 1 && ((k[0] >= 'A' && k[0] <= 'Z') || (k[0] >= '0' && k[0] <= '9'))) {
+            *vk = (UINT)(unsigned char)k[0];
+            return true;
+        }
+        if (k.size() >= 2 && k[0] == 'F' && isdigit((unsigned char)k[1])) {
+            int n = atoi(k.c_str() + 1);
+            if (n >= 1 && n <= 24) { *vk = VK_F1 + (UINT)(n - 1); return true; }
+        }
+        auto it = kNamed.find(k);
+        if (it == kNamed.end()) return false;
+        *vk = it->second;
+        return true;
+    };
+    for (char c : text) {
+        if (c == '+') { if (!flush()) return false; }
+        else if (!isspace((unsigned char)c)) cur += c;
+    }
+    if (!flush()) return false;
+    // 수정자 없는 단일 키를 전역으로 잡으면 다른 앱의 타자를 먹는다 - 거부한다
+    return *vk != 0 && *mods != 0;
+}
+
+}  // namespace
+
+void App::UnregisterHotkeys() {
+    if (hwnd_)
+        for (int id = kHotkeyFirstId; id <= kHotkeyLastId; ++id) UnregisterHotKey(hwnd_, id);
+    failedHotkeys_.clear();
+}
+
+void App::RegisterHotkeys() {
+    UnregisterHotkeys();
+    if (!hwnd_ || !settings.hotkeys.enabled) return;
+    struct Item { int id; const char* name; const std::string* text; };
+    const Item items[] = {
+        {kHotkeyToggleId, "toggleAll", &settings.hotkeys.toggleAll},
+        {kHotkeyNewId, "newMemo", &settings.hotkeys.newMemo},
+        {kHotkeyListId, "list", &settings.hotkeys.list},
+    };
+    for (const auto& it : items) {
+        if (it.text->empty()) continue;  // 빈 값 = 쓰지 않음
+        UINT mods = 0, vk = 0;
+        if (!ParseHotkey(*it.text, &mods, &vk)) { failedHotkeys_.insert(it.name); continue; }
+        // MOD_NOREPEAT: 키를 누르고 있어도 한 번만 (아니면 창이 깜빡인다)
+        if (!RegisterHotKey(hwnd_, it.id, mods | MOD_NOREPEAT, vk)) failedHotkeys_.insert(it.name);
+    }
+}
+
+void App::OnHotkey(int id) {
+    if (id == kHotkeyToggleId) ToggleShowAllFront();
+    else if (id == kHotkeyNewId) NewSticker("rich");
+    else if (id == kHotkeyListId) OpenManager("list");
+}
+
+void App::ToggleShowAllFront() {
+    bool anyHidden = false;
+    for (auto* w : stickers_)
+        if (!w->VisibleNow()) anyHidden = true;
+    for (auto* g : groups_)
+        if (!g->VisibleNow()) anyHidden = true;
+    if (anyHidden) {  // 감춰진 것이 있으면 모두 꺼내 앞으로 올린다
+        SetAllVisible(true);
+        BringAllToFront();
+        lastRaiseTick_ = GetTickCount();
+        return;
+    }
+    if (!AnyStickerVisible()) return;  // 보여 줄 메모가 아예 없다
+    // 전부 보이는 중이다. 다른 앱이 앞에 있으면 그 아래 깔린 것이므로 위로 올리고,
+    // 우리 창이 이미 앞이면 그때 감춘다.
+    DWORD pid = 0;
+    GetWindowThreadProcessId(GetForegroundWindow(), &pid);
+    DWORD now = GetTickCount();
+    // 전경 전환이 거부되는 경우가 있다(다른 앱이 방금 입력을 받았을 때 윈도우가 막는다).
+    // 그러면 아무리 눌러도 감춰지지 않으므로, 방금 올린 직후의 재차 누름은 감추기로 본다.
+    bool justRaised = lastRaiseTick_ && now - lastRaiseTick_ < 1500;
+    if (pid == GetCurrentProcessId() || justRaised) {
+        lastRaiseTick_ = 0;
+        SetAllVisible(false);
+    } else {
+        BringAllToFront();
+        lastRaiseTick_ = now;
+    }
+}
+
 void App::ClampAllWindowsToScreen() {
     auto clampWindow = [](HWND hwnd) -> bool {
         RECT r{};
@@ -1229,6 +1345,23 @@ void App::ApplySettingsPatch(const json& patch) {
             BroadcastEvent("ui.revealModeChanged", {{"clickOnly", v}});
         }
     }
+    if (patch.contains("hotkeys") && patch["hotkeys"].is_object()) {
+        auto& h = patch["hotkeys"];
+        if (h.contains("enabled") && h["enabled"].is_boolean())
+            settings.hotkeys.enabled = h["enabled"];
+        // 값은 그대로 받아 두고 등록에서 걸러낸다 (해석 실패는 FailedHotkeys로 알린다)
+        auto take = [&](const char* key, std::string& dst) {
+            if (h.contains(key) && h[key].is_string()) {
+                std::string v = h[key];
+                if (v.size() <= 64) dst = v;
+            }
+        };
+        take("toggleAll", settings.hotkeys.toggleAll);
+        take("newMemo", settings.hotkeys.newMemo);
+        take("list", settings.hotkeys.list);
+        RegisterHotkeys();
+        SendEventToManager("hotkeys.changed", {{"failed", failedHotkeys_}});
+    }
     if (patch.contains("magnet") && patch["magnet"].is_object()) {
         auto& m = patch["magnet"];
         if (m.contains("enabled") && m["enabled"].is_boolean())
@@ -1444,6 +1577,12 @@ void App::SetupCommonBridge(WebViewHost& host) {
                       {"uiScale", settings.uiScale},
                       {"autoHideUi", settings.autoHideUi},
                       {"uiRevealOnClick", settings.uiRevealOnClick},
+                      {"hotkeys",
+                       {{"enabled", settings.hotkeys.enabled},
+                        {"toggleAll", settings.hotkeys.toggleAll},
+                        {"newMemo", settings.hotkeys.newMemo},
+                        {"list", settings.hotkeys.list},
+                        {"failed", failedHotkeys_}}},
                       {"magnet",
                        {{"enabled", settings.magnetEnabled},
                         {"gap", settings.magnetGap},
@@ -2088,6 +2227,7 @@ void App::ShowTrayMenu() {
 void App::Quit() {
     if (quitting_) return;
     quitting_ = true;
+    UnregisterHotkeys();
     // 수 GB를 물고 있는 자식 프로세스를 남기지 않는다 (잡 오브젝트는 비정상 종료용 보험)
     localAi.CancelDownloads();
     localAi.StopServer();
@@ -2174,6 +2314,10 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                     Quit();
                     break;
             }
+            return 0;
+
+        case WM_HOTKEY:
+            OnHotkey((int)wp);
             return 0;
 
         case WM_APP_RUNNABLE: {
