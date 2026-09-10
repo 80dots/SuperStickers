@@ -18,6 +18,7 @@
 #include "Autostart.h"
 #include "GroupWindow.h"
 #include "ManagerWindow.h"
+#include "WizardWindow.h"
 #include "StickerWindow.h"
 #include "Theme.h"
 #include "LocalAi.h"
@@ -82,6 +83,7 @@ bool App::Init(HINSTANCE hinst, bool startHidden) {
     StickerWindow::RegisterWndClass(hinst);
     GroupWindow::RegisterWndClass(hinst);
     ManagerWindow::RegisterWndClass(hinst);
+    WizardWindow::RegisterWndClass(hinst);
 
     // 트레이 콜백·브로드캐스트 수신용 숨김 최상위 창 (표시하지 않음)
     hwnd_ = CreateWindowExW(0, kAppClassName, L"Super Stickers", WS_OVERLAPPED, 0, 0, 0, 0,
@@ -1337,6 +1339,36 @@ void App::OpenManager(const std::string& tab) {
 
 void App::OnManagerDestroyed() { manager_ = nullptr; }
 
+// 마법사 창 열기 — 부른 메모창 가운데에. 이미 떠 있으면 앞으로만 (owner는 바꾸지 않는다)
+void App::OpenWizard(const std::string& ownerId, bool force) {
+    if (wizard_) {
+        wizard_->Focus();
+        return;
+    }
+    wizardOwner_ = ownerId;
+    HWND ownerHwnd = nullptr;
+    if (auto* w = FindSticker(ownerId)) ownerHwnd = w->hwnd();
+    wizard_ = WizardWindow::Create(hinst_, force, ownerHwnd);
+}
+
+// 마법사 끝: 결과를 부른 창에 돌려주고 창을 닫는다 (두 번 불려도 한 번만 보낸다)
+void App::FinishWizard(bool ok) {
+    if (!wizard_) return;
+    std::string owner = wizardOwner_;
+    wizardOwner_.clear();
+    json data{{"ok", ok}};
+    if (!owner.empty()) SendEventToSticker(owner, "wizard.result", data);
+    else SendEventToManager("wizard.result", data);
+    HWND h = wizard_->hwnd();
+    wizard_ = nullptr;  // WM_DESTROY의 OnWizardDestroyed와 겹치지 않게 먼저 비운다
+    DestroyWindow(h);
+}
+
+void App::OnWizardDestroyed() {
+    wizard_ = nullptr;
+    wizardOwner_.clear();
+}
+
 // ---------- 설정 반영 ----------
 
 void App::ApplySettingsPatch(const json& patch) {
@@ -1590,6 +1622,7 @@ void App::BroadcastEvent(const std::string& ev, const json& data) {
     for (auto* w : stickers_) w->host().PostEventRaw(payload);
     for (auto* g : groups_) g->host().PostEventRaw(payload);
     if (manager_) manager_->host().PostEventRaw(payload);
+    if (wizard_) wizard_->host().PostEventRaw(payload);
 }
 
 // Ollama 스트리밍은 청크가 초당 수십 개씩 오므로 모든 창에 뿌리면
@@ -1609,6 +1642,11 @@ void App::SendEventToOwner(const std::string& ownerId, const std::string& ev,
                            const json& data) {
     if (ownerId.empty()) {
         SendEventToManager(ev, data);
+        return;
+    }
+    if (ownerId == "wizard") {  // 마법사 창 자신이 부른 설치·내려받기
+        if (wizard_) wizard_->host().PostEvent(ev, data);
+        else BroadcastEvent(ev, data);
         return;
     }
     SendEventToSticker(ownerId, ev, data);
@@ -2279,6 +2317,19 @@ void App::SetupCommonBridge(WebViewHost& host) {
         return json::object();
     });
 
+    // ---------- AI 설정 마법사 창 ----------
+    b.Register("wizard.open", [this](const json& p) {
+        std::string ownerId = p.value("ownerId", "");
+        bool force = p.value("force", false);
+        RunOnUi([this, ownerId, force]() { OpenWizard(ownerId, force); });
+        return json::object();
+    });
+    b.Register("wizard.close", [this](const json& p) {
+        bool ok = p.value("ok", false);
+        RunOnUi([this, ok]() { FinishWizard(ok); });
+        return json::object();
+    });
+
     // ---------- 읽어주기 (TTS) ----------
     b.Register("tts.voices", [this](const json&) {
         json arr = json::array();
@@ -2613,6 +2664,7 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 settings.theme == "system") {
                 for (auto* w : stickers_) w->OnThemeChanged();
                 if (manager_) manager_->OnThemeChanged();
+                if (wizard_) wizard_->OnThemeChanged();
                 BroadcastEvent("theme.changed", {{"effective", EffectiveTheme()}});
             }
             return 0;
@@ -2624,6 +2676,7 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
                 while (!stickers_.empty()) stickers_.back()->Destroy();
                 while (!groups_.empty()) groups_.back()->Destroy();
                 if (manager_) DestroyWindow(manager_->hwnd());
+                if (wizard_) DestroyWindow(wizard_->hwnd());
                 DestroyWindow(hwnd_);
             } else if (wp == kTrashTimerId) {
                 PurgeExpiredTrash();

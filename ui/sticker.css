@@ -1457,9 +1457,10 @@ a.memo-link:hover, .md-body a[href^="memo:"]:hover {
 }
 .ml-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
 .ml-title { flex: 1; font-size: 13px; font-weight: 600; }
-.ml-close { width: 24px; height: 24px; border: none; border-radius: 6px; background: transparent;
-            color: var(--muted, #777); cursor: pointer; }
-.ml-close:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); }
+.ml-close { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+            padding: 0; border: none; border-radius: 6px; background: transparent; color: inherit;
+            opacity: 0.68; cursor: pointer; }
+.ml-close:hover { background: rgba(55, 53, 47, 0.07); opacity: 1; }
 .ml-filter {
   margin: 0 12px 8px; padding: 6px 9px;
   border: 1px solid var(--border-strong, #c9c9c9); border-radius: 7px;
@@ -1504,9 +1505,10 @@ a.memo-link:hover, .md-body a[href^="memo:"]:hover {
   background: var(--panel-bg, #fff); color: inherit; font-size: 12px;
 }
 .em-search:focus { outline: none; border-color: var(--accent, #3b7ddd); }
-.em-close { width: 24px; height: 24px; border: none; border-radius: 6px; background: transparent;
-            color: var(--muted, #777); cursor: pointer; }
-.em-close:hover { background: var(--hover, rgba(0, 0, 0, 0.06)); }
+.em-close { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px;
+            padding: 0; border: none; border-radius: 6px; background: transparent; color: inherit;
+            opacity: 0.68; cursor: pointer; flex: none; }
+.em-close:hover { background: rgba(55, 53, 47, 0.07); opacity: 1; }
 .em-tabs { display: flex; gap: 2px; padding: 0 8px 4px; overflow-x: auto; }
 .em-tab {
   flex: none; width: 30px; height: 28px; border: none; border-radius: 6px;

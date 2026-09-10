@@ -530,6 +530,16 @@ IPv4 `127.0.0.1`에만 붙는다. 그래서 `localhost`로는 `::1`을 두드렸
 거친다. 쓸 수 있으면 그대로 통과하고(연결이 살아 있을 때 실측 11ms), 아니면 마법사를 띄운
 뒤 **다 마쳤을 때만 원래 하려던 동작을 잇는다**(`ensureReady`가 Promise\<boolean\>).
 
+**마법사는 별도 창이다** (`src/WizardWindow.*`, 페이지 `ui/wizard.html`). 처음엔 메모창 안의
+모달로 만들었는데, 페이지의 어둡게 덮는 층이 네이티브 리사이즈 밴드(창 바깥 테두리)까지는
+덮지 못해 테두리만 다른 색으로 남았다. 그래서 `ensureReady`는 `wizard.open`으로 창을 띄우고
+`wizard.result` 이벤트를 기다리기만 하고, 그리는 일은 마법사 창의 `runStandalone()`이 한다.
+창은 부른 메모창 가운데(없으면 화면 가운데)에 뜨고 싱글턴이라 다시 부르면 앞으로만 온다.
+결과는 `App::FinishWizard(ok)`가 `wizardOwner_`(메모 id, 빈 값이면 설정 창)에 돌려주고 창을
+부순다. 창의 X는 언제나 네이티브 확인(`wizard.confirmClose`/`…Busy`)을 거치며, 확인하면
+진행 중인 작업을 접고 false를 돌려준다. 설치·내려받기 진행률은 ownerId `"wizard"`로 이 창에
+온다(`SendEventToOwner`의 분기). 방송(`BroadcastEvent`)도 이 창까지 간다.
+
 - **어느 단계에서 시작할지**는 `inspect()`가 정한다 — Ollama 미설치·무응답이면 1단계,
   설치된 모델이 없으면 2단계, 쓸 모델이 없거나 그 모델이 지워졌으면 3단계.
   `aiProvider`가 `ollama`가 아니면 마법사는 끼어들지 않는다(LM Studio는 대상이 아니다).

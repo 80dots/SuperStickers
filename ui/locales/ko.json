@@ -405,7 +405,6 @@
   "ai.serverLoading": "모델을 올리는 중… ({model})",
   "ai.elapsed": "{sec}초 경과",
   "wizard.title": "AI 설정 마법사",
-  "wizard.stepOf": "{n} / {total} 단계",
   "wizard.next": "다음",
   "wizard.prev": "이전",
   "wizard.done": "완료",

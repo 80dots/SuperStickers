@@ -76,7 +76,8 @@ const memoLinkTools = (() => {
     const box = el('div', 'ml-box');
     const head = el('div', 'ml-head');
     head.appendChild(el('div', 'ml-title', i18n.t('link.pick')));
-    const close = el('button', 'ml-close', '✕');
+    const close = el('button', 'ml-close');
+    close.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M3.05 2 8 6.95 12.95 2 14 3.05 9.05 8 14 12.95 12.95 14 8 9.05 3.05 14 2 12.95 6.95 8 2 3.05z"/></svg>';
     close.addEventListener('click', closePicker);
     head.appendChild(close);
     const filter = el('input', 'ml-filter');

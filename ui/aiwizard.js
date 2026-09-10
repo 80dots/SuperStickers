@@ -88,10 +88,10 @@ const aiWizard = (() => {
     const box = el('div', 'wiz-box');
     const head = el('div', 'wiz-head');
     head.appendChild(el('div', 'wiz-title', t('wizard.title')));
-    const badge = el('div', 'wiz-step');
-    const close = btn('✕', 'wiz-close', () => requestClose());
+    const close = el('button', 'wiz-close');
+    close.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M3.05 2 8 6.95 12.95 2 14 3.05 9.05 8 14 12.95 12.95 14 8 9.05 3.05 14 2 12.95 6.95 8 2 3.05z"/></svg>';
+    close.addEventListener('click', () => requestClose());
     close.title = t('wizard.close');
-    head.appendChild(badge);
     head.appendChild(close);
 
     // 단계 표시기: 1 ─ 2 ─ 3 에 짧은 이름을 달아 어디쯤인지 보여 준다
@@ -141,7 +141,7 @@ const aiWizard = (() => {
       }
     }, true);
 
-    Object.assign(root, { _badge: badge, _body: body, _back: back, _next: next,
+    Object.assign(root, { _body: body, _back: back, _next: next,
                           _foot: foot, _ask: ask, _askText: askText, _askRow: askRow,
                           _steps: steps });
   }
@@ -202,7 +202,6 @@ const aiWizard = (() => {
 
   // 현재 단계 그리기
   function render() {
-    root._badge.textContent = t('wizard.stepOf').replace('{n}', step).replace('{total}', STEPS);
     [...root._steps.children].forEach((d, i) => {
       d.classList.toggle('done', i + 1 < step);
       d.classList.toggle('now', i + 1 === step);
@@ -437,9 +436,16 @@ const aiWizard = (() => {
 
   // ---------- 공개 API ----------
 
-  // AI를 쓸 수 있으면 곧바로 true. 아니면 마법사를 띄우고, 다 마치면 true, 닫으면 false.
+  // 메모창·설정 창에서 부른다. AI를 쓸 수 있으면 곧바로 true. 아니면 **별도의 마법사 창**을
+  // 띄우고(wizard.open) 네이티브가 돌려주는 wizard.result를 기다린다 — 마치면 true, 접으면 false.
+  let waitingResult = null;
+  bridge.on('wizard.result', (d) => {
+    const r = waitingResult;
+    waitingResult = null;
+    if (r) r(!!(d && d.ok));
+  });
   async function ensureReady(stickerId, opts) {
-    if (resolveRun) return false;   // 이미 떠 있다 — 겹쳐 띄우지 않는다
+    if (waitingResult) return false;   // 이미 마법사 창이 떠 있다
     ownerId = stickerId || '';
     let info;
     try {
@@ -448,6 +454,27 @@ const aiWizard = (() => {
       return true;  // 상태를 못 읽으면 막지 않는다 — 기존 오류 안내에 맡긴다
     }
     const force = !!(opts && opts.force);   // 설정에서 부를 때: 준비되어 있어도 띄운다
+    if (info.ready && !force) return true;
+    return new Promise((resolve) => {
+      waitingResult = resolve;
+      bridge.call('wizard.open', { ownerId, force }).catch(() => {
+        waitingResult = null;
+        resolve(false);
+      });
+    });
+  }
+
+  // 마법사 창(ui/wizard.html) 자신이 부른다. 창 전체에 그리고, 마치면 true / 접으면 false.
+  // 설치·내려받기 이벤트는 ownerId "wizard"로 이 창에 돌아온다 (App::SendEventToOwner).
+  async function runStandalone(opts) {
+    ownerId = 'wizard';
+    let info;
+    try {
+      info = await inspect();
+    } catch {
+      info = { ready: false, from: 1, models: [] };
+    }
+    const force = !!(opts && opts.force);
     if (info.ready && !force) return true;
     if (info.ready) info = { ready: false, from: 1, models: [] };
     if (!root) build();
@@ -460,5 +487,5 @@ const aiWizard = (() => {
     return new Promise((resolve) => { resolveRun = resolve; });
   }
 
-  return { ensureReady };
+  return { ensureReady, runStandalone };
 })();

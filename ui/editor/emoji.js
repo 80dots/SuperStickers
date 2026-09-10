@@ -43,7 +43,8 @@ const emojiTools = (() => {
     const search = el('input', 'em-search');
     search.type = 'text';
     search.placeholder = i18n.t('emoji.search');
-    const closeBtn = el('button', 'em-close', '✕');
+    const closeBtn = el('button', 'em-close');
+    closeBtn.innerHTML = '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" d="M3.05 2 8 6.95 12.95 2 14 3.05 9.05 8 14 12.95 12.95 14 8 9.05 3.05 14 2 12.95 6.95 8 2 3.05z"/></svg>';
     closeBtn.addEventListener('click', close);
     head.appendChild(search);
     head.appendChild(closeBtn);

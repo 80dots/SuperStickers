@@ -405,7 +405,6 @@
   "ai.serverLoading": "Loading the model… ({model})",
   "ai.elapsed": "{sec}s elapsed",
   "wizard.title": "AI setup wizard",
-  "wizard.stepOf": "Step {n} of {total}",
   "wizard.next": "Next",
   "wizard.prev": "Back",
   "wizard.done": "Finish",

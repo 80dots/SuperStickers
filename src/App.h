@@ -20,6 +20,7 @@
 class StickerWindow;
 class GroupWindow;
 class ManagerWindow;
+class WizardWindow;
 class WebViewHost;
 
 constexpr UINT WM_APP_TRAY = WM_APP + 1;
@@ -159,6 +160,12 @@ public:
 
     // Manager(설정/목록) 창
     void OpenManager(const std::string& tab);
+    // ---- AI 설정 마법사 창 ----
+    // ownerId: 결과를 돌려받을 창 (메모 id, 빈 값이면 설정 창). 이미 열려 있으면 앞으로만.
+    void OpenWizard(const std::string& ownerId, bool force);
+    // 마법사가 끝났다(ok) 또는 접혔다(false): 결과를 owner에 wizard.result로 보내고 창을 닫는다
+    void FinishWizard(bool ok);
+    void OnWizardDestroyed();
     void OnManagerDestroyed();
 
     // 설정 반영 + 웹 브로드캐스트
@@ -194,6 +201,8 @@ private:
     std::vector<GroupWindow*> groups_;
     std::map<std::string, StickerData> groupedStickers_;  // 창이 없는(그룹 소속) 메모 데이터
     ManagerWindow* manager_ = nullptr;
+    WizardWindow* wizard_ = nullptr;
+    std::string wizardOwner_;  // 마법사를 부른 창 (메모 id 또는 빈 값=설정 창)
     std::string lastDragHoverGroup_;
     std::map<UINT_PTR, std::function<void()>> delayedTasks_;
     std::set<std::string> selected_;  // 다중 선택된 스티커 id (세션 한정)
