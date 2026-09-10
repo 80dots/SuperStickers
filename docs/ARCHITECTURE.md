@@ -569,8 +569,15 @@ IPv4 `127.0.0.1`에만 붙는다. 그래서 `localhost`로는 `::1`을 두드렸
 잠긴 블록은 `mousedown`을 캡처 단계에서 가로채 커서가 들어가지 않게 하고 `tryUnlock`으로 간다.
 번짐은 `filter: blur`가 아니라 **글자를 투명하게 하고 `text-shadow`로만 그리는** 방식이다 —
 `::after`의 안내 문구("클릭하면 보입니다")까지 흐려지면 안 되기 때문. 그림·동영상만 `filter`.
-`::before`가 빛이 흐르는 무늬(`secret-shine`)를 돌린다. **`getPlainText`는 비밀글을 통째로
-빼므로** AI Review·읽어주기·검색에 비밀 내용이 흘러가지 않는다. 그룹 카드는 언제나 번져 보인다.
+`::before`가 빛이 흐르는 무늬(`secret-shine`)를 돌린다. **`getPlainText`·`getMarkdown()`은
+비밀글을 통째로 빼므로** 읽어주기·검색에 비밀 내용이 흘러가지 않는다. AI Review는
+`getMarkdown({secrets})`로 비밀글 자리에 `[[SECRET-n]]` 토큰을 두고 원문 HTML은 페이지가
+들고 있다가(`reviewSecrets`), 번역이 오면 토큰 자리에 `<span class="secret">원문</span>`으로
+되돌린다(`restoreSecrets`) — 그래서 **번역본에서도 비밀글은 비밀글이고, 내용은 AI에 가지 않는다**
+(대신 그 부분은 번역되지 않고 원문 그대로다). 요약·제목에 토큰이 섞이면 지운다. 프롬프트 규칙
+7이 토큰을 그대로 두라고 지시하고, 모델이 토큰을 잃으면 번역에서 그 비밀글이 빠질 뿐 새지는
+않는다. 번역 보기(`#transView`)의 비밀글도 `secretTools`가 함께 지켜본다(`init`의 extraRoots).
+그룹 카드는 언제나 번져 보인다.
 
 비밀번호는 **저장하지 않는다.** `HashSecret(salt, pw)` = 소금을 섞은 SHA-256을 2만 번 반복한
 해시(CryptoAPI, 약 60ms)만 두고, 비교는 상수 시간(`SameHash`). 찾기 질문의 답도 같은 방식으로

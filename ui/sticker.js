@@ -504,6 +504,7 @@
     $('#transView').classList.toggle('hidden', !translated);
     if (translated) {
       mdTools.renderReadonlyInto($('#transView'), trans || '');
+      if (type === 'rich') secretTools.lockAll();   // 번역 속 비밀글도 잠근 채로
       $('#toolbar').classList.add('hidden');
       if (type === 'rich') editor.classList.add('hidden');
       if (type === 'markdown') {
@@ -705,8 +706,20 @@
     }
   }
   // AI Review 실행 — 요약·제목·태그·번역을 한 번에
+  // 리뷰 원문에서 비밀글은 [[SECRET-n]] 토큰으로 바꿔 보낸다 — 내용은 AI에 가지 않고,
+  // 번역이 오면 토큰 자리에 원문 비밀글을 (번역하지 않은 채) 비밀글로 되돌린다.
+  let reviewSecrets = [];
+  function restoreSecrets(text) {
+    if (!reviewSecrets.length) return text;
+    return String(text).replace(/\[\[\s*SECRET[-_ ]?(\d+)\s*\]\]/gi, (m, n) => {
+      const html = reviewSecrets[Number(n) - 1];
+      return html === undefined ? '' : `<span class="secret">${html}</span>`;
+    });
+  }
+  const stripSecretTokens = (s) => String(s || '').replace(/\[\[\s*SECRET[-_ ]?\d+\s*\]\]/gi, '').trim();
   function runAiReview() {
-    const text = noteText();
+    reviewSecrets = [];
+    const text = type === 'rich' ? editorCore.getMarkdown({ secrets: reviewSecrets }).trim() : noteText();
     if (!text || reviewRequestId) return;
     reviewBuf = '';
     reviewSrc = text;
@@ -775,14 +788,14 @@
         setReviewState();
         return;
       }
-      data.summary = r.summary.trim();
-      if (typeof r.summaryEn === 'string') data.summaryEn = r.summaryEn.trim();
-      if (typeof r.title === 'string' && r.title.trim()) data.title = r.title.trim();
-      if (typeof r.titleEn === 'string' && r.titleEn.trim()) data.titleEn = r.titleEn.trim();
+      data.summary = stripSecretTokens(r.summary);
+      if (typeof r.summaryEn === 'string') data.summaryEn = stripSecretTokens(r.summaryEn);
+      if (typeof r.title === 'string' && stripSecretTokens(r.title)) data.title = stripSecretTokens(r.title);
+      if (typeof r.titleEn === 'string' && stripSecretTokens(r.titleEn)) data.titleEn = stripSecretTokens(r.titleEn);
       data.srcLang = r.srcLang === 'ko' ? 'ko' : 'en';
       if (typeof r.translation === 'string' && r.translation.trim()) {
         // 원문의 반대 언어 번역본 저장 (코드 블록은 원문 그대로 되돌림)
-        const trans = restoreCodeBlocks(reviewSrc, r.translation.trim());
+        const trans = restoreSecrets(restoreCodeBlocks(reviewSrc, r.translation.trim()));
         if (data.srcLang === 'ko') data.transEn = trans;
         else data.transKo = trans;
       }
@@ -864,7 +877,7 @@
     // 본문에 넣은 파일·폴더 (링크는 살아 있는지 확인해 끊긴 것을 표시한다)
     memoFileTools.init(editor, scheduleSave);
     // 비밀글: 열 때는 모두 잠근 채로, 누르면(비밀번호를 쓰면 확인 후) 푼다
-    secretTools.init(editor, scheduleSave);
+    secretTools.init(editor, scheduleSave, [$('#transView')]);
     // 저장돼 있던 3D 임베드에 뷰어 마운트 (UI는 Shadow DOM — 저장 HTML 미오염)
     editor.querySelectorAll('.embed3d').forEach((el) => viewer3d.mount(el, scheduleSave));
     // 본문에서 떨어진 임베드는 viewer3d가 렌더 루프·WebGL 컨텍스트를 놓는다. 되돌리기(Ctrl+Z)나

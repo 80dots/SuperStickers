@@ -19,7 +19,9 @@ const secretTools = (() => {
   const t = (k) => i18n.t(k);
 
   const isSecret = (node) => !!(node && node.closest && node.closest('.secret'));
-  const blocks = () => [...editor.querySelectorAll('.secret')];
+  let extra = [];   // 편집기 밖에서도 비밀글을 지켜볼 곳 (번역 보기)
+  const roots = () => [editor, ...extra].filter(Boolean);
+  const blocks = () => roots().flatMap((r) => [...r.querySelectorAll('.secret')]);
 
   const AUTO_LOCK_MS = 30000;   // 풀린 뒤 이 시간이 지나면 저절로 잠긴다
   const timers = new WeakMap();
@@ -261,12 +263,14 @@ const secretTools = (() => {
 
   // ---------- 초기화 ----------
 
-  function init(editorEl, changeCb) {
+  function init(editorEl, changeCb, extraRoots) {
     editor = editorEl;
     onChange = changeCb;
+    extra = extraRoots || [];
     lockAll();
     // 잠긴 블록은 누르면 풀린다 (커서가 들어가지 않게 기본 동작을 막는다)
-    editor.addEventListener('mousedown', (e) => {
+    document.addEventListener('mousedown', (e) => {
+      if (!roots().some((r) => r.contains(e.target))) return;
       const btn = e.target.closest && e.target.closest('.secret-lockbtn');
       if (btn && !btn.parentElement.classList.contains('locked')) {   // 🔓 → 다시 잠근다
         e.preventDefault();
@@ -275,7 +279,7 @@ const secretTools = (() => {
         return;
       }
       const s = e.target.closest && e.target.closest('.secret.locked');
-      if (!s || !editor.contains(s)) return;
+      if (!s) return;
       e.preventDefault();
       e.stopPropagation();
       tryUnlock(s);

@@ -185,14 +185,27 @@ const editorCore = (() => {
   // 리치 본문을 마크다운으로 직렬화한다.
   // AI Review 번역은 이 결과를 원문으로 쓰고 결과도 마크다운으로 렌더하므로,
   // 서식(제목·목록·강조·링크)이 번역 후에도 살아남는다. innerText를 쓰면 여기서 이미 서식이 사라진다.
-  function getMarkdown() {
+  // opts.secrets(배열)를 주면 비밀글마다 원문 HTML을 거기에 넣고 자리에 [[SECRET-n]] 토큰을
+  // 남긴다(AI Review 번역용 — 번역이 끝나면 sticker.js가 토큰 자리에 비밀글을 되돌린다).
+  // 주지 않으면 비밀글은 통째로 뺀다(읽어주기 등 어디에도 흘리지 않는다).
+  function getMarkdown(opts) {
     if (!editor) return '';
+    const secrets = opts && Array.isArray(opts.secrets) ? opts.secrets : null;
+    const secretToken = (node) => {
+      if (!secrets) return '';
+      const copy = node.cloneNode(true);
+      copy.querySelectorAll('[data-chrome]').forEach((c) => c.remove());
+      secrets.push(copy.innerHTML);
+      return `[[SECRET-${secrets.length}]]`;
+    };
     const esc = (t) => t.replace(/([*_`~])/g, '\\$1');
 
     // 인라인 노드 → 마크다운 조각
     function inline(node) {
       if (node.nodeType === Node.TEXT_NODE) return esc(node.nodeValue);
       if (node.nodeType !== Node.ELEMENT_NODE) return '';
+      if (node.classList.contains('secret')) return secretToken(node);
+      if (node.dataset && node.dataset.chrome) return '';   // 자물쇠 버튼 같은 장식
       const tag = node.tagName.toLowerCase();
       if (tag === 'br') return '\n';
       if (tag === 'img') return `![](${node.getAttribute('src') || ''})`;
@@ -219,6 +232,12 @@ const editorCore = (() => {
         return;
       }
       if (node.nodeType !== Node.ELEMENT_NODE) return;
+      if (node.classList.contains('secret')) {   // 블록형 비밀글 (예전 방식)
+        const tok = secretToken(node);
+        if (tok) out.push(tok);
+        return;
+      }
+      if (node.dataset && node.dataset.chrome) return;
       const tag = node.tagName.toLowerCase();
       const pad = '  '.repeat(depth);
       if (tag === 'ul' || tag === 'ol') {
