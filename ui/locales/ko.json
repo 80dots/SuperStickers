@@ -563,5 +563,6 @@
   "sel.secret": "비밀글로 설정",
   "secret.creating": "비밀번호를 만드는 중…",
   "secret.changing": "비밀번호를 바꾸는 중…",
-  "secret.clearing": "비밀번호를 지우는 중…"
+  "secret.clearing": "비밀번호를 지우는 중…",
+  "secret.lockAgain": "다시 잠그기 (30초 뒤에는 저절로 잠깁니다)"
 }

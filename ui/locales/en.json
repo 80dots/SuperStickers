@@ -563,5 +563,6 @@
   "sel.secret": "Make secret",
   "secret.creating": "Creating the password…",
   "secret.changing": "Changing the password…",
-  "secret.clearing": "Removing the password…"
+  "secret.clearing": "Removing the password…",
+  "secret.lockAgain": "Lock again (locks by itself after 30 s)"
 }

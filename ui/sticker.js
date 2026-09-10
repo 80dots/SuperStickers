@@ -2186,6 +2186,9 @@
       if (!rect || !text.trim()) { hideSelMenu(); return; }
       const fmt = canFormat();
       fmtGrid.classList.toggle('hidden', !fmt);  // 편집할 수 없으면 격자째 감춘다
+      // 이미 비밀글인 부분을 조금이라도 물고 있으면 '비밀글로 설정'은 막는다 (겹쳐 감싸지 않는다)
+      const secretBtn = selMenu.querySelector('.sel-item[data-action="secret"]');
+      if (secretBtn) secretBtn.disabled = type === 'rich' && secretTools.selectionTouchesSecret();
       selMenu.classList.remove('hidden');
       const mw = selMenu.offsetWidth, mh = selMenu.offsetHeight;
       let left = rect.left + rect.width / 2 - mw / 2;

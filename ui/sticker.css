@@ -1567,7 +1567,7 @@ a.memo-link:hover, .md-body a[href^="memo:"]:hover {
   pointer-events: none;
 }
 .secret.locked::after {
-  content: "\1F512\00A0" attr(data-hint);
+  content: attr(data-hint);
   position: absolute;
   left: 50%; top: 50%;
   transform: translate(-50%, -50%);
@@ -1625,7 +1625,19 @@ a.memo-link:hover, .md-body a[href^="memo:"]:hover {
 /* 인라인 비밀글 (선택 메뉴로 만든 것): 줄 안에 그대로 있고 안내 문구 대신 자물쇠만 */
 span.secret { display: inline; margin: 0; padding: 0 5px; border-radius: 5px; min-height: 0; }
 span.secret.locked { overflow: visible; }
-span.secret.locked::after { content: "\1F512"; position: static; transform: none; padding: 0 0 0 4px;
-                            background: transparent; animation: none; font-size: 0.85em; }
+span.secret.locked::after { content: none; }
 span.secret.locked::before { border-radius: 5px; }
 #editor a[href^="http"] { cursor: pointer; }
+
+/* 자물쇠 버튼: 잠기면 🔒(누르면 풀기), 풀리면 🔓(누르면 다시 잠금). 저장되지 않는 장식(data-chrome) */
+.secret-lockbtn {
+  display: inline-block; margin-left: 4px; font-size: 0.85em; line-height: 1;
+  cursor: pointer; user-select: none; opacity: 0.75;
+  font-family: "Segoe UI Emoji", "Apple Color Emoji", sans-serif;
+}
+.secret-lockbtn:hover { opacity: 1; }
+.secret.locked .secret-lockbtn { color: var(--note-fg, #333) !important; text-shadow: none; filter: none; }
+div.secret .secret-lockbtn { position: absolute; right: 8px; top: 6px; margin: 0; }
+div.secret.locked .secret-lockbtn { z-index: 1; }
+.sel-item:disabled { opacity: 0.38; cursor: default; }
+.sel-item:disabled:hover { background: transparent; }

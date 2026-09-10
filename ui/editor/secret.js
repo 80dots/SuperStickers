@@ -21,19 +21,51 @@ const secretTools = (() => {
   const isSecret = (node) => !!(node && node.closest && node.closest('.secret'));
   const blocks = () => [...editor.querySelectorAll('.secret')];
 
-  // 잠그기: 번짐 표시 + 편집 불가 + 안내 문구
+  const AUTO_LOCK_MS = 30000;   // 풀린 뒤 이 시간이 지나면 저절로 잠긴다
+  const timers = new WeakMap();
+
+  // 자물쇠 표시: 블록 끝의 작은 요소(data-chrome — 저장되지 않는다). 잠기면 🔒, 풀리면 🔓.
+  // 🔓를 누르면 다시 잠근다. 잠긴 상태에서는 어디를 눌러도 풀기 흐름이라 버튼도 그것을 따른다.
+  function ensureLockBtn(s, locked) {
+    let b = [...s.children].find((c) => c.classList && c.classList.contains('secret-lockbtn'));
+    if (!b) {
+      b = el('span', 'secret-lockbtn');
+      b.dataset.chrome = '1';
+      b.setAttribute('contenteditable', 'false');
+    }
+    s.appendChild(b);   // 언제나 맨 끝에
+    b.textContent = locked ? '\u{1F512}' : '\u{1F513}';
+    b.title = t(locked ? 'secret.hint' : 'secret.lockAgain');
+  }
+  // 잠그기: 번짐 표시 + 편집 불가 + 안내 문구. 자동 잠금 타이머는 지운다.
   function lock(s) {
     s.classList.add('locked');
     s.setAttribute('data-hint', t('secret.hint'));
     s.setAttribute('contenteditable', 'false');
+    ensureLockBtn(s, true);
+    clearTimeout(timers.get(s));
+    timers.delete(s);
   }
-  // 풀기: 다시 편집할 수 있다 (편집 가능 여부는 편집기에서 물려받는다)
+  // 풀기: 다시 편집할 수 있다 (편집 가능 여부는 편집기에서 물려받는다). 30초 뒤 저절로 잠긴다.
   function unlock(s) {
     s.classList.remove('locked');
     s.removeAttribute('data-hint');
     s.removeAttribute('contenteditable');
+    ensureLockBtn(s, false);
+    clearTimeout(timers.get(s));
+    timers.set(s, setTimeout(() => { if (s.isConnected) lock(s); }, AUTO_LOCK_MS));
   }
   function lockAll() { if (editor) blocks().forEach(lock); }
+
+  // 지금 선택이 이미 있는 비밀글에 조금이라도 걸치는지 (겹쳐 감싸지 않게 메뉴를 막는다)
+  function selectionTouchesSecret() {
+    const sel = window.getSelection();
+    if (!editor || !sel.rangeCount) return false;
+    const range = sel.getRangeAt(0);
+    if (isSecret(range.commonAncestorContainer.nodeType === 3
+                   ? range.commonAncestorContainer.parentElement : range.commonAncestorContainer)) return true;
+    return blocks().some((s) => range.intersectsNode(s));
+  }
 
   // 우클릭 메뉴 '비밀글 입력': 고른 글이 있으면 그것을 감싸고, 없으면 빈 블록을 만들어 커서를 둔다
   function insert() {
@@ -92,6 +124,8 @@ const secretTools = (() => {
 
   // 비밀글 해제: 블록을 벗기고 내용은 그대로 둔다
   function unwrap(s) {
+    clearTimeout(timers.get(s));
+    [...s.children].filter((c) => c.classList && c.classList.contains('secret-lockbtn')).forEach((c) => c.remove());
     const parent = s.parentNode;
     while (s.firstChild) parent.insertBefore(s.firstChild, s);
     s.remove();
@@ -233,6 +267,13 @@ const secretTools = (() => {
     lockAll();
     // 잠긴 블록은 누르면 풀린다 (커서가 들어가지 않게 기본 동작을 막는다)
     editor.addEventListener('mousedown', (e) => {
+      const btn = e.target.closest && e.target.closest('.secret-lockbtn');
+      if (btn && !btn.parentElement.classList.contains('locked')) {   // 🔓 → 다시 잠근다
+        e.preventDefault();
+        e.stopPropagation();
+        lock(btn.parentElement);
+        return;
+      }
       const s = e.target.closest && e.target.closest('.secret.locked');
       if (!s || !editor.contains(s)) return;
       e.preventDefault();
@@ -243,13 +284,14 @@ const secretTools = (() => {
     window.addEventListener('blur', lockAll);
     document.addEventListener('visibilitychange', () => { if (document.hidden) lockAll(); });
     // 되돌리기 등으로 다시 들어온 블록도 잠근 채로
-    new MutationObserver(() => {
-      blocks().forEach((s) => {
-        if (!s.classList.contains('locked') && !editor.contains(document.activeElement) &&
-            !s.contains(window.getSelection().anchorNode)) lock(s);
-      });
+    new MutationObserver((muts) => {
+      muts.forEach((m) => m.addedNodes.forEach((n) => {
+        if (n.nodeType !== 1 || n.classList.contains('secret-lockbtn')) return;
+        const list = n.classList.contains('secret') ? [n] : [...n.querySelectorAll('.secret')];
+        list.forEach((s) => { if (!s.classList.contains('locked') && !timers.has(s)) lock(s); });
+      }));
     }).observe(editor, { childList: true, subtree: true });
   }
 
-  return { init, insert, wrapSelection, unwrap, lock, lockAll, isSecret };
+  return { init, insert, wrapSelection, unwrap, lock, lockAll, isSecret, selectionTouchesSecret };
 })();
