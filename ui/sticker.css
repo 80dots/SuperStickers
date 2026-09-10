@@ -1621,3 +1621,11 @@ a.memo-link:hover, .md-body a[href^="memo:"]:hover {
 /* 제목이 비어 있을 때의 자리 표시 ('제목 없음') — 눌러서 적을 수 있다 */
 #stTitle { cursor: text; }
 #stTitle.placeholder { opacity: 0.45; font-weight: 500; font-style: italic; }
+
+/* 인라인 비밀글 (선택 메뉴로 만든 것): 줄 안에 그대로 있고 안내 문구 대신 자물쇠만 */
+span.secret { display: inline; margin: 0; padding: 0 5px; border-radius: 5px; min-height: 0; }
+span.secret.locked { overflow: visible; }
+span.secret.locked::after { content: "\1F512"; position: static; transform: none; padding: 0 0 0 4px;
+                            background: transparent; animation: none; font-size: 0.85em; }
+span.secret.locked::before { border-radius: 5px; }
+#editor a[href^="http"] { cursor: pointer; }

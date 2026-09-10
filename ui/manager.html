@@ -166,22 +166,20 @@
           <span data-i18n="secret.usePassword"></span>
         </label>
       </div>
-      <div class="row">
-        <label></label>
-        <button id="secretSetBtn"></button>
-        <button id="secretClearBtn" class="hidden" data-i18n="secret.clearPw"></button>
+      <div class="row secret-actions">
+        <button id="secretSetBtn" class="box-btn"></button>
+        <button id="secretClearBtn" class="box-btn hidden" data-i18n="secret.clearPw"></button>
         <span id="secretStatus" class="status"></span>
       </div>
       <div id="secretForm" class="hidden secret-form">
         <div class="row" id="secretCurrentRow"><label data-i18n="secret.current"></label><input type="password" id="secretCurrent" autocomplete="off"></div>
-        <div class="row"><label data-i18n="secret.newPw"></label><input type="password" id="secretPw1" autocomplete="off"></div>
-        <div class="row"><label data-i18n="secret.newPw2"></label><input type="password" id="secretPw2" autocomplete="off"></div>
-        <div class="row"><label data-i18n="secret.question"></label><input type="text" id="secretQuestion" data-i18n-ph="secret.questionPh"></div>
-        <div class="row"><label data-i18n="secret.answer"></label><input type="text" id="secretAnswer" data-i18n-ph="secret.answerPh"></div>
-        <div class="row">
-          <label></label>
-          <button id="secretSaveBtn" data-i18n="secret.save"></button>
-          <button id="secretCancelBtn" data-i18n="secret.cancel"></button>
+        <div class="row" id="secretPw1Row"><label data-i18n="secret.newPw"></label><input type="password" id="secretPw1" autocomplete="off"></div>
+        <div class="row" id="secretPw2Row"><label data-i18n="secret.newPw2"></label><input type="password" id="secretPw2" autocomplete="off"></div>
+        <div class="row" id="secretQuestionRow"><label data-i18n="secret.question"></label><input type="text" id="secretQuestion" data-i18n-ph="secret.questionPh"></div>
+        <div class="row" id="secretAnswerRow"><label data-i18n="secret.answer"></label><input type="text" id="secretAnswer" data-i18n-ph="secret.answerPh"></div>
+        <div class="row secret-actions">
+          <button id="secretSaveBtn" class="box-btn"></button>
+          <button id="secretCancelBtn" class="box-btn" data-i18n="secret.cancel"></button>
           <span id="secretFormMsg" class="status"></span>
         </div>
       </div>

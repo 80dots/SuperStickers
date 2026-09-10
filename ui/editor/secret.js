@@ -57,6 +57,39 @@ const secretTools = (() => {
     if (onChange) onChange();
   }
 
+  // 선택 메뉴 '비밀글로 설정': 고른 글만 그 자리에서 인라인 비밀글로 감싼다 (줄을 바꾸지 않는다).
+  // 표에서 여러 칸을 골랐으면 칸마다 따로 감싼다 — 칸을 가로지르는 범위를 한 덩어리로 뽑으면 표가 깨진다.
+  function wrapSelection() {
+    const sel = window.getSelection();
+    if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0);
+    if (range.collapsed || !editor.contains(range.commonAncestorContainer)) return;
+    const wrapCell = (cell) => {
+      if (!cell.textContent.trim() || cell.querySelector('.secret')) return;
+      const s = el('span', 'secret');
+      while (cell.firstChild) s.appendChild(cell.firstChild);
+      cell.appendChild(s);
+    };
+    const cells = typeof tableTools !== 'undefined' && editor.querySelectorAll('.tsel').length
+      ? [...editor.querySelectorAll('.tsel')] : [];
+    if (cells.length > 1) {
+      cells.forEach(wrapCell);
+    } else {
+      const s = el('span', 'secret');
+      s.appendChild(range.extractContents());
+      range.insertNode(s);
+      // 감싼 뒤에는 그 뒤에 커서를 두고 곧바로 잠근다
+      const r = document.createRange();
+      r.setStartAfter(s);
+      r.collapse(true);
+      sel.removeAllRanges();
+      sel.addRange(r);
+      lock(s);
+    }
+    if (cells.length > 1) lockAll();
+    if (onChange) onChange();
+  }
+
   // 비밀글 해제: 블록을 벗기고 내용은 그대로 둔다
   function unwrap(s) {
     const parent = s.parentNode;
@@ -218,5 +251,5 @@ const secretTools = (() => {
     }).observe(editor, { childList: true, subtree: true });
   }
 
-  return { init, insert, unwrap, lock, lockAll, isSecret };
+  return { init, insert, wrapSelection, unwrap, lock, lockAll, isSecret };
 })();

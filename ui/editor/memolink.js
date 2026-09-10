@@ -192,6 +192,15 @@ const memoLinkTools = (() => {
     // 문서 어디의 memo: 링크든 누르면 그 메모를 띄운다 (편집기 안에서는 기본 탐색이 없지만
     // 미리보기·AI 출력은 target=_blank로 열려 버리므로 먼저 가로챈다)
     document.addEventListener('click', (e) => {
+      // 편집기 안의 웹 링크: contenteditable에서는 눌러도 가지 않으므로 여기서 브라우저를 연다
+      // (미리보기·AI 출력의 target=_blank 링크는 네이티브 NewWindowRequested가 이미 연다)
+      const web = e.target.closest && e.target.closest('#editor a[href^="http://"], #editor a[href^="https://"]');
+      if (web) {
+        e.preventDefault();
+        e.stopPropagation();
+        bridge.call('app.openExternal', { url: web.getAttribute('href') }).catch(console.error);
+        return;
+      }
       const a = e.target.closest && e.target.closest('a[href^="memo:"]');
       if (!a) return;
       e.preventDefault();

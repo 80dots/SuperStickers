@@ -543,9 +543,9 @@
   "secret.title": "Secret text",
   "secret.desc": "Secret text in a memo stays blurred until clicked. With a password on, clicking asks for it. The password is stored only as a hash and cannot be recovered; if you forget it, answer your question to set a new one.",
   "secret.usePassword": "Require a password for secret text",
-  "secret.setPw": "Set password…",
-  "secret.changePw": "Change password…",
-  "secret.clearPw": "Remove password…",
+  "secret.setPw": "Set password",
+  "secret.changePw": "Change password",
+  "secret.clearPw": "Remove password",
   "secret.current": "Current password",
   "secret.question": "Recovery question",
   "secret.questionPh": "e.g. Name of your first pet?",
@@ -559,5 +559,9 @@
   "secret.saveFailed": "Could not save",
   "secret.questionEmpty": "Enter a recovery question and its answer",
   "secret.clearHint": "Enter only the current password and press Save to remove it",
-  "title.untitled": "Untitled"
+  "title.untitled": "Untitled",
+  "sel.secret": "Make secret",
+  "secret.creating": "Creating the password…",
+  "secret.changing": "Changing the password…",
+  "secret.clearing": "Removing the password…"
 }

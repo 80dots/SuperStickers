@@ -256,8 +256,8 @@ static StickerData MakeNewStickerData(const std::string& type, double uiScale, i
 void App::NewSticker(const std::string& type) {
     StickerData d = MakeNewStickerData(type, settings.uiScale, (int)stickers_.size());
     store.SaveSticker(d);
-    // 새로 만든 메모는 바로 쓸 수 있게 본문에 커서를 놓는다
-    CreateStickerWindow(d, true, true, true);
+    // 새로 만든 메모는 바로 쓸 수 있게 본문에 커서를 놓고 앞으로 가져온다
+    if (auto* w = CreateStickerWindow(d, true, true, true)) SetForegroundWindow(w->hwnd());
 }
 
 namespace {
@@ -361,7 +361,11 @@ void App::NewStickerFromClipboard() {
         return;
     }
     store.SaveSticker(d);
-    CreateStickerWindow(d, true, true, true, clip);
+    // 다른 앱에서 단축키를 눌렀으므로 새 창을 앞으로 가져와 곧바로 보이게 한다
+    if (auto* w = CreateStickerWindow(d, true, true, true, clip)) {
+        SetForegroundWindow(w->hwnd());
+        SetWindowPos(w->hwnd(), HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+    }
 }
 
 // id로 떠 있는 메모창 찾기 (그룹 안의 메모는 대상이 아니다)
@@ -1101,10 +1105,29 @@ std::string Sha256Hex(const std::string& data) {
     return out;
 }
 
-// 소금 + 반복 해시. 사전 공격을 더디게 하려고 2만 번 돌린다 (약 60ms).
+// 소금 + 반복 해시. 사전 공격을 더디게 하려고 2만 번 돌린다.
+// 제공자(CryptAcquireContext)는 한 번만 열고 해시 객체만 돌려 쓴다 — 매번 열면 수 초가 걸린다.
 std::string HashSecret(const std::string& salt, const std::string& text) {
-    std::string h = Sha256Hex(salt + "\x1f" + text);
-    for (int i = 0; i < 20000; i++) h = Sha256Hex(h + salt);
+    HCRYPTPROV prov = 0;
+    if (!CryptAcquireContextW(&prov, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT))
+        return Sha256Hex(salt + "\x1f" + text);  // 실패하면 한 번짜리로라도
+    static const char* hex = "0123456789abcdef";
+    auto round = [&](const std::string& data) {
+        std::string out;
+        HCRYPTHASH hash = 0;
+        if (CryptCreateHash(prov, CALG_SHA_256, 0, 0, &hash) &&
+            CryptHashData(hash, (const BYTE*)data.data(), (DWORD)data.size(), 0)) {
+            BYTE digest[32]{};
+            DWORD len = sizeof(digest);
+            if (CryptGetHashParam(hash, HP_HASHVAL, digest, &len, 0))
+                for (DWORD i = 0; i < len; i++) { out += hex[digest[i] >> 4]; out += hex[digest[i] & 15]; }
+        }
+        if (hash) CryptDestroyHash(hash);
+        return out;
+    };
+    std::string h = round(salt + "\x1f" + text);
+    for (int i = 0; i < 20000; i++) h = round(h + salt);
+    CryptReleaseContext(prov, 0);
     return h;
 }
 
@@ -2522,9 +2545,11 @@ void App::SetupCommonBridge(WebViewHost& host) {
         if (!settings.secret.hash.empty() && !verifyPassword(p.value("current", "")))
             return json{{"ok", false}, {"error", "current"}};
         std::string q = p.value("question", ""), a = p.value("answer", "");
-        if (TrimAnswer(q).empty() || TrimAnswer(a).empty())
+        // 바꾸기(이미 있음)에서 질문·답을 비워 보내면 예전 것을 그대로 둔다. 처음 정할 때는 필수.
+        bool keep = !settings.secret.hash.empty() && TrimAnswer(q).empty() && TrimAnswer(a).empty();
+        if (!keep && (TrimAnswer(q).empty() || TrimAnswer(a).empty()))
             return json{{"ok", false}, {"error", "question"}};
-        setPassword(pw, q, a, false);
+        setPassword(pw, q, a, keep);
         return json{{"ok", true}};
     });
     // 찾기: 질문의 답이 맞으면 새 비밀번호를 정한다 (질문·답은 그대로 둔다)
@@ -2729,7 +2754,8 @@ void App::SetupCommonBridge(WebViewHost& host) {
 
     b.Register("app.openExternal", [](const json& p) {
         std::string url = p.value("url", "");
-        if (url.rfind("https://", 0) != 0) throw std::runtime_error("https only");
+        if (url.rfind("https://", 0) != 0 && url.rfind("http://", 0) != 0)
+            throw std::runtime_error("http(s) only");
         ShellExecuteW(nullptr, L"open", util::Utf8ToWide(url).c_str(), nullptr, nullptr,
                       SW_SHOWNORMAL);
         return json::object();

@@ -694,61 +694,90 @@ SOFTWARE.`;
 
   // ---------- 비밀글 비밀번호 ----------
   // 비밀번호 자체는 오지 않는다 — 있는지(hasPassword)와 질문만 온다
+  let secretMode = 'set';   // 'set'(처음) | 'change'(바꾸기: 현재+새) | 'clear'(지우기: 현재만)
   function applySecretUi() {
     const sc = state.settings.secret || {};
     $('#secretUseCheck').checked = !!sc.usePassword;
     $('#secretUseCheck').disabled = !sc.hasPassword;
     $('#secretSetBtn').textContent = i18n.t(sc.hasPassword ? 'secret.changePw' : 'secret.setPw');
     $('#secretClearBtn').classList.toggle('hidden', !sc.hasPassword);
+    $('#secretStatus').className = 'status';
     $('#secretStatus').textContent = sc.hasPassword ? '' : i18n.t('secret.needPw');
   }
-  function openSecretForm() {
-    const sc = state.settings.secret || {};
-    $('#secretCurrentRow').classList.toggle('hidden', !sc.hasPassword);
-    ['secretCurrent', 'secretPw1', 'secretPw2', 'secretAnswer'].forEach((id) => { $('#' + id).value = ''; });
-    $('#secretQuestion').value = sc.question || '';
+  // 모드별로 필요한 칸만 보인다. 처음: 새 비밀번호·확인·질문·답 / 바꾸기: 현재·새·확인 / 지우기: 현재
+  function openSecretForm(mode) {
+    secretMode = mode;
+    $('#secretCurrentRow').classList.toggle('hidden', mode === 'set');
+    $('#secretPw1Row').classList.toggle('hidden', mode === 'clear');
+    $('#secretPw2Row').classList.toggle('hidden', mode === 'clear');
+    $('#secretQuestionRow').classList.toggle('hidden', mode !== 'set');
+    $('#secretAnswerRow').classList.toggle('hidden', mode !== 'set');
+    ['secretCurrent', 'secretPw1', 'secretPw2', 'secretQuestion', 'secretAnswer'].forEach((id) => { $('#' + id).value = ''; });
+    $('#secretSaveBtn').textContent = i18n.t(mode === 'clear' ? 'secret.clearPw' : 'secret.save');
+    $('#secretSaveBtn').disabled = false;
+    $('#secretFormMsg').className = 'status';
     $('#secretFormMsg').textContent = '';
     $('#secretForm').classList.remove('hidden');
-    $(sc.hasPassword ? '#secretCurrent' : '#secretPw1').focus();
+    $(mode === 'set' ? '#secretPw1' : '#secretCurrent').focus();
   }
+  function closeSecretForm() { $('#secretForm').classList.add('hidden'); }
   async function refreshSecret() {
     try {
       state.settings.secret = await bridge.call('secret.status', {});
     } catch { /* 그대로 둔다 */ }
     applySecretUi();
   }
-  $('#secretSetBtn').addEventListener('click', openSecretForm);
-  $('#secretCancelBtn').addEventListener('click', () => { delete $('#secretSaveBtn').dataset.clear; $('#secretForm').classList.add('hidden'); });
-  $('#secretSaveBtn').addEventListener('click', async () => {
+  // 해시가 몇십 ms 걸리므로 그동안 스피너와 문구를 보인다
+  function secretBusy(key) {
     const msg = $('#secretFormMsg');
-    if ($('#secretSaveBtn').dataset.clear) {   // 비밀번호 지우기: 현재 비밀번호만 맞으면 된다
-      delete $('#secretSaveBtn').dataset.clear;
-      const r = await bridge.call('secret.clear', { current: $('#secretCurrent').value })
-        .catch(() => ({ ok: false }));
-      if (!r.ok) { msg.textContent = i18n.t('secret.currentWrong'); $('#secretSaveBtn').dataset.clear = '1'; return; }
-      $('#secretForm').classList.add('hidden');
+    msg.className = 'status busy';
+    msg.textContent = i18n.t(key);
+    $('#secretSaveBtn').disabled = true;
+  }
+  function secretError(key) {
+    const msg = $('#secretFormMsg');
+    msg.className = 'status err';
+    msg.textContent = i18n.t(key);
+    $('#secretSaveBtn').disabled = false;
+  }
+  $('#secretSetBtn').addEventListener('click', () => {
+    openSecretForm((state.settings.secret || {}).hasPassword ? 'change' : 'set');
+  });
+  $('#secretClearBtn').addEventListener('click', () => openSecretForm('clear'));
+  $('#secretCancelBtn').addEventListener('click', closeSecretForm);
+  $('#secretSaveBtn').addEventListener('click', async () => {
+    const current = $('#secretCurrent').value;
+    if (secretMode === 'clear') {
+      secretBusy('secret.clearing');
+      const r = await bridge.call('secret.clear', { current }).catch(() => ({ ok: false }));
+      if (!r.ok) { secretError('secret.currentWrong'); return; }
+      closeSecretForm();
       await refreshSecret();
       $('#secretStatus').textContent = i18n.t('secret.cleared');
       return;
     }
     const pw1 = $('#secretPw1').value, pw2 = $('#secretPw2').value;
-    if (!pw1) { msg.textContent = i18n.t('secret.pwEmpty'); return; }
-    if (pw1 !== pw2) { msg.textContent = i18n.t('secret.pwMismatch'); return; }
-    if (!$('#secretQuestion').value.trim() || !$('#secretAnswer').value.trim()) {
-      msg.textContent = i18n.t('secret.questionEmpty'); return;
+    if (!pw1) { secretError('secret.pwEmpty'); return; }
+    if (pw1 !== pw2) { secretError('secret.pwMismatch'); return; }
+    if (secretMode === 'set' && (!$('#secretQuestion').value.trim() || !$('#secretAnswer').value.trim())) {
+      secretError('secret.questionEmpty'); return;
     }
+    secretBusy(secretMode === 'set' ? 'secret.creating' : 'secret.changing');
     const r = await bridge.call('secret.setPassword', {
-      current: $('#secretCurrent').value, password: pw1,
-      question: $('#secretQuestion').value, answer: $('#secretAnswer').value,
+      current, password: pw1,
+      // 바꾸기는 질문·답을 다시 받지 않는다 — 비워 보내면 네이티브가 그대로 둔다
+      question: secretMode === 'set' ? $('#secretQuestion').value : '',
+      answer: secretMode === 'set' ? $('#secretAnswer').value : '',
     }).catch(() => ({ ok: false, error: 'bridge' }));
     if (!r.ok) {
-      msg.textContent = i18n.t(r.error === 'current' ? 'secret.currentWrong' : 'secret.saveFailed');
+      secretError(r.error === 'current' ? 'secret.currentWrong'
+                  : r.error === 'question' ? 'secret.questionEmpty' : 'secret.saveFailed');
       return;
     }
-    $('#secretForm').classList.add('hidden');
+    closeSecretForm();
     await refreshSecret();
     // 처음 정했으면 바로 켠다 — 정해 놓고 안 켜진 채 두는 실수를 막는다
-    if (!$('#secretUseCheck').checked) {
+    if (secretMode === 'set' && !$('#secretUseCheck').checked) {
       await bridge.call('secret.setUse', { on: true }).catch(() => {});
       await refreshSecret();
     }
@@ -758,12 +787,6 @@ SOFTWARE.`;
     const r = await bridge.call('secret.setUse', { on: e.target.checked }).catch(() => ({ ok: false }));
     if (!r.ok) e.target.checked = false;
     await refreshSecret();
-  });
-  $('#secretClearBtn').addEventListener('click', () => {
-    // 현재 비밀번호를 폼으로 받는다 (페이지 prompt는 쓰지 않는다)
-    openSecretForm();
-    $('#secretFormMsg').textContent = i18n.t('secret.clearHint');
-    $('#secretSaveBtn').dataset.clear = '1';
   });
 
   // ---------- 읽어주기 (TTS) ----------

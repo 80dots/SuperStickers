@@ -1471,7 +1471,6 @@
         open(e.clientX, e.clientY, [
           { label: i18n.t('emoji.add'), run: () => emojiTools.pick() },
           { label: i18n.t('link.memo'), run: () => memoLinkTools.pick() },
-          ...(type === 'rich' ? [{ label: i18n.t('secret.insert'), run: () => secretTools.insert() }] : []),
           { sep: true },
           { label: i18n.t('table.insert'), run: insertTable },
           ...(type === 'rich' ? [
@@ -2036,6 +2035,14 @@
     });
 
     const SEL_ACTIONS = [
+      // 고른 글만 비밀글로 (줄을 바꾸지 않고 그 자리에서 — 표 안의 글도 된다)
+      {
+        id: 'secret', richOnly: true,
+        label: () => i18n.t('sel.secret'),
+        icon: '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" '
+            + 'd="M4.5 7V5.5a3.5 3.5 0 0 1 7 0V7H13v7.5H3V7zm1.5 0h4V5.5a2 2 0 0 0-4 0z"/></svg>',
+        run() { secretTools.wrapSelection(); },
+      },
       aiAction('summarize', 'summarize', 'sel.summarize',
         '<svg viewBox="0 0 16 16" width="14" height="14"><path fill="currentColor" '
         + 'd="M2 2.5h12V4H2zm0 3.4h12v1.5H2zm0 3.4h8v1.5H2zm0 3.4h5V14H2z"/></svg>'),
@@ -2099,6 +2106,7 @@
     selMenu.appendChild(selSep);
 
     SEL_ACTIONS.forEach((a) => {
+      if (a.richOnly && type !== 'rich') return;   // 마크다운에는 비밀글이 없다
       const b = document.createElement('button');
       b.className = 'sel-item';
       b.dataset.action = a.id;

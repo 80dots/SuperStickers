@@ -543,9 +543,9 @@
   "secret.title": "비밀글",
   "secret.desc": "본문의 비밀글은 평소에 번져 보이고 누르면 열립니다. 비밀번호를 켜면 누를 때 비밀번호를 묻습니다. 비밀번호는 해시로만 저장되어 되살릴 수 없고, 잊으면 질문에 답해 새로 정합니다.",
   "secret.usePassword": "비밀글에 비밀번호 사용",
-  "secret.setPw": "비밀번호 설정…",
-  "secret.changePw": "비밀번호 바꾸기…",
-  "secret.clearPw": "비밀번호 지우기…",
+  "secret.setPw": "비밀번호 설정",
+  "secret.changePw": "비밀번호 바꾸기",
+  "secret.clearPw": "비밀번호 지우기",
   "secret.current": "현재 비밀번호",
   "secret.question": "찾기 질문",
   "secret.questionPh": "예: 첫 반려동물의 이름은?",
@@ -559,5 +559,9 @@
   "secret.saveFailed": "저장하지 못했습니다",
   "secret.questionEmpty": "찾기 질문과 답을 적어 주세요",
   "secret.clearHint": "현재 비밀번호만 입력하고 저장을 누르면 지웁니다",
-  "title.untitled": "제목 없음"
+  "title.untitled": "제목 없음",
+  "sel.secret": "비밀글로 설정",
+  "secret.creating": "비밀번호를 만드는 중…",
+  "secret.changing": "비밀번호를 바꾸는 중…",
+  "secret.clearing": "비밀번호를 지우는 중…"
 }
