@@ -1617,3 +1617,7 @@ a.memo-link:hover, .md-body a[href^="memo:"]:hover {
 .sc-btn.primary { border-color: transparent; background: var(--accent, #3b7ddd); color: var(--accent-fg, #fff); }
 .sc-btn.link { border: none; padding: 6px 2px; color: var(--accent, #3b7ddd); }
 .sc-btn:hover { filter: brightness(0.96); }
+
+/* 제목이 비어 있을 때의 자리 표시 ('제목 없음') — 눌러서 적을 수 있다 */
+#stTitle { cursor: text; }
+#stTitle.placeholder { opacity: 0.45; font-weight: 500; font-style: italic; }

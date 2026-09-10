@@ -530,13 +530,17 @@
       applyLangView();
     }));
 
-  // ---------- AI 제목 (타이틀바 표시 + 연필로 수정, 표시 언어 반영) ----------
+  // ---------- 제목 (타이틀바 표시 + 연필로 수정, 표시 언어 반영) ----------
+  // AI Review가 없어도 제목은 언제나 보인다 — 비어 있으면 '제목 없음'을 흐리게 두고,
+  // 그 자리를 누르거나 연필을 눌러 바로 적을 수 있다.
   function renderStTitle() {
     const t = dispTitle().trim();
-    $('#stTitle').classList.toggle('hidden', !t);
-    $('#stTitle').textContent = t;
-    $('#stTitle').title = t;
-    $('#stTitleEditBtn').classList.toggle('hidden', !t);
+    const el = $('#stTitle');
+    el.classList.remove('hidden');
+    el.classList.toggle('placeholder', !t);
+    el.textContent = t || i18n.t('title.untitled');
+    el.title = t || i18n.t('tt.editTitle');
+    $('#stTitleEditBtn').classList.remove('hidden');
   }
   // 제목 편집 모드 켜기/끄기
   function setTitleEditing(on) {
@@ -569,6 +573,7 @@
     setTitleEditing(false);
   }
   $('#stTitleEditBtn').addEventListener('click', () => setTitleEditing(true));
+  $('#stTitle').addEventListener('click', () => setTitleEditing(true));  // 제목 글자를 눌러도 편집
   $('#stTitleInput').addEventListener('blur', () => {
     if (!$('#stTitleInput').classList.contains('hidden')) commitTitle();
   });

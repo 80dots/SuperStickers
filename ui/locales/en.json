@@ -558,5 +558,6 @@
   "secret.currentWrong": "The current password is wrong",
   "secret.saveFailed": "Could not save",
   "secret.questionEmpty": "Enter a recovery question and its answer",
-  "secret.clearHint": "Enter only the current password and press Save to remove it"
+  "secret.clearHint": "Enter only the current password and press Save to remove it",
+  "title.untitled": "Untitled"
 }

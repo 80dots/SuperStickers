@@ -558,5 +558,6 @@
   "secret.currentWrong": "현재 비밀번호가 맞지 않습니다",
   "secret.saveFailed": "저장하지 못했습니다",
   "secret.questionEmpty": "찾기 질문과 답을 적어 주세요",
-  "secret.clearHint": "현재 비밀번호만 입력하고 저장을 누르면 지웁니다"
+  "secret.clearHint": "현재 비밀번호만 입력하고 저장을 누르면 지웁니다",
+  "title.untitled": "제목 없음"
 }
