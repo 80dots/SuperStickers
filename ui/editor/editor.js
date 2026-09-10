@@ -288,7 +288,13 @@ const editorCore = (() => {
         return;
       }
       if (tag === 'table' && node.classList.contains('mtable')) {
-        tableTools.toMarkdown(node).forEach((l) => out.push(l));
+        // 칸 안의 비밀글은 토큰(또는 제외)으로 바꾼 복제본을 직렬화한다
+        let src = node;
+        if (node.querySelector('.secret')) {
+          src = node.cloneNode(true);
+          src.querySelectorAll('.secret').forEach((s) => s.replaceWith(document.createTextNode(secretToken(s))));
+        }
+        tableTools.toMarkdown(src).forEach((l) => out.push(l));
         return;
       }
       // 일반 블록(div/p) — 자식에 블록이 섞여 있으면 재귀

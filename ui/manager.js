@@ -322,9 +322,11 @@ SOFTWARE.`;
       text = '📁 ' + (s.files || []).map((p) => p.split('\\').pop()).join(', ');
     else if (t === 'web') text = '🌐 ' + (s.lastUrl || s.url || '');
     else if (t === 'pdf') text = '📄 ' + (s.pdfTitle || '');
-    else text = stripHtml(s.html);
+    else text = secretMask.stripSecretsFromHtml(s.html);   // 비밀글은 미리보기에 나오지 않는다
     preview.textContent = text.trim().replace(/^[📁🌐📄] ?$/u, '').slice(0, 300) ||
                           i18n.t('manager.noText');
+    // 예전 AI 제목·요약에 비밀글 글자가 남아 있을 수 있다 — 같은 글자면 가린다
+    secretMask.maskNode(preview, secretMask.textsFromHtml(s.html));
     card.appendChild(preview);
     return card;
   }

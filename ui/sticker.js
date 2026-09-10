@@ -504,6 +504,7 @@
     $('#transView').classList.toggle('hidden', !translated);
     if (translated) {
       mdTools.renderReadonlyInto($('#transView'), trans || '');
+      maskSecretsIn($('#transView'));                // 토큰을 잃고 글자가 남았어도 가린다
       if (type === 'rich') secretTools.lockAll();   // 번역 속 비밀글도 잠근 채로
       $('#toolbar').classList.add('hidden');
       if (type === 'rich') editor.classList.add('hidden');
@@ -541,6 +542,7 @@
     el.classList.toggle('placeholder', !t);
     el.textContent = t || i18n.t('title.untitled');
     el.title = t || i18n.t('tt.editTitle');
+    maskSecretsIn(el);
     $('#stTitleEditBtn').classList.remove('hidden');
   }
   // 제목 편집 모드 켜기/끄기
@@ -603,6 +605,13 @@
     return /no model|connection failed|not found|http 404/i.test(msg || '');
   }
   // 요약 상자 그리기 — 오류면 잠시 뒤 사라지고, 설정 오류면 마법사 버튼을 붙인다
+  // 본문의 비밀글 글자들 (요약·번역·AI 출력·제목에 같은 글자가 보이면 가린다)
+  // (함수 선언이어야 한다 — renderStTitle이 이 줄보다 먼저 불려 const면 TDZ 오류로 페이지가 죽는다)
+  function secretTexts() { return type === 'rich' ? secretMask.textsFromRoot(editor) : []; }
+  function maskSecretsIn(el) {
+    if (!el || type !== 'rich') return;
+    if (secretMask.maskNode(el, secretTexts())) secretTools.lockAll();
+  }
   function renderSummary(errorMsg, setupError) {
     const box = $('#summaryBox');
     clearSummaryErrorTimer();
@@ -630,6 +639,7 @@
     const s = dispSummary().trim();
     box.classList.toggle('hidden', !s || !isText);
     $('#summaryText').textContent = s;
+    maskSecretsIn($('#summaryText'));   // 예전 요약에 비밀글 글자가 있으면 가린다
   }
   renderSummary();
   renderLangSeg();
@@ -877,7 +887,7 @@
     // 본문에 넣은 파일·폴더 (링크는 살아 있는지 확인해 끊긴 것을 표시한다)
     memoFileTools.init(editor, scheduleSave);
     // 비밀글: 열 때는 모두 잠근 채로, 누르면(비밀번호를 쓰면 확인 후) 푼다
-    secretTools.init(editor, scheduleSave, [$('#transView')]);
+    secretTools.init(editor, scheduleSave, [$('#transView'), $('#summaryBox'), $('#aiOutput'), $('#stTitle')]);
     // 저장돼 있던 3D 임베드에 뷰어 마운트 (UI는 Shadow DOM — 저장 HTML 미오염)
     editor.querySelectorAll('.embed3d').forEach((el) => viewer3d.mount(el, scheduleSave));
     // 본문에서 떨어진 임베드는 viewer3d가 렌더 루프·WebGL 컨텍스트를 놓는다. 되돌리기(Ctrl+Z)나
@@ -1815,6 +1825,14 @@
     }
     // 선택한 글이 있으면 그것, 없으면 본문 전체
     function selectedOrAllText() {
+      const text = selectedOrAllTextRaw();
+      if (type !== 'rich') return text;
+      const secrets = secretTexts();
+      if (!secrets.length) return text;
+      const re = new RegExp(secrets.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')).join('|'), 'g');
+      return text.replace(re, '');   // 비밀글 글자는 AI에 가지 않는다
+    }
+    function selectedOrAllTextRaw() {
       if (type === 'markdown') {
         if (savedMdSel && savedMdSel[0] !== savedMdSel[1])
           return mdSource.value.slice(savedMdSel[0], savedMdSel[1]).trim();
@@ -1828,6 +1846,7 @@
     function showPlain(text, setupError) {
       aiOutput.classList.remove('md-body');
       aiOutput.textContent = text;
+      maskSecretsIn(aiOutput);
       $('#aiWizardBtn').classList.toggle('hidden', !setupError);
     }
     // 오류 옆 '설정 마법사' — 마치면 같은 작업을 다시 돌린다
@@ -1841,6 +1860,7 @@
     function showRendered(text) {
       aiOutput.classList.add('md-body');
       mdTools.renderReadonlyInto(aiOutput, text);
+      maskSecretsIn(aiOutput);
     }
 
     // AI 요청 시작 (직전 요청은 끊는다)

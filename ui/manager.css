@@ -648,3 +648,9 @@ progress.indeterminate { animation: progPulse 1.2s ease-in-out infinite; }
   vertical-align: -2px; animation: secret-spin 0.8s linear infinite;
 }
 @keyframes secret-spin { to { transform: rotate(360deg); } }
+
+/* 목록 미리보기에 남은 비밀글 글자 — 번지게만 보인다 */
+.preview .secret.masked {
+  color: transparent; text-shadow: 0 0 8px rgba(60, 60, 60, 0.75); user-select: none;
+  padding: 0 4px; border-radius: 4px; background: rgba(0, 0, 0, 0.06);
+}

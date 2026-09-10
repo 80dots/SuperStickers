@@ -579,6 +579,16 @@ IPv4 `127.0.0.1`에만 붙는다. 그래서 `localhost`로는 `::1`을 두드렸
 않는다. 번역 보기(`#transView`)의 비밀글도 `secretTools`가 함께 지켜본다(`init`의 extraRoots).
 그룹 카드는 언제나 번져 보인다.
 
+**두 번째 방어선 — 화면 가리기(`ui/common/secretmask.js`)**: 예전에 만들어진 요약·번역이나 다른
+경로로 흘러든 글자를 위해, 본문 비밀글의 글자(`textsFromRoot`, 2자 이상, 긴 것부터)를 요약 상자·
+번역 보기·AI 출력·제목에서 찾아 `<span class="secret locked masked">`로 감싼다(`maskNode` — 텍스트
+노드만 자르고, 이미 비밀글 안인 것은 건너뛴다). 이 조각들도 `secretTools`의 root라 클릭 풀기·🔓
+재잠금·30초 자동 잠금이 같다. 목록·그룹 카드·메모 링크 이름은 `stripSecretsFromHtml`로 비밀글을
+아예 뺀 텍스트를 쓰고, 목록의 예전 제목·요약은 `maskNode`로 가린다. 표 칸 안의 비밀글은 `getMarkdown`
+이 표 복제본에서 토큰으로 바꿔 직렬화한다. AI 패널에 넘기는 선택 글(`selectedOrAllText`)도 비밀글
+글자를 지운다. **함정**: 이 기능을 넣으며 `const secretTexts`를 `renderStTitle`보다 뒤에 선언했다가
+TDZ 오류로 페이지 초기화가 통째로 죽었다 — 초기화 중 불리는 헬퍼는 함수 선언으로 둔다.
+
 비밀번호는 **저장하지 않는다.** `HashSecret(salt, pw)` = 소금을 섞은 SHA-256을 2만 번 반복한
 해시(CryptoAPI, 약 60ms)만 두고, 비교는 상수 시간(`SameHash`). 찾기 질문의 답도 같은 방식으로
 따로 해시한다(앞뒤 공백 정리). 그래서 "찾기"는 원래 값을 보여 주는 것이 아니라 **답이 맞으면

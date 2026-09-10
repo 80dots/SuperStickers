@@ -356,8 +356,9 @@
     else if (t === 'web') text = '🌐 ' + (m.lastUrl || m.url || '');
     else if (t === 'pdf') text = '📄 ' + (m.pdfTitle || '');
     else {
-      // innerHTML 대입은 <img> 요청·인라인 핸들러 실행을 유발한다 — 파싱만 하는 DOMParser
-      text = new DOMParser().parseFromString(m.html || '', 'text/html').body.textContent || '';
+      // innerHTML 대입은 <img> 요청·인라인 핸들러 실행을 유발한다 — 파싱만 하는 DOMParser.
+      // 비밀글은 미리보기에 나오지 않는다.
+      text = secretMask.stripSecretsFromHtml(m.html || '');
     }
     text = text.trim().replace(/\s+/g, ' ');
     return text.slice(0, 80) || i18n.t('manager.noText');

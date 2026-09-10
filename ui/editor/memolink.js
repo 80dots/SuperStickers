@@ -24,11 +24,7 @@ const memoLinkTools = (() => {
     if (t) return t;
     let text = '';
     if (m.markdown) text = m.markdown;
-    else if (m.html) {
-      const tmp = document.createElement('div');
-      tmp.innerHTML = m.html;
-      text = tmp.textContent || '';
-    }
+    else if (m.html) text = secretMask.stripSecretsFromHtml(m.html);   // 비밀글은 이름에 쓰지 않는다
     text = text.replace(/\s+/g, ' ').trim();
     return text ? text.slice(0, 40) : i18n.t('link.untitled');
   }

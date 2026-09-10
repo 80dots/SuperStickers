@@ -1641,3 +1641,9 @@ div.secret .secret-lockbtn { position: absolute; right: 8px; top: 6px; margin: 0
 div.secret.locked .secret-lockbtn { z-index: 1; }
 .sel-item:disabled { opacity: 0.38; cursor: default; }
 .sel-item:disabled:hover { background: transparent; }
+
+/* 요약·번역·AI 출력·제목에서 가린 비밀글 조각 — 본문 비밀글과 같은 모양 */
+.secret.masked { display: inline; padding: 0 4px; margin: 0; border-radius: 4px; min-height: 0; }
+.secret.masked::after { content: none; }
+#stTitle .secret { padding: 0 3px; }
+#stTitle .secret-lockbtn { display: none; }
