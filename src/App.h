@@ -55,8 +55,12 @@ public:
 
     // 스티커 관리
     StickerWindow* CreateStickerWindow(const StickerData& d, bool show, bool activate,
-                                       bool focusEditor = false);
+                                       bool focusEditor = false,
+                                       const nlohmann::json& clip = nlohmann::json());
     void NewSticker(const std::string& type = "rich");
+    // 클립보드 내용으로 새 메모: 글·유튜브 링크·이미지·파일/폴더 경로(3D·동영상·이미지는 그 종류로).
+    // 비어 있으면 트레이 알림만 한다.
+    void NewStickerFromClipboard();
     void DeleteSticker(const std::string& id);
     StickerWindow* FindSticker(const std::string& id);
     void ShowSticker(const std::string& id);

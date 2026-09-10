@@ -123,9 +123,15 @@ const editorCore = (() => {
     if (!editor) return '';
     // 표의 조작용 장식(정렬 버튼·손잡이)과 셀 선택 표시는 화면에만 필요하다.
     // 그대로 저장하면 그룹 카드·AI 리뷰·내보내기까지 부스러기가 따라다닌다.
-    if (!editor.querySelector('[data-chrome], .tsel')) return editor.innerHTML;
+    if (!editor.querySelector('[data-chrome], .tsel, .secret')) return editor.innerHTML;
     const copy = editor.cloneNode(true);
     copy.querySelectorAll('[data-chrome]').forEach((el) => el.remove());
+    // 비밀글의 잠김 표시는 화면용이다 — 저장본은 <div class="secret">내용</div>만 남긴다
+    copy.querySelectorAll('.secret').forEach((el) => {
+      el.classList.remove('locked');
+      el.removeAttribute('data-hint');
+      el.removeAttribute('contenteditable');
+    });
     copy.querySelectorAll('.tsel').forEach((el) => {
       el.classList.remove('tsel');
       if (!el.className) el.removeAttribute('class');
@@ -162,10 +168,11 @@ const editorCore = (() => {
   // 본문 순수 텍스트 (장식 제외)
   function getPlainText() {
     if (!editor) return '';
-    // 표의 정렬 버튼 같은 장식은 본문이 아니다 (AI에 그대로 넘어가면 안 된다)
-    if (!editor.querySelector('[data-chrome]')) return editor.innerText.trim();
+    // 표의 정렬 버튼 같은 장식은 본문이 아니다 (AI에 그대로 넘어가면 안 된다).
+    // 비밀글은 AI·읽어주기·검색 어디에도 흘리지 않는다.
+    if (!editor.querySelector('[data-chrome], .secret')) return editor.innerText.trim();
     const copy = editor.cloneNode(true);
-    copy.querySelectorAll('[data-chrome]').forEach((el) => el.remove());
+    copy.querySelectorAll('[data-chrome], .secret').forEach((el) => el.remove());
     // innerText는 화면에 붙어 있어야 줄바꿈을 제대로 준다 — 잠깐 숨겨 붙였다 뗀다
     copy.style.position = 'absolute';
     copy.style.left = '-9999px';

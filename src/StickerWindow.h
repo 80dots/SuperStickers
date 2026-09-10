@@ -13,8 +13,10 @@
 class StickerWindow {
 public:
     static void RegisterWndClass(HINSTANCE hinst);
+    // clip: 클립보드로 만든 새 메모가 첫 그림에 넣을 내용 (App::NewStickerFromClipboard)
     static StickerWindow* Create(HINSTANCE hinst, const StickerData& d, bool show,
-                                 bool activate, bool focusEditor = false);
+                                 bool activate, bool focusEditor = false,
+                                 const nlohmann::json& clip = nlohmann::json());
 
     HWND hwnd() const { return hwnd_; }
     WebViewHost& host() { return host_; }

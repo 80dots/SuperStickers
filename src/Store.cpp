@@ -139,6 +139,17 @@ Settings Store::LoadSettingsUnchecked() {
             s.hotkeys.list = h.value("list", s.hotkeys.list);
             s.hotkeys.arrangeLeft = h.value("arrangeLeft", s.hotkeys.arrangeLeft);
             s.hotkeys.arrangeRight = h.value("arrangeRight", s.hotkeys.arrangeRight);
+            s.hotkeys.clipMemo = h.value("clipMemo", s.hotkeys.clipMemo);
+        }
+        if (j.contains("secret") && j["secret"].is_object()) {
+            const json& sc = j["secret"];
+            s.secret.usePassword = sc.value("usePassword", false);
+            s.secret.salt = sc.value("salt", "");
+            s.secret.hash = sc.value("hash", "");
+            s.secret.question = sc.value("question", "");
+            s.secret.answerSalt = sc.value("answerSalt", "");
+            s.secret.answerHash = sc.value("answerHash", "");
+            if (s.secret.hash.empty()) s.secret.usePassword = false;  // 비밀번호 없이 켜질 수 없다
         }
         if (j.contains("tts") && j["tts"].is_object()) {
             s.tts.voice = j["tts"].value("voice", s.tts.voice);
@@ -205,8 +216,16 @@ void Store::SaveSettings(const Settings& s) {
           {"newMemo", s.hotkeys.newMemo},
           {"list", s.hotkeys.list},
           {"arrangeLeft", s.hotkeys.arrangeLeft},
-          {"arrangeRight", s.hotkeys.arrangeRight}}},
+          {"arrangeRight", s.hotkeys.arrangeRight},
+          {"clipMemo", s.hotkeys.clipMemo}}},
         {"tts", {{"voice", s.tts.voice}, {"rate", s.tts.rate}}},
+        {"secret",
+         {{"usePassword", s.secret.usePassword},
+          {"salt", s.secret.salt},
+          {"hash", s.secret.hash},
+          {"question", s.secret.question},
+          {"answerSalt", s.secret.answerSalt},
+          {"answerHash", s.secret.answerHash}}},
         {"style",
          {{"background", s.style.background},
           {"font", s.style.font},

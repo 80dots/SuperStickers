@@ -1530,3 +1530,90 @@ a.memo-link:hover, .md-body a[href^="memo:"]:hover {
 .em-empty { grid-column: 1 / -1; padding: 16px; font-size: 12px; color: var(--muted, #777); text-align: center; }
 .em-foot { padding: 4px 10px 8px; min-height: 22px; font-size: 11px; color: var(--muted, #777);
            white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ---------- 비밀글 ---------- */
+/* 잠기면 글자를 투명하게 하고 그림자로만 번지게 그린다 (filter 대신 — 안내 문구는 또렷해야 한다).
+   그림·동영상은 filter로 흐린다. 위로 빛이 천천히 흐르는 무늬가 '무언가 있다'는 느낌을 준다. */
+.secret {
+  position: relative;
+  margin: 0.4em 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--note-fg, #333) 6%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--note-fg, #333) 28%, transparent);
+  min-height: 1.5em;
+}
+.secret.locked {
+  color: transparent;
+  text-shadow: 0 0 10px color-mix(in srgb, var(--note-fg, #333) 70%, transparent);
+  user-select: none;
+  cursor: pointer;
+  overflow: hidden;
+  border-style: solid;
+}
+.secret.locked * { color: transparent !important; }
+.secret.locked img, .secret.locked video, .secret.locked .embed3d, .secret.locked .mfile {
+  filter: blur(10px) saturate(0.6);
+  pointer-events: none;
+}
+.secret.locked::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.55) 48%,
+              rgba(180, 210, 255, 0.35) 52%, transparent 70%);
+  background-size: 260% 100%;
+  animation: secret-shine 3.2s ease-in-out infinite;
+  pointer-events: none;
+}
+.secret.locked::after {
+  content: "\1F512\00A0" attr(data-hint);
+  position: absolute;
+  left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--note-bg, #fff) 82%, transparent);
+  color: var(--note-fg, #333);
+  text-shadow: none;
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: secret-breathe 2.4s ease-in-out infinite;
+}
+@keyframes secret-shine { 0% { background-position: 120% 0; } 100% { background-position: -140% 0; } }
+@keyframes secret-breathe { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+
+/* 비밀번호 창 */
+.sc-back {
+  position: fixed; inset: 0; z-index: 63;
+  display: flex; align-items: center; justify-content: center; padding: 10px;
+  background: rgba(0, 0, 0, 0.35);
+}
+.sc-box {
+  width: 100%; max-width: 320px; border-radius: 12px; overflow: hidden;
+  background: var(--panel-bg, #fff); color: var(--fg, #222);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.sc-title { padding: 12px 14px 4px; font-size: 13px; font-weight: 600; }
+.sc-body { padding: 8px 14px 14px; }
+.sc-row { margin-bottom: 8px; }
+.sc-input {
+  width: 100%; padding: 7px 10px;
+  border: 1px solid var(--border-strong, #c9c9c9); border-radius: 7px;
+  background: var(--panel-bg, #fff); color: inherit; font-size: 13px;
+}
+.sc-input:focus { outline: none; border-color: var(--accent, #3b7ddd); }
+.sc-input.shake { animation: sc-shake 0.35s ease; border-color: #d9534f; }
+@keyframes sc-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+.sc-question { margin-bottom: 8px; font-size: 12px; line-height: 1.5; }
+.sc-msg { min-height: 16px; font-size: 11px; color: #d9534f; }
+.sc-actions { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.sc-spacer { flex: 1; }
+.sc-btn {
+  padding: 6px 12px; border: 1px solid var(--border-strong, #c9c9c9); border-radius: 7px;
+  background: transparent; color: inherit; font-size: 12px; cursor: pointer;
+}
+.sc-btn.primary { border-color: transparent; background: var(--accent, #3b7ddd); color: var(--accent-fg, #fff); }
+.sc-btn.link { border: none; padding: 6px 2px; color: var(--accent, #3b7ddd); }
+.sc-btn:hover { filter: brightness(0.96); }

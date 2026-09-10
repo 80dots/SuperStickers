@@ -446,3 +446,12 @@ body.tinted #emptyHint { color: inherit; opacity: 0.55; }
   font-size: 13px;
   text-align: center;
 }
+
+/* 비밀글은 카드에서 언제나 번져 보인다 — 푸는 것은 메모창에서만 */
+.gcard .secret {
+  position: relative; margin: 0.3em 0; padding: 6px 10px; border-radius: 6px;
+  color: transparent; text-shadow: 0 0 9px rgba(60, 60, 60, 0.7); user-select: none;
+  background: rgba(0, 0, 0, 0.05); border: 1px solid rgba(0, 0, 0, 0.15); overflow: hidden;
+}
+.gcard .secret * { color: transparent !important; }
+.gcard .secret img, .gcard .secret video { filter: blur(10px); }

@@ -74,17 +74,19 @@ const memoFileTools = (() => {
   }
 
   // 경로 목록을 본문에 넣는다. 파일은 링크·복사본을 물어보고, 폴더는 링크로만 넣는다.
-  async function addPaths(paths) {
+  async function addPaths(paths, opts) {
     const list = (paths || []).filter(Boolean);
     if (!list.length) return;
+    const forced = opts && opts.kind;   // 'link'면 묻지 않고 링크로 (클립보드 단축키)
     // 폴더인지는 확장자 유무로 어림잡고, 존재 확인은 뒤에서 한 번에 한다
     const looksDir = (p) => !/\.[^\\/.]+$/.test(p);
     const files = list.filter((p) => !looksDir(p));
 
     let kind = 'link';
     if (files.length) {
-      const r = await bridge.call('memofile.askKind', { isDir: false, count: files.length })
-        .catch(() => ({ kind: 'cancel' }));
+      const r = forced ? { kind: forced }
+        : await bridge.call('memofile.askKind', { isDir: false, count: files.length })
+            .catch(() => ({ kind: 'cancel' }));
       kind = r.kind;
       if (kind === 'cancel') return;
     }

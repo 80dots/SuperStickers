@@ -561,6 +561,25 @@ IPv4 `127.0.0.1`에만 붙는다. 그래서 `localhost`로는 `::1`을 두드렸
   `wizard.openBtn` 버튼을 붙인다. 이 오류는 5초 자동 소멸을 하지 않는다(누를 시간을 준다).
   버튼은 마법사를 띄우고, 마치면 같은 작업(리뷰 또는 마지막 `runTask`)을 다시 돌린다.
 
+### 비밀글 (`ui/editor/secret.js`, 설정 → 비밀글)
+
+본문의 `<div class="secret">` 블록. **저장되는 것은 그 태그와 내용뿐**이고 잠김 표시(`locked`,
+`data-hint`, `contenteditable=false`)는 화면용이라 `editorCore.getHtml`이 걷어낸다. 열 때는
+무조건 잠근 채로 시작하고(`init → lockAll`), 창을 떠나거나(`blur`) 숨기면 다시 잠근다.
+잠긴 블록은 `mousedown`을 캡처 단계에서 가로채 커서가 들어가지 않게 하고 `tryUnlock`으로 간다.
+번짐은 `filter: blur`가 아니라 **글자를 투명하게 하고 `text-shadow`로만 그리는** 방식이다 —
+`::after`의 안내 문구("클릭하면 보입니다")까지 흐려지면 안 되기 때문. 그림·동영상만 `filter`.
+`::before`가 빛이 흐르는 무늬(`secret-shine`)를 돌린다. **`getPlainText`는 비밀글을 통째로
+빼므로** AI Review·읽어주기·검색에 비밀 내용이 흘러가지 않는다. 그룹 카드는 언제나 번져 보인다.
+
+비밀번호는 **저장하지 않는다.** `HashSecret(salt, pw)` = 소금을 섞은 SHA-256을 2만 번 반복한
+해시(CryptoAPI, 약 60ms)만 두고, 비교는 상수 시간(`SameHash`). 찾기 질문의 답도 같은 방식으로
+따로 해시한다(앞뒤 공백 정리). 그래서 "찾기"는 원래 값을 보여 주는 것이 아니라 **답이 맞으면
+새 비밀번호를 정하는 것**(`secret.resetByAnswer`)이다. 비밀번호가 없으면 `usePassword`는 켜질 수
+없고(`secret.setUse`가 거부, 읽을 때도 강제로 끔), 처음 정하면 설정 화면이 바로 켠다.
+브리지: `secret.status`(비밀번호 자체는 절대 내보내지 않는다) · `verify` · `setPassword`(바꿀
+때는 현재 비밀번호 확인) · `resetByAnswer` · `setUse` · `clear`.
+
 ### 메모 링크 (`ui/editor/memolink.js`)
 
 본문 우클릭 → '메모 링크…'가 `stickers.list`로 받은 목록(자기 자신 제외, 최근 수정순)을
@@ -843,6 +862,13 @@ WebView2의 Web Speech API는 **음성 목록이 비어 있다**(실측 `speechS
   메모(그룹창 제외)를 화면 순서(위→아래, 왼→오른)로 모두 최소화한 뒤 작업 영역의 한쪽
   가장자리에 위에서부터 `8×배율` 간격으로 세운다. 다음 창이 작업 영역 아래에 닿으면 그
   줄의 최대 너비 + 간격만큼 안쪽으로 물러나 새 줄을 시작한다. 너비는 각 창의 것을 지킨다.
+- **클립보드를 새 메모로** (단축키 `clipMemo`, `App::NewStickerFromClipboard`): 네이티브가
+  클립보드를 CF_HDROP → CF_UNICODETEXT → CF_BITMAP 순으로 읽어 `init.clip`에 싣고, 페이지의
+  `applyClip`이 종류를 가른다 — 글은 문단(유튜브 링크면 영상), 경로는 확장자로 3D(`__insertModel3d`)·
+  동영상(`attachment.videoFromPath`)·이미지(`attachment.imageFromPath`)·그 밖은 파일 링크
+  (`memoFileTools.addPaths(…, {kind:'link'})` — 묻지 않는다). 글 한 줄이 실제 있는 경로(따옴표
+  포함)면 파일로 본다. 비트맵은 GDI+로 메모 폴더의 `Image\clip-<guid>.png`에 저장해 첨부로 넣는다
+  (창을 만들기 전에 저장해야 하므로 메모 데이터를 먼저 만든다). 비어 있으면 트레이 풍선만.
 - **창 자석 정렬** (`settings.magnet.enabled` 기본 On, `.gap` 기본 10 논리 px): 메모창을
   드래그해 다른 메모창 근처로 가져가면 정해진 간격으로 붙고 가장자리가 맞춰진다.
   `WM_MOVING`이 준 제안 사각형을 `App::SnapStickerRect`가 보정한 뒤 TRUE를 반환하는

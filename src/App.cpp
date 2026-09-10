@@ -4,8 +4,14 @@
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <winhttp.h>
+#include <wincrypt.h>  // 비밀글 비밀번호 해시 (WIN32_LEAN_AND_MEAN이라 따로)
 
 #include <wil/com.h>
+
+#include <algorithm>
+using std::max;
+using std::min;
+#include <gdiplus.h>  // 클립보드 비트맵 → PNG
 
 #include <algorithm>
 #include <cctype>
@@ -42,8 +48,9 @@ constexpr int kHotkeyNewId = 2;
 constexpr int kHotkeyListId = 3;
 constexpr int kHotkeyArrangeLeftId = 4;
 constexpr int kHotkeyArrangeRightId = 5;
+constexpr int kHotkeyClipMemoId = 6;
 constexpr int kHotkeyFirstId = 1;
-constexpr int kHotkeyLastId = 5;
+constexpr int kHotkeyLastId = 6;
 constexpr UINT kAlarmIntervalMs = 30 * 1000;  // 캘린더 알람 확인 주기
 // 자석이 당기기 시작하는 거리 (논리 px). 민감도가 높을수록 멀리서도 붙는다.
 constexpr int kSnapThresholdLowDip = 6;
@@ -221,14 +228,14 @@ void App::RunOnUiDelayed(UINT delayMs, std::function<void()> fn) {
 // ---------- 스티커 관리 ----------
 
 StickerWindow* App::CreateStickerWindow(const StickerData& d, bool show, bool activate,
-                                        bool focusEditor) {
-    auto* w = StickerWindow::Create(hinst_, d, show, activate, focusEditor);
+                                        bool focusEditor, const json& clip) {
+    auto* w = StickerWindow::Create(hinst_, d, show, activate, focusEditor, clip);
     if (w) stickers_.push_back(w);
     return w;
 }
 
-// 새 메모 만들기: 종류별 기본 크기·계단식 위치로 저장한 뒤 창을 띄우고 본문에 커서를 둔다
-void App::NewSticker(const std::string& type) {
+// 새 메모의 데이터만 만든다 (id·종류·기본 크기·계단식 위치). 저장은 부른 쪽이 한다.
+static StickerData MakeNewStickerData(const std::string& type, double uiScale, int index) {
     StickerData d;
     d.id = util::WideToUtf8(util::NewGuid());
     d.type = type;
@@ -238,14 +245,123 @@ void App::NewSticker(const std::string& type) {
     if (type == "file") { d.w = 570; d.h = 660; }
     else if (type == "web") { d.w = 750; d.h = 690; }
     else if (type == "pdf") { d.w = 750; d.h = 900; }
-    d.w = (int)(d.w * settings.uiScale + 0.5);
-    d.h = (int)(d.h * settings.uiScale + 0.5);
-    int n = (int)stickers_.size();
-    d.x = 120 + (n % 8) * 44;
-    d.y = 120 + (n % 8) * 44;
+    d.w = (int)(d.w * uiScale + 0.5);
+    d.h = (int)(d.h * uiScale + 0.5);
+    d.x = 120 + (index % 8) * 44;
+    d.y = 120 + (index % 8) * 44;
+    return d;
+}
+
+// 새 메모 만들기: 종류별 기본 크기·계단식 위치로 저장한 뒤 창을 띄우고 본문에 커서를 둔다
+void App::NewSticker(const std::string& type) {
+    StickerData d = MakeNewStickerData(type, settings.uiScale, (int)stickers_.size());
     store.SaveSticker(d);
     // 새로 만든 메모는 바로 쓸 수 있게 본문에 커서를 놓는다
     CreateStickerWindow(d, true, true, true);
+}
+
+namespace {
+
+// GDI+ PNG 인코더 CLSID (한 번만 조회)
+CLSID PngClsid() {
+    static CLSID clsid = []() {
+        CLSID result{};
+        UINT num = 0, size = 0;
+        Gdiplus::GetImageEncodersSize(&num, &size);
+        if (size == 0) return result;
+        std::vector<BYTE> buf(size);
+        auto* codecs = (Gdiplus::ImageCodecInfo*)buf.data();
+        Gdiplus::GetImageEncoders(num, size, codecs);
+        for (UINT i = 0; i < num; i++)
+            if (wcscmp(codecs[i].MimeType, L"image/png") == 0) { result = codecs[i].Clsid; break; }
+        return result;
+    }();
+    return clsid;
+}
+
+// 클립보드의 비트맵을 PNG 파일로
+bool SaveClipboardBitmapAsPng(HBITMAP hbm, const std::wstring& path) {
+    Gdiplus::Bitmap bmp(hbm, nullptr);
+    if (bmp.GetLastStatus() != Gdiplus::Ok) return false;
+    CLSID png = PngClsid();
+    return bmp.Save(path.c_str(), &png, nullptr) == Gdiplus::Ok;
+}
+
+// CF_HDROP → 경로 목록
+std::vector<std::wstring> ReadDropPaths(HDROP drop) {
+    std::vector<std::wstring> out;
+    UINT n = DragQueryFileW(drop, 0xFFFFFFFF, nullptr, 0);
+    for (UINT i = 0; i < n; i++) {
+        UINT len = DragQueryFileW(drop, i, nullptr, 0);
+        std::wstring p(len + 1, L'\0');
+        DragQueryFileW(drop, i, p.data(), len + 1);
+        p.resize(len);
+        if (!p.empty()) out.push_back(p);
+    }
+    return out;
+}
+
+}  // namespace
+
+// 클립보드로 새 메모. 우선순위: 파일 목록 → 글(경로 한 줄이면 파일로) → 비트맵.
+// 실제로 무엇을 어떻게 넣을지는 페이지가 정한다 (init.clip — sticker.js applyClip 참고).
+void App::NewStickerFromClipboard() {
+    json clip;
+    HBITMAP hbm = nullptr;
+    if (!OpenClipboard(hwnd_)) return;
+    if (IsClipboardFormatAvailable(CF_HDROP)) {
+        if (HANDLE h = GetClipboardData(CF_HDROP)) {
+            json paths = json::array();
+            for (auto& p : ReadDropPaths((HDROP)h)) paths.push_back(util::WideToUtf8(p));
+            if (!paths.empty()) clip = {{"kind", "files"}, {"paths", paths}};
+        }
+    }
+    if (clip.is_null() && IsClipboardFormatAvailable(CF_UNICODETEXT)) {
+        if (HANDLE h = GetClipboardData(CF_UNICODETEXT)) {
+            if (auto* w = (const wchar_t*)GlobalLock(h)) {
+                std::wstring text = w;
+                GlobalUnlock(h);
+                // 앞뒤 공백 정리
+                size_t a = text.find_first_not_of(L" \t\r\n"), b = text.find_last_not_of(L" \t\r\n");
+                std::wstring trimmed = a == std::wstring::npos ? L"" : text.substr(a, b - a + 1);
+                if (!trimmed.empty()) {
+                    // 따옴표로 감싼 경로("C:\...")도 받는다
+                    std::wstring path = trimmed;
+                    if (path.size() >= 2 && path.front() == L'"' && path.back() == L'"')
+                        path = path.substr(1, path.size() - 2);
+                    bool singleLine = path.find(L'\n') == std::wstring::npos;
+                    if (singleLine && GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES)
+                        clip = {{"kind", "files"}, {"paths", json::array({util::WideToUtf8(path)})}};
+                    else
+                        clip = {{"kind", "text"}, {"text", util::WideToUtf8(text)}};
+                }
+            }
+        }
+    }
+    if (clip.is_null() && IsClipboardFormatAvailable(CF_BITMAP)) {
+        hbm = (HBITMAP)GetClipboardData(CF_BITMAP);  // 클립보드 소유 — 닫기 전에 저장해야 한다
+    }
+
+    StickerData d = MakeNewStickerData("rich", settings.uiScale, (int)stickers_.size());
+    if (hbm) {
+        std::wstring dir = store.StickerDir(d.id);
+        util::EnsureDir(dir);
+        util::EnsureDir(dir + L"\\Image");
+        std::wstring name = L"clip-" + util::NewGuid() + L".png";
+        if (SaveClipboardBitmapAsPng(hbm, dir + L"\\Image\\" + name)) {
+            std::string rel = "Image/" + util::WideToUtf8(name);
+            d.attachments.push_back(rel);
+            clip = {{"kind", "image"}, {"url", AttachmentUrl(d.id, rel)}};
+        }
+    }
+    CloseClipboard();
+
+    if (clip.is_null()) {
+        tray_.ShowBalloon(i18n.T("app.name"), i18n.T("clip.empty"));
+        return;
+    }
+    store.SaveSticker(d);
+    CreateStickerWindow(d, true, true, true, clip);
 }
 
 // id로 떠 있는 메모창 찾기 (그룹 안의 메모는 대상이 아니다)
@@ -959,6 +1075,55 @@ json App::StyleJson() const {
                 {"fontSize", settings.style.fontSize}};
 }
 
+// ---------- 비밀글 비밀번호 ----------
+namespace {
+
+// SHA-256 16진 문자열 (CryptoAPI)
+std::string Sha256Hex(const std::string& data) {
+    HCRYPTPROV prov = 0;
+    HCRYPTHASH hash = 0;
+    std::string out;
+    if (CryptAcquireContextW(&prov, nullptr, nullptr, PROV_RSA_AES, CRYPT_VERIFYCONTEXT) &&
+        CryptCreateHash(prov, CALG_SHA_256, 0, 0, &hash) &&
+        CryptHashData(hash, (const BYTE*)data.data(), (DWORD)data.size(), 0)) {
+        BYTE digest[32]{};
+        DWORD len = sizeof(digest);
+        if (CryptGetHashParam(hash, HP_HASHVAL, digest, &len, 0)) {
+            static const char* hex = "0123456789abcdef";
+            for (DWORD i = 0; i < len; i++) {
+                out += hex[digest[i] >> 4];
+                out += hex[digest[i] & 15];
+            }
+        }
+    }
+    if (hash) CryptDestroyHash(hash);
+    if (prov) CryptReleaseContext(prov, 0);
+    return out;
+}
+
+// 소금 + 반복 해시. 사전 공격을 더디게 하려고 2만 번 돌린다 (약 60ms).
+std::string HashSecret(const std::string& salt, const std::string& text) {
+    std::string h = Sha256Hex(salt + "\x1f" + text);
+    for (int i = 0; i < 20000; i++) h = Sha256Hex(h + salt);
+    return h;
+}
+
+// 찾기 답은 앞뒤 공백을 지우고 비교한다 (대소문자는 그대로 — 한글 답이 대부분이다)
+std::string TrimAnswer(std::string s) {
+    size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
+    return a == std::string::npos ? "" : s.substr(a, b - a + 1);
+}
+
+// 상수 시간 비교 — 앞글자부터 다른지에 따라 걸리는 시간이 달라지지 않게
+bool SameHash(const std::string& a, const std::string& b) {
+    if (a.size() != b.size() || a.empty()) return false;
+    unsigned char diff = 0;
+    for (size_t i = 0; i < a.size(); i++) diff |= (unsigned char)(a[i] ^ b[i]);
+    return diff == 0;
+}
+
+}  // namespace
+
 // ---------- 전역 단축키 ----------
 namespace {
 
@@ -1026,6 +1191,7 @@ void App::RegisterHotkeys() {
         {kHotkeyListId, "list", &settings.hotkeys.list},
         {kHotkeyArrangeLeftId, "arrangeLeft", &settings.hotkeys.arrangeLeft},
         {kHotkeyArrangeRightId, "arrangeRight", &settings.hotkeys.arrangeRight},
+        {kHotkeyClipMemoId, "clipMemo", &settings.hotkeys.clipMemo},
     };
     for (const auto& it : items) {
         if (it.text->empty()) continue;  // 빈 값 = 쓰지 않음
@@ -1043,6 +1209,7 @@ void App::OnHotkey(int id) {
     else if (id == kHotkeyListId) OpenManager("list");
     else if (id == kHotkeyArrangeLeftId) ArrangeToEdge(false);
     else if (id == kHotkeyArrangeRightId) ArrangeToEdge(true);
+    else if (id == kHotkeyClipMemoId) NewStickerFromClipboard();
 }
 
 // 화면에 보이는 메모를 모두 최소화해 한쪽 가장자리에 위에서부터 같은 간격으로 세운다.
@@ -1548,6 +1715,7 @@ void App::ApplySettingsPatch(const json& patch) {
         take("list", settings.hotkeys.list);
         take("arrangeLeft", settings.hotkeys.arrangeLeft);
         take("arrangeRight", settings.hotkeys.arrangeRight);
+        take("clipMemo", settings.hotkeys.clipMemo);
         RegisterHotkeys();
         SendEventToManager("hotkeys.changed", {{"failed", failedHotkeys_}});
     }
@@ -1793,6 +1961,10 @@ void App::SetupCommonBridge(WebViewHost& host) {
                       {"uiRevealOnClick", settings.uiRevealOnClick},
                       {"style", StyleJson()},
                       {"tts", {{"voice", settings.tts.voice}, {"rate", settings.tts.rate}}},
+                      {"secret",
+                       {{"usePassword", settings.secret.usePassword && !settings.secret.hash.empty()},
+                        {"hasPassword", !settings.secret.hash.empty()},
+                        {"question", settings.secret.question}}},
                       {"hotkeys",
                        {{"enabled", settings.hotkeys.enabled},
                         {"toggleAll", settings.hotkeys.toggleAll},
@@ -1800,6 +1972,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
                         {"list", settings.hotkeys.list},
                         {"arrangeLeft", settings.hotkeys.arrangeLeft},
                         {"arrangeRight", settings.hotkeys.arrangeRight},
+                        {"clipMemo", settings.hotkeys.clipMemo},
                         {"failed", failedHotkeys_}}},
                       {"magnet",
                        {{"enabled", settings.magnetEnabled},
@@ -2315,6 +2488,67 @@ void App::SetupCommonBridge(WebViewHost& host) {
     b.Register("ollama.cancelInstall", [this](const json&) {
         installAbort_ = true;
         return json::object();
+    });
+
+    // ---------- 비밀글 비밀번호 ----------
+    auto secretStatus = [this]() {
+        return json{{"usePassword", settings.secret.usePassword && !settings.secret.hash.empty()},
+                    {"hasPassword", !settings.secret.hash.empty()},
+                    {"question", settings.secret.question}};
+    };
+    auto verifyPassword = [this](const std::string& pw) {
+        return !settings.secret.hash.empty() &&
+               SameHash(HashSecret(settings.secret.salt, pw), settings.secret.hash);
+    };
+    auto setPassword = [this](const std::string& pw, const std::string& question,
+                              const std::string& answer, bool keepQuestion) {
+        settings.secret.salt = util::WideToUtf8(util::NewGuid());
+        settings.secret.hash = HashSecret(settings.secret.salt, pw);
+        if (!keepQuestion) {
+            settings.secret.question = question;
+            settings.secret.answerSalt = util::WideToUtf8(util::NewGuid());
+            settings.secret.answerHash = HashSecret(settings.secret.answerSalt, TrimAnswer(answer));
+        }
+        store.SaveSettings(settings);
+    };
+    b.Register("secret.status", [secretStatus](const json&) { return secretStatus(); });
+    b.Register("secret.verify", [verifyPassword](const json& p) {
+        return json{{"ok", verifyPassword(p.value("password", ""))}};
+    });
+    // 새로 정하기·바꾸기. 이미 있으면 현재 비밀번호가 맞아야 한다. 질문·답도 함께 받는다.
+    b.Register("secret.setPassword", [this, verifyPassword, setPassword](const json& p) {
+        std::string pw = p.value("password", "");
+        if (pw.empty()) return json{{"ok", false}, {"error", "empty"}};
+        if (!settings.secret.hash.empty() && !verifyPassword(p.value("current", "")))
+            return json{{"ok", false}, {"error", "current"}};
+        std::string q = p.value("question", ""), a = p.value("answer", "");
+        if (TrimAnswer(q).empty() || TrimAnswer(a).empty())
+            return json{{"ok", false}, {"error", "question"}};
+        setPassword(pw, q, a, false);
+        return json{{"ok", true}};
+    });
+    // 찾기: 질문의 답이 맞으면 새 비밀번호를 정한다 (질문·답은 그대로 둔다)
+    b.Register("secret.resetByAnswer", [this, setPassword](const json& p) {
+        std::string pw = p.value("password", "");
+        if (pw.empty() || settings.secret.answerHash.empty()) return json{{"ok", false}};
+        std::string given = HashSecret(settings.secret.answerSalt, TrimAnswer(p.value("answer", "")));
+        if (!SameHash(given, settings.secret.answerHash)) return json{{"ok", false}};
+        setPassword(pw, "", "", true);
+        return json{{"ok", true}};
+    });
+    b.Register("secret.setUse", [this](const json& p) {
+        bool on = p.value("on", false);
+        if (on && settings.secret.hash.empty()) return json{{"ok", false}, {"error", "noPassword"}};
+        settings.secret.usePassword = on;
+        store.SaveSettings(settings);
+        return json{{"ok", true}};
+    });
+    // 비밀번호 지우기 (현재 비밀번호 확인 후). 비밀글은 그대로 남고 누르면 바로 열린다.
+    b.Register("secret.clear", [this, verifyPassword](const json& p) {
+        if (!verifyPassword(p.value("current", ""))) return json{{"ok", false}, {"error", "current"}};
+        settings.secret = Settings::SecretSettings{};
+        store.SaveSettings(settings);
+        return json{{"ok", true}};
     });
 
     // ---------- AI 설정 마법사 창 ----------

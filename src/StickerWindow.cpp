@@ -202,7 +202,7 @@ void StickerWindow::RegisterWndClass(HINSTANCE hinst) {
 }
 
 StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool show,
-                                     bool activate, bool focusEditor) {
+                                     bool activate, bool focusEditor, const json& clip) {
     auto* self = new StickerWindow();
     self->data = d;
 
@@ -356,8 +356,9 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
     self->RegisterTypeBridges();
     App::I().SetupCommonBridge(self->host_);
 
-    self->host_.Create(hwnd, L"https://app.sticker/sticker.html",
-                       App::I().MakeInitJson("sticker", d.id, focusEditor),
+    json init = App::I().MakeInitJson("sticker", d.id, focusEditor);
+    if (!clip.is_null()) init["clip"] = clip;  // 클립보드로 만든 메모: 페이지가 첫 그림에 넣는다
+    self->host_.Create(hwnd, L"https://app.sticker/sticker.html", init,
                        [self]() { self->ApplyUiScale(); });
 
     // 웹 메모: 상단 스트립 아래를 채우는 자유 탐색 브라우저 뷰
@@ -901,6 +902,17 @@ void StickerWindow::RegisterTypeBridges() {
         std::wstring src = BackslashPath(util::Utf8ToWide(p.value("path", "")));
         if (src.empty()) throw std::runtime_error("no path");
         std::string name = App::I().store.ImportAttachment(self->data.id, src, "video");
+        if (name.empty()) throw std::runtime_error("copy failed");
+        self->data.attachments.push_back(name);
+        self->SaveData();
+        return json{{"name", name}, {"url", AttachmentUrl(self->data.id, name)}};
+    });
+
+    // 이미지 파일 경로를 첨부로 들여온다 (클립보드로 만든 메모가 쓴다)
+    b.Register("attachment.imageFromPath", [self](const json& p) {
+        std::wstring src = BackslashPath(util::Utf8ToWide(p.value("path", "")));
+        if (src.empty()) throw std::runtime_error("no path");
+        std::string name = App::I().store.ImportAttachment(self->data.id, src, "image");
         if (name.empty()) throw std::runtime_error("copy failed");
         self->data.attachments.push_back(name);
         self->SaveData();

@@ -588,6 +588,7 @@ SOFTWARE.`;
     applyHotkeyUi();
     applyStyleUi();
     applyTtsUi();
+    applySecretUi();
     const mg = s.magnet || {};
     $('#magnetCheck').checked = mg.enabled !== false;      // 기본값 On
     $('#magnetGapSelect').value = String(mg.gap == null ? 10 : mg.gap);
@@ -689,6 +690,80 @@ SOFTWARE.`;
   $('#revealClickCheck').addEventListener('change', (e) => {
     state.settings.uiRevealOnClick = e.target.checked;
     bridge.call('settings.set', { uiRevealOnClick: e.target.checked }).catch(console.error);
+  });
+
+  // ---------- 비밀글 비밀번호 ----------
+  // 비밀번호 자체는 오지 않는다 — 있는지(hasPassword)와 질문만 온다
+  function applySecretUi() {
+    const sc = state.settings.secret || {};
+    $('#secretUseCheck').checked = !!sc.usePassword;
+    $('#secretUseCheck').disabled = !sc.hasPassword;
+    $('#secretSetBtn').textContent = i18n.t(sc.hasPassword ? 'secret.changePw' : 'secret.setPw');
+    $('#secretClearBtn').classList.toggle('hidden', !sc.hasPassword);
+    $('#secretStatus').textContent = sc.hasPassword ? '' : i18n.t('secret.needPw');
+  }
+  function openSecretForm() {
+    const sc = state.settings.secret || {};
+    $('#secretCurrentRow').classList.toggle('hidden', !sc.hasPassword);
+    ['secretCurrent', 'secretPw1', 'secretPw2', 'secretAnswer'].forEach((id) => { $('#' + id).value = ''; });
+    $('#secretQuestion').value = sc.question || '';
+    $('#secretFormMsg').textContent = '';
+    $('#secretForm').classList.remove('hidden');
+    $(sc.hasPassword ? '#secretCurrent' : '#secretPw1').focus();
+  }
+  async function refreshSecret() {
+    try {
+      state.settings.secret = await bridge.call('secret.status', {});
+    } catch { /* 그대로 둔다 */ }
+    applySecretUi();
+  }
+  $('#secretSetBtn').addEventListener('click', openSecretForm);
+  $('#secretCancelBtn').addEventListener('click', () => { delete $('#secretSaveBtn').dataset.clear; $('#secretForm').classList.add('hidden'); });
+  $('#secretSaveBtn').addEventListener('click', async () => {
+    const msg = $('#secretFormMsg');
+    if ($('#secretSaveBtn').dataset.clear) {   // 비밀번호 지우기: 현재 비밀번호만 맞으면 된다
+      delete $('#secretSaveBtn').dataset.clear;
+      const r = await bridge.call('secret.clear', { current: $('#secretCurrent').value })
+        .catch(() => ({ ok: false }));
+      if (!r.ok) { msg.textContent = i18n.t('secret.currentWrong'); $('#secretSaveBtn').dataset.clear = '1'; return; }
+      $('#secretForm').classList.add('hidden');
+      await refreshSecret();
+      $('#secretStatus').textContent = i18n.t('secret.cleared');
+      return;
+    }
+    const pw1 = $('#secretPw1').value, pw2 = $('#secretPw2').value;
+    if (!pw1) { msg.textContent = i18n.t('secret.pwEmpty'); return; }
+    if (pw1 !== pw2) { msg.textContent = i18n.t('secret.pwMismatch'); return; }
+    if (!$('#secretQuestion').value.trim() || !$('#secretAnswer').value.trim()) {
+      msg.textContent = i18n.t('secret.questionEmpty'); return;
+    }
+    const r = await bridge.call('secret.setPassword', {
+      current: $('#secretCurrent').value, password: pw1,
+      question: $('#secretQuestion').value, answer: $('#secretAnswer').value,
+    }).catch(() => ({ ok: false, error: 'bridge' }));
+    if (!r.ok) {
+      msg.textContent = i18n.t(r.error === 'current' ? 'secret.currentWrong' : 'secret.saveFailed');
+      return;
+    }
+    $('#secretForm').classList.add('hidden');
+    await refreshSecret();
+    // 처음 정했으면 바로 켠다 — 정해 놓고 안 켜진 채 두는 실수를 막는다
+    if (!$('#secretUseCheck').checked) {
+      await bridge.call('secret.setUse', { on: true }).catch(() => {});
+      await refreshSecret();
+    }
+    $('#secretStatus').textContent = i18n.t('secret.saved');
+  });
+  $('#secretUseCheck').addEventListener('change', async (e) => {
+    const r = await bridge.call('secret.setUse', { on: e.target.checked }).catch(() => ({ ok: false }));
+    if (!r.ok) e.target.checked = false;
+    await refreshSecret();
+  });
+  $('#secretClearBtn').addEventListener('click', () => {
+    // 현재 비밀번호를 폼으로 받는다 (페이지 prompt는 쓰지 않는다)
+    openSecretForm();
+    $('#secretFormMsg').textContent = i18n.t('secret.clearHint');
+    $('#secretSaveBtn').dataset.clear = '1';
   });
 
   // ---------- 읽어주기 (TTS) ----------
@@ -835,7 +910,8 @@ SOFTWARE.`;
   // 칸을 누르면 '키를 누르세요' 상태가 되고, 다음에 누른 조합을 그대로 저장한다.
   // 수정자(Ctrl/Shift/Alt/Win) 없이 누른 키는 다른 앱의 타자를 먹으므로 받지 않는다.
   const HK_FIELDS = { toggleAll: 'ToggleAll', newMemo: 'NewMemo', list: 'List',
-                      arrangeLeft: 'ArrangeLeft', arrangeRight: 'ArrangeRight' };
+                      arrangeLeft: 'ArrangeLeft', arrangeRight: 'ArrangeRight',
+                      clipMemo: 'ClipMemo' };
   const HK_NAMED = {
     ' ': 'Space', Escape: 'Esc', ArrowLeft: 'Left', ArrowRight: 'Right',
     ArrowUp: 'Up', ArrowDown: 'Down',

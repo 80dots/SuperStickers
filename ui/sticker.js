@@ -858,6 +858,8 @@
     calendarTools.init(editor, syncCalendarAlarms);
     // 본문에 넣은 파일·폴더 (링크는 살아 있는지 확인해 끊긴 것을 표시한다)
     memoFileTools.init(editor, scheduleSave);
+    // 비밀글: 열 때는 모두 잠근 채로, 누르면(비밀번호를 쓰면 확인 후) 푼다
+    secretTools.init(editor, scheduleSave);
     // 저장돼 있던 3D 임베드에 뷰어 마운트 (UI는 Shadow DOM — 저장 HTML 미오염)
     editor.querySelectorAll('.embed3d').forEach((el) => viewer3d.mount(el, scheduleSave));
     // 본문에서 떨어진 임베드는 viewer3d가 렌더 루프·WebGL 컨텍스트를 놓는다. 되돌리기(Ctrl+Z)나
@@ -1433,6 +1435,15 @@
           open(e.clientX, e.clientY, calItems(cal).concat([{ sep: true }], mediaItems(cal)));
           return;
         }
+        const secret = type === 'rich' && e.target.closest ? e.target.closest('#editor .secret') : null;
+        if (secret) {
+          e.preventDefault();
+          open(e.clientX, e.clientY, [
+            { label: i18n.t('secret.lock'), run: () => secretTools.lock(secret) },
+            { label: i18n.t('secret.unwrap'), run: () => secretTools.unwrap(secret) },
+          ]);
+          return;
+        }
         const cell = type === 'rich' ? tableTools.cellOf(e.target) : null;
         const table = cell && tableTools.tableOf(cell);
         if (table) {
@@ -1455,6 +1466,7 @@
         open(e.clientX, e.clientY, [
           { label: i18n.t('emoji.add'), run: () => emojiTools.pick() },
           { label: i18n.t('link.memo'), run: () => memoLinkTools.pick() },
+          ...(type === 'rich' ? [{ label: i18n.t('secret.insert'), run: () => secretTools.insert() }] : []),
           { sep: true },
           { label: i18n.t('table.insert'), run: insertTable },
           ...(type === 'rich' ? [
@@ -2487,6 +2499,53 @@
       bridge.call('selection.hide').catch(() => {});
     });
   })();
+
+  // 클립보드로 만든 메모(Ctrl+Shift+C): 네이티브가 읽은 내용을 종류에 맞게 넣는다.
+  // 글은 문단으로(유튜브 링크면 영상), 이미지는 첨부 그림으로, 경로는 3D·동영상·이미지·파일 순으로 가른다.
+  async function applyClip(clip) {
+    if (!clip || type !== 'rich') return;
+    const ext = (p) => (p.split('.').pop() || '').toLowerCase();
+    const IMG = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'];
+    const VID = ['mp4', 'webm', 'ogv', 'mov', 'm4v', 'mkv', 'avi'];
+    const M3D = ['glb', 'gltf', 'obj', 'stl'];
+    if (clip.kind === 'text') {
+      const yt = mediaTools.youtubeId(clip.text);
+      if (yt) { mediaTools.insertYoutube(yt); }
+      else {
+        const frag = document.createDocumentFragment();
+        String(clip.text).replace(/\r/g, '').split('\n').forEach((line) => {
+          const div = document.createElement('div');
+          if (line) div.textContent = line; else div.appendChild(document.createElement('br'));
+          frag.appendChild(div);
+        });
+        editor.appendChild(frag);
+      }
+    } else if (clip.kind === 'image') {
+      const img = document.createElement('img');
+      img.src = clip.url;
+      editor.appendChild(img);
+    } else if (clip.kind === 'files') {
+      const links = [];
+      for (const p of clip.paths || []) {
+        const e = ext(p);
+        try {
+          if (M3D.includes(e)) window.__insertModel3d(p);
+          else if (VID.includes(e)) {
+            const v = await bridge.call('attachment.videoFromPath', { path: p });
+            mediaTools.insertVideoUrl(v.url);
+          } else if (IMG.includes(e)) {
+            const r = await bridge.call('attachment.imageFromPath', { path: p });
+            const img = document.createElement('img');
+            img.src = r.url;
+            editorCore.insertNodeAtCaret(img);
+          } else links.push(p);
+        } catch (err) { console.error(err); links.push(p); }
+      }
+      if (links.length) await memoFileTools.addPaths(links, { kind: 'link' });  // 묻지 않고 링크로
+    }
+    scheduleSave();
+  }
+  if (init.clip) applyClip(init.clip).catch(console.error);
 
   // 새로 만든 메모는 곧바로 입력할 수 있게 커서를 본문에 둔다.
   // WebView 자체에는 네이티브가 이미 포커스를 줬고, 여기서 본문 요소까지 넘긴다.

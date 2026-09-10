@@ -63,6 +63,8 @@ struct Settings {
         // 화면 가장자리로 최소화해 정렬 (보이는 메모를 모두 줄여 한쪽 가장자리에 세로로)
         std::string arrangeLeft = "Ctrl+Shift+Left";
         std::string arrangeRight = "Ctrl+Shift+Right";
+        // 클립보드 내용(글·이미지·파일 경로·유튜브 링크)으로 새 메모 만들기
+        std::string clipMemo = "Ctrl+Shift+C";
     };
     Hotkeys hotkeys;
     // 스타일: 메모창 배경 이미지·서체·글자 크기. 모든 메모창이 공유한다.
@@ -78,6 +80,15 @@ struct Settings {
         int rate = 0;
     };
     TtsSettings tts;
+    // 비밀글 비밀번호. 비밀번호 자체는 저장하지 않고 소금을 섞은 반복 SHA-256 해시만 둔다
+    // (찾기는 질문의 답이 맞으면 새 비밀번호를 정하는 방식 — 원래 값은 되살릴 수 없다).
+    struct SecretSettings {
+        bool usePassword = false;
+        std::string salt, hash;              // 비밀번호
+        std::string question;                // 찾기 질문 (사용자가 적는다)
+        std::string answerSalt, answerHash;  // 찾기 답 (앞뒤 공백 정리 후 해시)
+    };
+    SecretSettings secret;
     bool magnetEnabled = true;     // 메모창끼리 자석처럼 붙고 가장자리가 정렬됨
     int magnetGap = 10;            // 자석으로 붙을 때 유지할 간격 (논리 px, UI 배율 적용)
     // 자석이 당기기 시작하는 거리. "high"면 멀리서도 붙는다. "low" | "medium" | "high"

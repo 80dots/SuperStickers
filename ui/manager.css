@@ -623,3 +623,10 @@ progress.indeterminate { animation: progPulse 1.2s ease-in-out infinite; }
   padding: 8px 12px; border: 1px dashed var(--border); border-radius: var(--r-sm);
   font-size: 16px; line-height: 1.5; min-width: 240px;
 }
+
+/* 비밀글 비밀번호 입력 폼 */
+.secret-form { margin-top: 4px; padding: 10px 12px; border: 1px dashed var(--border); border-radius: var(--r-sm); }
+.secret-form input[type="password"], .secret-form input[type="text"] {
+  padding: 7px 10px; border: 1px solid var(--border-strong); border-radius: var(--r-sm);
+  background: var(--panel-bg); font-size: 13px; min-width: 240px;
+}
