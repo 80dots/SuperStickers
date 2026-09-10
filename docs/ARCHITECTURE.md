@@ -61,6 +61,10 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 - 스티커 전용: `sticker.load/saveContent/setColor/setTopmost/hide/delete`,
   `attachment.save/pickVideo`, `window.startDrag`
 - 목록 전용: `sticker.export`(.ssticker zip), `stickers.import`/`stickers.importPaths`
+- 목록 다중 선택: `stickers.deleteMany`(확인 한 번 뒤 UI 스레드에서 차례로 삭제),
+  `stickers.setVisible`(ids·visible — 표시는 ShowSticker+앞으로, 감추기는 `hidden`만),
+  `stickers.exportMany`(폴더 하나에 `<제목>.ssticker`, 중복은 ` (n)`; 스레드에서 쓰고
+  `stickers.exportManyDone` 이벤트로 결과). 선택 상태는 `manager.js`의 `selectedIds`에만 있다.
 - 창을 파괴하는 작업(삭제 등)은 WebMessageReceived 콜백 안에서 실행하지 않고
   `RunOnUi`로 지연시켜 재진입 문제를 피한다.
 - 이벤트(`theme.changed`, `locale.changed`, `ollama.chunk` 등)는 모든 창에 브로드캐스트하고

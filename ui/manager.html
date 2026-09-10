@@ -29,7 +29,18 @@
     <div class="list-toolbar">
       <button id="newStickerBtn" class="primary" data-i18n="manager.newSticker"></button>
       <button id="importStickerBtn" data-i18n="manager.importSticker"></button>
+      <button id="selectModeBtn" data-i18n="manager.select"></button>
       <span id="importHint" class="hint" data-i18n="manager.importHint"></span>
+    </div>
+    <!-- 선택 모드: 카드마다 체크 상자가 생기고 고른 것에 한 번에 동작한다 -->
+    <div id="bulkBar" class="bulk-bar hidden">
+      <label class="check-label"><input type="checkbox" id="bulkAllCheck"><span data-i18n="manager.selectAll"></span></label>
+      <span id="bulkCount" class="bulk-count"></span>
+      <span class="spacer"></span>
+      <button id="bulkShowBtn" data-i18n="manager.bulkShow"></button>
+      <button id="bulkHideBtn" data-i18n="manager.bulkHide"></button>
+      <button id="bulkExportBtn" data-i18n="manager.bulkExport"></button>
+      <button id="bulkDeleteBtn" class="danger" data-i18n="manager.bulkDelete"></button>
     </div>
     <div id="cards"></div>
     <div id="listEmpty" class="empty hidden" data-i18n="manager.empty"></div>

@@ -564,5 +564,17 @@
   "secret.creating": "Creating the password…",
   "secret.changing": "Changing the password…",
   "secret.clearing": "Removing the password…",
-  "secret.lockAgain": "Lock again (locks by itself after 30 s)"
+  "secret.lockAgain": "Lock again (locks by itself after 30 s)",
+  "manager.select": "Select",
+  "manager.selectDone": "Done",
+  "manager.selectAll": "Select all",
+  "manager.selectedCount": "{n} selected",
+  "manager.bulkShow": "Show on desktop",
+  "manager.bulkHide": "Hide",
+  "manager.bulkExport": "Back up",
+  "manager.bulkDelete": "Delete",
+  "manager.exportManyDone": "Backed up {n} memo(s) → {dir}",
+  "manager.exportManyFailed": "{n} memo(s) could not be backed up",
+  "confirm.deleteMany": "Delete the {n} selected memos? This cannot be undone.",
+  "confirm.deleteManyToTrash": "Move the {n} selected memos to the trash?"
 }

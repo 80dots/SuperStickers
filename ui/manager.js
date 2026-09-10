@@ -331,6 +331,68 @@ SOFTWARE.`;
     return card;
   }
 
+  // ---------- 목록 다중 선택 ----------
+  let selecting = false;                 // 선택 모드
+  const selectedIds = new Set();         // 고른 메모 id
+  let listedIds = [];                    // 지금 목록에 있는 id (전체 선택용)
+  function updateBulkBar() {
+    const n = selectedIds.size;
+    $('#bulkCount').textContent = i18n.t('manager.selectedCount').replace('{n}', n);
+    ['bulkShowBtn', 'bulkHideBtn', 'bulkExportBtn', 'bulkDeleteBtn'].forEach((id) => { $('#' + id).disabled = n === 0; });
+    $('#bulkAllCheck').checked = listedIds.length > 0 && listedIds.every((id) => selectedIds.has(id));
+    $('#bulkAllCheck').indeterminate = n > 0 && !$('#bulkAllCheck').checked;
+  }
+  function setSelecting(on) {
+    selecting = on;
+    if (!on) selectedIds.clear();
+    $('#selectModeBtn').classList.toggle('on', on);
+    $('#selectModeBtn').textContent = i18n.t(on ? 'manager.selectDone' : 'manager.select');
+    $('#bulkBar').classList.toggle('hidden', !on);
+    document.querySelectorAll('#cards .card').forEach((c) => {
+      c.classList.toggle('selecting', on);
+      const cb = c.querySelector('.sel-check');
+      if (cb) { cb.classList.toggle('hidden', !on); cb.checked = selectedIds.has(c.dataset.id); }
+      c.classList.toggle('selected', on && selectedIds.has(c.dataset.id));
+    });
+    updateBulkBar();
+  }
+  function toggleSelected(id, on) {
+    if (on === undefined) on = !selectedIds.has(id);
+    if (on) selectedIds.add(id); else selectedIds.delete(id);
+    const card = document.querySelector(`#cards .card[data-id="${id}"]`);
+    if (card) {
+      card.classList.toggle('selected', on);
+      const cb = card.querySelector('.sel-check');
+      if (cb) cb.checked = on;
+    }
+    updateBulkBar();
+  }
+  const pickedIds = () => listedIds.filter((id) => selectedIds.has(id));   // 목록 순서대로
+  $('#selectModeBtn').addEventListener('click', () => setSelecting(!selecting));
+  $('#bulkAllCheck').addEventListener('change', (e) => {
+    const on = e.target.checked;   // toggleSelected가 이 상자를 다시 쓰므로 먼저 읽어 둔다
+    listedIds.forEach((id) => toggleSelected(id, on));
+  });
+  $('#bulkShowBtn').addEventListener('click', async () => {
+    await bridge.call('stickers.setVisible', { ids: pickedIds(), visible: true }).catch(console.error);
+    setTimeout(refreshList, 300);
+  });
+  $('#bulkHideBtn').addEventListener('click', async () => {
+    await bridge.call('stickers.setVisible', { ids: pickedIds(), visible: false }).catch(console.error);
+    setTimeout(refreshList, 300);
+  });
+  $('#bulkExportBtn').addEventListener('click', () => {
+    bridge.call('stickers.exportMany', { ids: pickedIds() }).catch(console.error);
+  });
+  $('#bulkDeleteBtn').addEventListener('click', async () => {
+    const r = await bridge.call('stickers.deleteMany', { ids: pickedIds() }).catch(() => ({ deleted: false }));
+    if (r && r.deleted) { selectedIds.clear(); setTimeout(refreshList, 300); }
+  });
+  bridge.on('stickers.exportManyDone', (d) => {
+    showListStatus(d.ok ? i18n.t('manager.exportManyDone').replace('{n}', d.count).replace('{dir}', d.dir)
+                        : i18n.t('manager.exportManyFailed').replace('{n}', d.failed), d.ok);
+  });
+
   // 메모 목록 갱신
   async function refreshList() {
     let stickers = [];
@@ -343,10 +405,25 @@ SOFTWARE.`;
     cards.innerHTML = '';
     $('#listEmpty').classList.toggle('hidden', stickers.length > 0);
 
-    stickers
-      .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''))
-      .forEach((s) => {
+    stickers.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+    listedIds = stickers.map((s) => s.id);
+    for (const id of [...selectedIds]) if (!listedIds.includes(id)) selectedIds.delete(id);  // 지워진 것 정리
+    stickers.forEach((s) => {
         const card = buildCardBase(s);
+        card.dataset.id = s.id;
+        // 선택 모드용 체크 상자 (선택 모드가 아니면 숨김)
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'sel-check' + (selecting ? '' : ' hidden');
+        cb.checked = selectedIds.has(s.id);
+        cb.addEventListener('click', (e) => { e.stopPropagation(); toggleSelected(s.id, cb.checked); });
+        card.appendChild(cb);
+        card.classList.toggle('selecting', selecting);
+        card.classList.toggle('selected', selecting && selectedIds.has(s.id));
+        card.addEventListener('click', (e) => {
+          if (!selecting || e.target.closest('.actions, .sel-check')) return;
+          toggleSelected(s.id);
+        });
 
         const meta = document.createElement('div');
         meta.className = 'meta';
@@ -375,6 +452,7 @@ SOFTWARE.`;
         card.appendChild(meta);
         cards.appendChild(card);
       });
+    updateBulkBar();
   }
 
   $('#newStickerBtn').addEventListener('click', () => {

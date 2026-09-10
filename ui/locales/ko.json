@@ -564,5 +564,17 @@
   "secret.creating": "비밀번호를 만드는 중…",
   "secret.changing": "비밀번호를 바꾸는 중…",
   "secret.clearing": "비밀번호를 지우는 중…",
-  "secret.lockAgain": "다시 잠그기 (30초 뒤에는 저절로 잠깁니다)"
+  "secret.lockAgain": "다시 잠그기 (30초 뒤에는 저절로 잠깁니다)",
+  "manager.select": "선택",
+  "manager.selectDone": "선택 끝",
+  "manager.selectAll": "전체 선택",
+  "manager.selectedCount": "{n}개 선택",
+  "manager.bulkShow": "바탕화면에 표시",
+  "manager.bulkHide": "감추기",
+  "manager.bulkExport": "백업",
+  "manager.bulkDelete": "삭제",
+  "manager.exportManyDone": "{n}개를 백업했습니다 → {dir}",
+  "manager.exportManyFailed": "{n}개를 백업하지 못했습니다",
+  "confirm.deleteMany": "고른 메모 {n}개를 삭제할까요? 되돌릴 수 없습니다.",
+  "confirm.deleteManyToTrash": "고른 메모 {n}개를 휴지통으로 이동할까요?"
 }

@@ -2126,6 +2126,81 @@ void App::SetupCommonBridge(WebViewHost& host) {
         return json{{"deleted", true}};
     });
 
+    // ---------- 목록의 다중 선택 동작 ----------
+    // 여러 개 삭제: 확인은 한 번만 (개수를 문구에 넣는다)
+    b.Register("stickers.deleteMany", [this](const json& p) {
+        std::vector<std::string> ids;
+        if (p.contains("ids") && p["ids"].is_array())
+            for (auto& v : p["ids"]) if (v.is_string()) ids.push_back(v.get<std::string>());
+        if (ids.empty()) return json{{"deleted", false}, {"count", 0}};
+        std::wstring msg = i18n.T(settings.trashEnabled ? "confirm.deleteManyToTrash"
+                                                        : "confirm.deleteMany");
+        size_t at = msg.find(L"{n}");
+        if (at != std::wstring::npos) msg.replace(at, 3, std::to_wstring(ids.size()));
+        if (!ConfirmYesNoText(manager_ ? manager_->hwnd() : nullptr, msg))
+            return json{{"deleted", false}, {"count", 0}};
+        RunOnUi([this, ids]() { for (auto& id : ids) DeleteSticker(id); });
+        return json{{"deleted", true}, {"count", ids.size()}};
+    });
+    // 여러 개 보이기/감추기. 보이기는 그룹 소속 메모의 그룹창까지 띄운다(ShowSticker).
+    b.Register("stickers.setVisible", [this](const json& p) {
+        std::vector<std::string> ids;
+        if (p.contains("ids") && p["ids"].is_array())
+            for (auto& v : p["ids"]) if (v.is_string()) ids.push_back(v.get<std::string>());
+        bool visible = p.value("visible", true);
+        RunOnUi([this, ids, visible]() {
+            for (auto& id : ids) {
+                if (visible) { ShowSticker(id); continue; }
+                if (auto* w = FindSticker(id)) {
+                    w->data.hidden = true;
+                    w->SaveData();
+                    w->ShowWin(false, false);
+                }
+            }
+            if (visible && !ids.empty()) BringAllToFront();
+        });
+        return json{{"count", ids.size()}};
+    });
+    // 여러 개 백업: 폴더를 한 번 고르고 <제목>.ssticker로 각각 내보낸다 (같은 이름은 번호를 붙인다)
+    b.Register("stickers.exportMany", [this](const json& p) {
+        std::vector<std::string> ids;
+        if (p.contains("ids") && p["ids"].is_array())
+            for (auto& v : p["ids"]) if (v.is_string()) ids.push_back(v.get<std::string>());
+        if (ids.empty()) return json{{"started", false}};
+        HWND owner = manager_ ? manager_->hwnd() : nullptr;
+        std::wstring dir = p.contains("dir") && p["dir"].is_string()
+                               ? util::Utf8ToWide(p["dir"].get<std::string>()) : PickFolder(owner);
+        if (dir.empty()) return json{{"started", false}};
+        std::vector<std::pair<std::string, std::wstring>> jobs;
+        std::set<std::wstring> used;
+        for (auto& id : ids) {
+            StickerData* d = FindStickerData(id);
+            if (!d) continue;
+            std::wstring name = util::Utf8ToWide(!d->title.empty() ? d->title : d->id);
+            for (auto& c : name) if (wcschr(L"\\/:*?\"<>|", c)) c = L'_';
+            if (name.size() > 60) name = name.substr(0, 60);
+            std::wstring base = name, candidate = dir + L"\\" + name + L".ssticker";
+            for (int n = 2; used.count(candidate) ||
+                            GetFileAttributesW(candidate.c_str()) != INVALID_FILE_ATTRIBUTES; n++)
+                candidate = dir + L"\\" + base + L" (" + std::to_wstring(n) + L").ssticker";
+            used.insert(candidate);
+            jobs.push_back({id, candidate});
+        }
+        BroadcastEvent("app.flush", json::object());  // 편집 중 내용 먼저 저장
+        std::string dirUtf8 = util::WideToUtf8(dir);
+        RunOnUiDelayed(600, [this, jobs, dirUtf8]() {
+            std::thread([this, jobs, dirUtf8]() {
+                int ok = 0, failed = 0;
+                for (auto& [id, dest] : jobs) (store.ExportSticker(id, dest) ? ok : failed)++;
+                RunOnUi([this, ok, failed, dirUtf8]() {
+                    SendEventToManager("stickers.exportManyDone",
+                                       {{"ok", failed == 0}, {"count", ok}, {"failed", failed}, {"dir", dirUtf8}});
+                });
+            }).detach();
+        });
+        return json{{"started", true}, {"count", jobs.size()}};
+    });
+
     // 스티커 폴더를 .ssticker(zip)로 내보내기 — 저장 위치는 파일 대화상자로 지정
     b.Register("sticker.export", [this](const json& p) {
         std::string id = p.value("id", "");
