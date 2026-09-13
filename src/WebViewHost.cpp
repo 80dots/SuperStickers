@@ -3,6 +3,7 @@
 #include <shellapi.h>
 #include <shlobj.h>
 #include <shlwapi.h>
+#include <WebView2EnvironmentOptions.h>
 #include <wrl.h>
 
 #include <vector>
@@ -117,8 +118,27 @@ void WebViewHost::EnsureEnvironment(std::function<void(HRESULT)> done) {
         CoTaskMemFree(local);
     }
 
+    // 메모 하나가 WebView 하나 = 렌더러 프로세스 하나였다. 프로세스 하나의 고정 비용이
+    // 약 100MB인데 페이지가 실제로 쓰는 건 2~3MB라, 메모가 스물 몇 장이면 그것만으로 2GB를
+    // 넘었다. 우리 페이지는 모두 같은 출처(app.sticker)의 우리 코드라 프로세스를 나눠 써도
+    // 격리가 약해지지 않는다 — 상한을 두어 여러 메모가 렌더러 하나를 함께 쓰게 한다.
+    // (웹 메모가 여는 외부 사이트는 Chromium의 사이트 격리가 그대로 지킨다)
+    //
+    // 대가: 한 프로세스를 함께 쓰는 메모들은 그중 하나가 오래 걸리는 일(큰 3D 모델 파싱 등)을
+    // 하면 같이 멈춘다. 그래서 흔한 사용(화면에 메모 몇 장)에서는 상한에 닿지 않도록 넉넉히
+    // 잡고, 메모리가 적은 PC에서만 더 죈다 — Chromium이 제 기본값을 정하는 방식과 같다.
+    ULONGLONG ramKb = 0;
+    GetPhysicallyInstalledSystemMemory(&ramKb);
+    int ramGb = (int)(ramKb / (1024 * 1024));
+    int rendererLimit = ramGb / 2;                            // 8GB→4, 16GB→8
+    if (rendererLimit < 3) rendererLimit = 3;                 // 최소 3 (RAM을 못 읽으면 여기로)
+    if (rendererLimit > 8) rendererLimit = 8;                 // 그 이상은 격리보다 이득이 적다
+    auto envOptions = Microsoft::WRL::Make<CoreWebView2EnvironmentOptions>();
+    envOptions->put_AdditionalBrowserArguments(
+        (L"--renderer-process-limit=" + std::to_wstring(rendererLimit)).c_str());
+
     CreateCoreWebView2EnvironmentWithOptions(
-        nullptr, userDataDir.c_str(), nullptr,
+        nullptr, userDataDir.c_str(), envOptions.Get(),
         Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
             [](HRESULT hr, ICoreWebView2Environment* env) -> HRESULT {
                 if (SUCCEEDED(hr)) g_env = env;
@@ -140,6 +160,8 @@ void WebViewHost::Create(HWND hwnd, const std::wstring& url, const json& initJso
     onReady_ = std::move(onReady);
     opts_ = opts;
     createAttempts_ = 0;
+    // 숨은 채로 만들어지는 창은 여기서 만들지 않는다 — 표시될 때 EnsureCreated()가 만든다
+    if (opts.deferUntilShown) return;
     CreateInternal();
 }
 
@@ -163,7 +185,7 @@ void WebViewHost::CreateInternal() {
     if (!g_env || !hostHwnd_) return;
     if (!alive_ || !*alive_) alive_ = std::make_shared<bool>(true);
     const std::wstring url = url_;
-    const json initJson = init_;
+    const json initJson = initProvider_ ? initProvider_() : init_;
     auto onReady = onReady_;
     Options opts = opts_;
     auto alive = alive_;
@@ -396,7 +418,14 @@ void WebViewHost::CreateInternal() {
 
 // 표시 여부 (숨기면 렌더링이 멈춘다)
 void WebViewHost::SetVisible(bool visible) {
-    if (controller_) controller_->put_IsVisible(visible ? TRUE : FALSE);
+    if (!controller_) return;
+    controller_->put_IsVisible(visible ? TRUE : FALSE);
+    // 숨긴 웹뷰는 렌더러가 캐시·렌더 버퍼를 반납하게 한다 (스크립트는 계속 돈다 — 저장
+    // 타이머가 끊기지 않는다). 표시하면 되돌린다.
+    if (auto wv19 = webview_.try_query<ICoreWebView2_19>()) {
+        wv19->put_MemoryUsageTargetLevel(visible ? COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+                                                : COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW);
+    }
 }
 
 // URL로 이동

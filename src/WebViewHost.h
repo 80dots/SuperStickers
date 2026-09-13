@@ -22,6 +22,10 @@ public:
     struct Options {
         bool transparentBg = false;  // 기본 배경 투명 (페이지 알파 픽셀이 창 뒤를 보이게)
         bool browserMode = false;    // 자유 탐색 브라우저 (내비게이션 제한·브리지 없음)
+        // 창을 숨긴 채로 만들 때는 WebView를 만들지 않는다. WebView 하나마다 렌더러 프로세스가
+        // 하나씩(수십 MB) 붙으므로, 바탕화면에 없는 메모는 그 비용을 내지 않는다.
+        // 표시할 때 ShowWin이 부르는 EnsureCreated()가 그때 만든다.
+        bool deferUntilShown = false;
     };
 
     // hwnd 클라이언트에 WebView2 생성 후 url 로드.
@@ -31,6 +35,10 @@ public:
 
     // 생성 실패·프로세스 크래시로 비어 버린 창 복구 (창을 표시할 때 확인)
     void EnsureCreated();
+
+    // 지연 생성·재생성 시 init JSON을 그 시점에 다시 만든다. Create()에 넘긴 값은 만들 때
+    // 굳어 버리는데, 그 사이 테마·언어·서체가 바뀔 수 있다 (숨은 메모는 몇 시간 뒤에 열린다).
+    void SetInitProvider(std::function<nlohmann::json()> fn) { initProvider_ = std::move(fn); }
 
     void SetBounds(const RECT& r);
     void SetVisible(bool visible);
@@ -62,6 +70,7 @@ private:
     HWND hostHwnd_ = nullptr;
     std::wstring url_;
     nlohmann::json init_;
+    std::function<nlohmann::json()> initProvider_;  // 있으면 init_ 대신 생성 시점에 호출
     std::function<void()> onReady_;
     Options opts_{};
     int createAttempts_ = 0;

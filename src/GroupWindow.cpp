@@ -215,11 +215,16 @@ GroupWindow* GroupWindow::Create(HINSTANCE hinst, const GroupData& g, bool show,
 
     App::I().SetupCommonBridge(self->host_);
 
+    // 메모 창과 같다 — 감춘 그룹은 표시할 때 WebView를 만든다
+    std::string gid = g.id;
+    self->host_.SetInitProvider([gid]() { return App::I().MakeInitJson("group", gid); });
+    WebViewHost::Options groupOpts;
+    groupOpts.deferUntilShown = !show;
     self->host_.Create(content, L"https://app.sticker/group.html",
                        App::I().MakeInitJson("group", g.id), [self]() {
                            self->host_.SetZoomFactor(App::I().settings.uiScale);
                            self->LayoutWebView();
-                       });
+                       }, groupOpts);
 
     if (g.topmost) self->SetTopmost(true);
     if (show) self->ShowWin(true, activate);

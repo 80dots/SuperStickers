@@ -358,8 +358,18 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
 
     json init = App::I().MakeInitJson("sticker", d.id, focusEditor);
     if (!clip.is_null()) init["clip"] = clip;  // 클립보드로 만든 메모: 페이지가 첫 그림에 넣는다
+    // 바탕화면에 없는 메모(감춘 메모)는 WebView를 만들지 않는다 — 표시할 때 만든다.
+    // 그때 설정이 바뀌어 있을 수 있으므로 init은 생성 시점에 다시 만든다.
+    std::string sid = d.id;
+    self->host_.SetInitProvider([sid, focusEditor, clip]() {
+        json j = App::I().MakeInitJson("sticker", sid, focusEditor);
+        if (!clip.is_null()) j["clip"] = clip;
+        return j;
+    });
+    WebViewHost::Options memoOpts;
+    memoOpts.deferUntilShown = !show;
     self->host_.Create(hwnd, L"https://app.sticker/sticker.html", init,
-                       [self]() { self->ApplyUiScale(); });
+                       [self]() { self->ApplyUiScale(); }, memoOpts);
 
     // 웹 메모: 상단 스트립 아래를 채우는 자유 탐색 브라우저 뷰
     if (d.type == "web") {
