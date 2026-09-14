@@ -245,6 +245,9 @@ SOFTWARE.`;
       refreshBuiltin();
       if (state.settings.aiProvider === 'ollama') runConnectTest();
       if (state.settings.aiProvider === 'lmstudio') runLmTest();
+      if (state.settings.aiProvider === 'claude' || state.settings.aiProvider === 'codex') {
+        runCliCheck(state.settings.aiProvider);
+      }
       renderPrompts();
     }
     if (name === 'about') renderAbout();
@@ -689,6 +692,11 @@ SOFTWARE.`;
       setLmModelOptions(s.lmstudio.model ? [s.lmstudio.model] : [], s.lmstudio.model);
     }
     setModelOptions(s.ollama.model ? [s.ollama.model] : [], s.ollama.model);
+    for (const kind of ['claude', 'codex']) {
+      const c = s[kind] || {};
+      $(`#${kind}PathInput`).value = c.path || '';
+      $(`#${kind}ModelInput`).value = c.model || '';
+    }
 
     const t = s.trash;
     $('#trashEnabledCheck').checked = !!t.enabled;
@@ -1490,6 +1498,8 @@ SOFTWARE.`;
     $('#builtinSection').classList.toggle('hidden', provider !== 'builtin');
     $('#ollamaSection').classList.toggle('hidden', provider !== 'ollama');
     $('#lmstudioSection').classList.toggle('hidden', provider !== 'lmstudio');
+    $('#claudeSection').classList.toggle('hidden', provider !== 'claude');
+    $('#codexSection').classList.toggle('hidden', provider !== 'codex');
   }
 
   document.querySelectorAll('#providerSeg button').forEach((b) => {
@@ -1503,6 +1513,7 @@ SOFTWARE.`;
       } catch (e) { console.error(e); }
       if (provider === 'builtin') refreshBuiltin();
       else if (provider === 'lmstudio') runLmTest();
+      else if (provider === 'claude' || provider === 'codex') runCliCheck(provider);
       else runConnectTest();
     });
   });
@@ -1544,6 +1555,77 @@ SOFTWARE.`;
     state.settings.lmstudio.model = e.target.value;
     bridge.call('settings.set', { lmstudio: { model: e.target.value } }).catch(console.error);
   });
+
+  // ---------- Claude Code · Codex ----------
+  // 설치된 CLI를 헤드리스로 띄운다. 확인은 --version과 로그인 상태 명령뿐이라 토큰을 쓰지 않는다.
+  const cliRequests = {};   // kind → 진행 중인 확인 요청 id
+  const CLI_LOGIN_CMD = { claude: 'claude → /login', codex: 'codex login' };
+  // 네이티브 CliAi::ValidModel과 같은 규칙 (모델 이름은 명령줄 인자로 들어간다)
+  const validCliModel = (m) => /^[A-Za-z0-9._:\-\[\]\/]{0,80}$/.test(m);
+
+  function runCliCheck(kind) {
+    const status = $(`#${kind}Status`);
+    status.className = 'status busy';
+    status.textContent = i18n.t('settings.testing');
+    const requestId = `cli-${kind}-${Date.now()}`;
+    cliRequests[kind] = requestId;
+    bridge.call('ai.cliStatus', { requestId, kind, path: $(`#${kind}PathInput`).value.trim() })
+      .catch((e) => {
+        status.className = 'status err';
+        status.textContent = `${i18n.t('ai.error')}: ${e.message}`;
+      });
+  }
+  bridge.on('ai.cliStatus', (d) => {
+    if (!d || cliRequests[d.kind] !== d.requestId) return;
+    const kind = d.kind;
+    const status = $(`#${kind}Status`);
+    const pathInput = $(`#${kind}PathInput`);
+    $(`#${kind}Install`).classList.toggle('hidden', !!d.found);
+    // 경로를 비워 둔 채 자동으로 찾았으면 무엇을 쓰는지 안내 문구로 보여 준다
+    pathInput.placeholder = d.found && !pathInput.value.trim()
+      ? i18n.t('ai.cliAutoFound').replace('{path}', d.path)
+      : i18n.t('ai.cliPathPh');
+    pathInput.title = d.path || '';
+    if (!d.found) {
+      status.className = 'status err';
+      status.textContent = d.error === 'cli-missing' ? i18n.t('ai.cliMissing')
+                                                     : `${i18n.t('ai.error')}: ${d.error}`;
+      return;
+    }
+    let text = d.version || kind;
+    if (d.authKnown && d.loggedIn) {
+      // Codex는 "Logged in using ChatGPT"처럼 준다 — 방식만 남긴다
+      const acc = String(d.account || '').replace(/^logged in using\s*/i, '');
+      text += ` · ${i18n.t('ai.cliLoggedIn')}${acc ? ` (${acc})` : ''}`;
+      status.className = 'status ok';
+    } else if (d.authKnown) {
+      text += ` · ${i18n.t('ai.cliNeedLogin').replace('{cmd}', CLI_LOGIN_CMD[kind])}`;
+      status.className = 'status err';
+    } else {
+      status.className = 'status ok';
+    }
+    status.textContent = text;
+  });
+  for (const kind of ['claude', 'codex']) {
+    $(`#${kind}CheckBtn`).addEventListener('click', () => runCliCheck(kind));
+    $(`#${kind}PathInput`).addEventListener('change', (e) => {
+      const path = e.target.value.trim();
+      state.settings[kind] = { ...(state.settings[kind] || {}), path };
+      bridge.call('settings.set', { [kind]: { path } }).catch(console.error);
+      runCliCheck(kind);
+    });
+    $(`#${kind}ModelInput`).addEventListener('change', (e) => {
+      const model = e.target.value.trim();
+      const status = $(`#${kind}Status`);
+      if (!validCliModel(model)) {
+        status.className = 'status err';
+        status.textContent = i18n.t('ai.cliModelInvalid');
+        return;
+      }
+      state.settings[kind] = { ...(state.settings[kind] || {}), model };
+      bridge.call('settings.set', { [kind]: { model } }).catch(console.error);
+    });
+  }
 
   // 연결 테스트 → 모델 목록 로드
   let testRequestId = null;

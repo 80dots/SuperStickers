@@ -96,9 +96,10 @@ WebView 하나마다 렌더러 프로세스가 하나 붙고, 그 고정 비용�
 - 이벤트(`theme.changed`, `locale.changed`, `ollama.chunk` 등)는 모든 창에 브로드캐스트하고
   웹 측에서 requestId 등으로 필터링한다.
 
-### AI 백엔드 (자체 모델 / Ollama / LM Studio)
+### AI 백엔드 (자체 모델 / Ollama / LM Studio / Claude Code / Codex)
 
-`settings.aiProvider`가 `"builtin"` | `"ollama"` | `"lmstudio"` 중 무엇인지에 따라 갈린다.
+`settings.aiProvider`가 `"builtin"` | `"ollama"` | `"lmstudio"` | `"claude"` | `"codex"` 중
+무엇인지에 따라 갈린다.
 **자체 모델은 2026-09-02부터 설정 화면에서 감춰져 있다**(작은 모델의 품질이 기대에 못 미쳤다).
 스위치는 `Settings::kBuiltinBackendEnabled` 하나다: 꺼져 있으면 설정 화면의 백엔드 버튼이
 숨고(`ai.getConfig`의 `builtinEnabled`), 저장돼 있던 `"builtin"`은 읽을 때 `"ollama"`로 바뀌며,
@@ -128,6 +129,53 @@ IPv4 `127.0.0.1`에만 붙는다. 그래서 `localhost`로는 `::1`을 두드렸
   쏟아낸다. 그대로 두면 토큰 예산을 사고에 다 쓰고 `content`가 빈 채 끝난다(실측: 요약이
   통째로 사라졌다). 그래서 `chat_template_kwargs:{enable_thinking:false}`를 함께 보내고
   (`ModelInfo::disableThinking`), 파서는 `reasoning_content`를 버린다.
+
+#### Claude Code · Codex (`CliAi`) — 헤드리스 CLI
+
+HTTP 서버가 아니라 **이 PC에 설치된 CLI를 요청마다 자식 프로세스로** 띄운다. 로그인·구독·
+API 키는 CLI가 가진 것을 그대로 쓴다 — 앱은 자격 증명을 읽지도 저장하지도 않는다.
+페이지 쪽 계약(`ai.chat` → `ai.chunk`/`ai.done`)은 다른 백엔드와 같다.
+
+| | Claude Code | Codex |
+|---|---|---|
+| 명령 | `claude -p --output-format stream-json --verbose --include-partial-messages` | `codex exec --json --skip-git-repo-check --ephemeral --sandbox read-only -o <파일> -` |
+| 격리 | `--tools ""` `--strict-mcp-config` (도구·MCP 없음) `--no-session-persistence` | 읽기 전용 샌드박스, 세션 파일 안 남김 |
+| 시스템 지시 | `--system-prompt-file` — 기본(에이전트용) 시스템 프롬프트를 **통째로 바꾼다** | 플래그가 없어 `<instructions>`로 프롬프트 앞에 붙인다 |
+| 스트리밍 | `stream_event` → `content_block_delta`의 `text_delta`만 (thinking은 버림) | 없음 — `item.completed`의 `agent_message`가 한 번에 온다 |
+| JSON 강제 | `--json-schema <인라인>` → 끝의 `result`(문자열)·`structured_output`(객체) | `--output-schema <파일>` (OpenAI strict 꼴로 고쳐서) |
+| 오류 | `result.is_error` / `subtype` | `error`·`turn.failed`의 `message`(안에 API 응답 JSON이 들어 있어 풀어 쓴다) |
+
+- **프롬프트는 stdin으로** 넘긴다. 명령줄에는 경로·고정 플래그·검증한 모델 이름
+  (`CliAi::ValidModel`)만 들어간다 — 명령줄 길이(32K) 제한과, npm 래퍼(`.cmd`)를 `cmd.exe`가
+  해석할 때의 따옴표·메타문자 문제를 함께 피한다. `.cmd`로만 찾은 Claude는 `--json-schema`를
+  인자로 줄 수 없어 스키마를 시스템 지시에 적는다.
+- **JSON 요청은 스트림 조각을 흘리지 않는다.** Claude는 `--json-schema`를 주면 스트림에는
+  마크다운 산문을 쓰고 스키마에 맞춘 값은 끝의 `result`/`structured_output`에만 준다(실측).
+  그래서 `jsonFormat`이면 델타를 버리고 끝에 JSON 한 덩어리를 `ai.chunk`로 보낸다.
+- **Codex 스키마는 strict 꼴로 고친다**(`StrictSchema`): 객체마다 모든 속성을 `required`,
+  `additionalProperties:false`, `maxItems` 같은 크기 제약은 뺀다. 리뷰 스키마의 `maxItems:6`은
+  프롬프트가 지킨다.
+- **실행 파일 찾기**(`CliAi::Resolve`): 사용자가 적은 경로 > PATH > 흔한 설치 위치
+  (`%USERPROFILE%\.local\bin\claude.exe`, `%APPDATA%\npm\*.cmd`). PATH는 **레지스트리의 최신
+  값도 함께 본다** — 앱이 로그인 때 받은 환경은 CLI를 나중에 설치했으면 낡아 있다. Codex는 npm
+  래퍼 대신 그 안의 네이티브 `codex.exe`를 고른다(node를 한 번 더 거치지 않는다). 적어 둔
+  경로가 틀리면 다른 것을 몰래 쓰지 않고 `cli-missing`을 준다.
+- **작업 폴더는 빈 폴더**(`%LOCALAPPDATA%\SuperSticker\cli`) — 프로젝트 `CLAUDE.md`·git
+  저장소가 끼어들지 않는다. 사용자 전역 설정(훅·`~/.claude/CLAUDE.md`)은 그대로 적용된다
+  (인증을 settings의 env로 잡은 사용자가 있어 끄지 않았다). 전역 CLAUDE.md의 "한국어로 답하라"가
+  영어 번역을 망치지 않는지 실측했다 — 우리 시스템 지시가 이긴다.
+- **프로세스 관리**: 잡 오브젝트(`KILL_ON_JOB_CLOSE`)에 넣어 중단·시간 초과(10분)·앱 종료 때
+  `.cmd` → node → 손자까지 한 번에 끝낸다. **물려줄 핸들을 파이프 셋으로 제한한다**
+  (`PROC_THREAD_ATTRIBUTE_HANDLE_LIST`) — 동시에 도는 다른 요청의 파이프 쓰기 끝을 물려받으면
+  그 요청의 읽기가 이 프로세스가 끝날 때까지 EOF를 못 받는다. 프로세스가 끝났는데 파이프를
+  붙든 손자가 있으면 2초 뒤 거둔다.
+- **오류 코드**: `cli-missing` / `cli-auth: …`(로그인·API 키 관련 문구를 알아본다) /
+  `cli-timeout` / `cli: …` / `aborted`. 메모창 `aiErrorText`가 문장으로 바꾸고, `isSetupError`는
+  `cli`로 시작하면 false — Ollama 전용 설정 마법사 버튼을 붙이지 않는다.
+- **확인**(`ai.cliStatus`): `--version`과 `claude auth status`(JSON: `loggedIn`·`authMethod`·
+  `subscriptionType`) / `codex login status`(문장). 토큰을 쓰지 않는다.
+- 실측(haiku / Codex 기본 모델): 번역 첫 토큰 3.7~7초(CLI 시작 포함), AI Review 13~28초 /
+  Codex 번역 5.9초, 리뷰 7초. 중단 뒤 남는 프로세스·임시 파일 0.
 
 #### 자체 모델 (`LocalAi`)
 

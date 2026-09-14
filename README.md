@@ -160,15 +160,27 @@ C++/Win32 네이티브 셸 + WebView2 하이브리드 구조로, 가볍고 빠�
   자동 추가**하며, 요약을 바탕으로 **제목을 생성해 타이틀바에 표시**(연필 버튼으로 수정
   가능). **한↔영 번역도 동시에 수행**되어, 완료 후 메모 최상단의 **한국어/English 선택**으로
   제목·요약·본문 전체를 선택한 언어로 표시(원문 언어 선택 시 편집 뷰, 반대 언어 선택 시
-  번역 뷰). 모두 로컬 Ollama로 처리
-- **AI 백엔드 선택**: 관리자 창 **AI 탭**에서 **Ollama**, **LM Studio** 중 고릅니다.
+  번역 뷰). 설정한 AI 백엔드로 처리
+- **AI 백엔드 선택**: 관리자 창 **AI 탭**에서 **Ollama**, **LM Studio**, **Claude Code**,
+  **Codex** 중 고릅니다.
   - **Ollama**: 기존 방식 그대로 — 로컬 Ollama 서버에 연결해 씁니다.
   - **LM Studio**: 실행 중인 LM Studio의 로컬 서버(기본 `http://localhost:1234`)에 연결합니다.
     LM Studio에 올려 둔 모델 목록을 그대로 불러와 고릅니다.
+  - **Claude Code**: 이 PC에 설치된 Claude Code를 **헤드리스 모드**(`claude -p`)로 실행합니다.
+    로그인·구독은 Claude Code에 이미 되어 있는 것을 그대로 쓰고(앱은 계정 정보를 다루지
+    않음), 도구와 MCP는 끈 채로 돌려 파일을 건드리지 않습니다. 모델은 비워 두면 기본 모델,
+    `sonnet`·`opus`·`haiku` 등을 적을 수 있습니다.
+  - **Codex**: 이 PC에 설치된 OpenAI Codex CLI를 **헤드리스 모드**(`codex exec`)로 읽기 전용
+    샌드박스에서 실행합니다. 로그인(ChatGPT 계정 또는 API 키)은 Codex 것을 그대로 씁니다.
+  - 두 CLI는 PATH와 흔한 설치 위치에서 자동으로 찾고, 못 찾으면 실행 파일 경로를 적을 수
+    있습니다. AI 탭에서 버전과 로그인 상태를 확인합니다(토큰을 쓰지 않음).
+  - **주의**: Ollama·LM Studio와 달리 Claude Code·Codex는 **메모 내용이 Anthropic·OpenAI 서버로
+    전송**되고 구독 한도나 API 사용량이 차감됩니다. 비밀글은 어느 백엔드로도 보내지 않습니다.
   - 앱이 직접 llama.cpp를 띄우는 **자체 모델** 백엔드는 코드에 남아 있지만, 작은 모델의 품질이
     기대에 못 미쳐 설정 화면에서는 감춰 두었습니다(`Settings::kBuiltinBackendEnabled`).
 - **Local AI**: 메모 요약, 맞춤법 검사, 문장 다듬기, 번역(한↔영),
-  자유 질문/생성 — 어느 백엔드든 모두 로컬에서 실행되어 데이터가 외부로 나가지 않습니다.
+  자유 질문/생성 — Ollama·LM Studio는 로컬에서 실행되어 데이터가 외부로 나가지 않습니다
+  (Claude Code·Codex는 위 주의 참고).
   스트리밍 표시·중단 지원. 연결·모델 설정은 관리자 창의 **AI 탭**에 있으며,
   모델 선택 아래 **접이식 다운로드 섹션**(기본 접힘, 연결 실패 시 자동 펼침) 제공:
   **Ollama 다운로드**(설치 여부 확인 후 공식 설치 프로그램을 진행률 표시와 함께 내려받아
@@ -193,7 +205,11 @@ C++/Win32 네이티브 셸 + WebView2 하이브리드 구조로, 가볍고 빠�
 - Windows 10/11 (x64)
 - [Microsoft Edge WebView2 런타임](https://developer.microsoft.com/microsoft-edge/webview2/)
   — Windows 11에는 기본 내장. 없으면 설치 프로그램이 자동으로 설치합니다.
-- (선택) AI 기능 사용 시 [Ollama](https://ollama.com) — `ollama pull llama3` 등으로 모델 준비
+- (선택) AI 기능 사용 시 다음 중 하나
+  - [Ollama](https://ollama.com) — `ollama pull llama3` 등으로 모델 준비 (설정 마법사가 도와줌)
+  - [LM Studio](https://lmstudio.ai) — 로컬 서버를 켜 둔 상태
+  - [Claude Code](https://claude.com/claude-code) — 설치 후 `claude`로 로그인
+  - [Codex CLI](https://github.com/openai/codex) — `npm install -g @openai/codex` 후 `codex login`
 
 ## 설치
 

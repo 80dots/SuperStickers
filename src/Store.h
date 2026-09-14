@@ -19,6 +19,12 @@ struct LmStudioSettings {
     std::string model;
 };
 
+// Claude Code·Codex CLI 설정 (헤드리스 모드로 실행 — CliAi)
+struct CliSettings {
+    std::string path;   // 실행 파일 경로. 비우면 PATH·흔한 설치 위치에서 찾는다
+    std::string model;  // 비우면 CLI의 기본 모델
+};
+
 // 내장 백엔드(llama-server) 설정. 모델 파일과 엔진은 데이터 폴더의 ai 하위에 둔다.
 struct BuiltinAiSettings {
     std::string modelId;          // LocalAi::Catalog()의 id
@@ -35,6 +41,7 @@ struct Settings {
     std::string language;          // "ko" | "en" (빈 값이면 OS 언어로 결정)
     bool autostart = false;
     // AI 백엔드: "builtin"(앱이 띄우는 llama-server) | "ollama" | "lmstudio"
+    //           | "claude" | "codex" (설치된 CLI를 헤드리스로 — 메모가 클라우드로 간다)
     std::string aiProvider = "ollama";
     // 자체 모델 백엔드 노출 여부. 작은 모델의 품질이 기대에 못 미쳐 2026-09-02부터 설정
     // 화면에서 진입점을 감췄다. 코드(LocalAi·다운로드·서버)는 그대로 두었으므로 이 값을
@@ -43,6 +50,8 @@ struct Settings {
     static constexpr bool kBuiltinBackendEnabled = false;
     OllamaSettings ollama;
     LmStudioSettings lmstudio;
+    CliSettings claude;
+    CliSettings codex;
     BuiltinAiSettings builtin;
     bool trashEnabled = true;      // false면 삭제 시 즉시 완전 삭제
     int trashRetentionDays = 30;   // 휴지통 보관 일수, 0 = 자동 삭제하지 않음

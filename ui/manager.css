@@ -198,14 +198,14 @@ select:focus, input[type="text"]:focus {
 }
 #endpointInput { flex: 1; }
 
-#testBtn {
+#testBtn, #claudeCheckBtn, #codexCheckBtn {
   padding: 7px 12px;
   border: 1px solid var(--border);
   border-radius: 6px;
   font-size: 13px;
   background: var(--panel-bg);
 }
-#testBtn:hover { background: var(--hover); }
+#testBtn:hover, #claudeCheckBtn:hover, #codexCheckBtn:hover { background: var(--hover); }
 
 /* 상위 옵션에 딸린 하위 행 — 들여써서 종속 관계를 보여준다 */
 .row.sub { margin-left: 22px; }
@@ -679,3 +679,8 @@ progress.indeterminate { animation: progPulse 1.2s ease-in-out infinite; }
   cursor: pointer; accent-color: var(--accent);
 }
 .card.selected { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Claude Code·Codex: 실행 파일 경로는 길다 — 줄 끝까지 넓힌다 */
+.row input.cli-path { flex: 1; min-width: 0; }
+/* 클라우드로 보내는 백엔드라는 안내는 눈에 띄게 */
+.cli-cloud-note { color: var(--fg); }

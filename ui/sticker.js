@@ -602,7 +602,20 @@
 
   // 오류가 "AI를 쓸 준비가 안 됨"(모델 없음·연결 안 됨)인지. 그때만 마법사 버튼을 붙인다.
   function isSetupError(msg) {
+    if (/^cli/.test(msg || '')) return false;   // Claude Code·Codex는 마법사(Ollama 전용)가 돕지 못한다
     return /no model|connection failed|not found|http 404/i.test(msg || '');
+  }
+  // 오류 문구. Claude Code·Codex 백엔드는 "cli-missing" 같은 코드를 준다 — 읽을 수 있게 바꾼다.
+  function aiErrorText(msg) {
+    const m = String(msg || '');
+    if (m === 'cli-missing') return i18n.t('ai.cliMissingError');
+    if (m === 'cli-timeout') return i18n.t('ai.cliTimeout');
+    if (m.startsWith('cli-auth')) {
+      const detail = m.replace(/^cli-auth:\s*/, '');
+      return i18n.t('ai.cliAuthError') + (detail && detail !== m ? `\n(${detail})` : '');
+    }
+    if (m.startsWith('cli: ')) return `${i18n.t('ai.error')}: ${m.slice(5)}`;
+    return `${i18n.t('ai.error')}: ${m}`;
   }
   // 요약 상자 그리기 — 오류면 잠시 뒤 사라지고, 설정 오류면 마법사 버튼을 붙인다
   // 본문의 비밀글 글자들 (요약·번역·AI 출력·제목에 같은 글자가 보이면 가린다)
@@ -751,7 +764,7 @@
       stopLoadingTicker();
       loadingRender = null;  // 남겨 두면 다른 창의 로딩 방송이 이 창의 요약을 덮는다
       renderSummary(/no model/.test(e.message) ? i18n.t('ai.noModel')
-                                              : `${i18n.t('ai.error')}: ${e.message}`,
+                                              : aiErrorText(e.message),
                     isSetupError(e.message));
       setReviewState();
     });
@@ -787,7 +800,7 @@
       loadingRender = null;
       if (!d.ok) {
         renderSummary(d.error === 'aborted' ? i18n.t('ai.aborted')
-                                            : `${i18n.t('ai.error')}: ${d.error}`,
+                                            : aiErrorText(d.error),
                       d.error !== 'aborted' && isSetupError(d.error));
         setReviewState();
         return;
@@ -1883,7 +1896,7 @@
         streaming = false;
         aiOutput.classList.add('error');
         showPlain(/no model/.test(e.message) ? i18n.t('ai.noModel')
-                                             : `${i18n.t('ai.error')}: ${e.message}`,
+                                             : aiErrorText(e.message),
                   isSetupError(e.message));
         setActionsState();
       });
@@ -1950,7 +1963,7 @@
       if (!d.ok) {
         aiOutput.classList.add('error');
         const msg =
-          d.error === 'aborted' ? i18n.t('ai.aborted') : `${i18n.t('ai.error')}: ${d.error}`;
+          d.error === 'aborted' ? i18n.t('ai.aborted') : aiErrorText(d.error);
         showPlain(resultText ? `${resultText}\n\n[${msg}]` : msg,
                   d.error !== 'aborted' && !resultText && isSetupError(d.error));
       } else if (resultText) {

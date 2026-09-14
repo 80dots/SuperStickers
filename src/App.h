@@ -11,6 +11,7 @@
 #include <json.hpp>
 
 #include "AiClient.h"
+#include "CliAi.h"
 #include "I18n.h"
 #include "LocalAi.h"
 #include "Store.h"
@@ -38,6 +39,7 @@ public:
     Store store;
     I18n i18n;
     AiClient ai;      // Ollama·내장 공통 HTTP 클라이언트
+    CliAi cli;        // Claude Code·Codex CLI (헤드리스 자식 프로세스)
     LocalAi localAi;  // 내장 백엔드(llama-server) 관리
     Tts tts;          // 읽어주기 (윈도우 SAPI 음성)
 

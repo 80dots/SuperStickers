@@ -108,6 +108,7 @@ bool App::Init(HINSTANCE hinst, bool startHidden) {
     tray_.Create(hwnd_, WM_APP_TRAY, icon, L"Super Stickers");
 
     ai.SetUiPoster([this](std::function<void()> fn) { RunOnUi(std::move(fn)); });
+    cli.SetUiPoster([this](std::function<void()> fn) { RunOnUi(std::move(fn)); });
     localAi.Init([this](std::function<void()> fn) { RunOnUi(std::move(fn)); },
                  store.AppDir());
     // 로딩 → 준비 전환을 모든 창이 같이 봐야 한다. 메모창은 "올리는 중" 안내를 지우고,
@@ -847,6 +848,7 @@ void App::AbortOllamaByOwner(const std::string& ownerId) {
     for (auto it = ollamaOwners_.begin(); it != ollamaOwners_.end();) {
         if (it->second == ownerId) {
             ai.Abort(it->first);
+            cli.Abort(it->first);
             it = ollamaOwners_.erase(it);
         } else {
             ++it;
@@ -1566,8 +1568,8 @@ void App::ApplySettingsPatch(const json& patch) {
 
     if (patch.contains("aiProvider") && patch["aiProvider"].is_string()) {
         std::string v = patch["aiProvider"];
-        const bool allowed = v == "ollama" || v == "lmstudio" ||
-                             (v == "builtin" && Settings::kBuiltinBackendEnabled);
+        const bool allowed = v == "ollama" || v == "lmstudio" || v == "claude" ||
+                             v == "codex" || (v == "builtin" && Settings::kBuiltinBackendEnabled);
         if (allowed) {
             if (v != settings.aiProvider) {
                 settings.aiProvider = v;
@@ -1575,6 +1577,15 @@ void App::ApplySettingsPatch(const json& patch) {
                 if (v != "builtin") localAi.StopServer();
             }
         }
+    }
+    for (auto [key, cs] : {std::pair<const char*, CliSettings*>{"claude", &settings.claude},
+                           {"codex", &settings.codex}}) {
+        if (!patch.contains(key) || !patch[key].is_object()) continue;
+        const json& c = patch[key];
+        if (c.contains("path") && c["path"].is_string()) cs->path = c["path"];
+        // 모델 이름은 명령줄 인자로 들어간다 — 받을 수 없는 글자가 있으면 무시한다
+        if (c.contains("model") && c["model"].is_string() && CliAi::ValidModel(c["model"]))
+            cs->model = c["model"];
     }
     if (patch.contains("lmstudio") && patch["lmstudio"].is_object()) {
         const json& lm = patch["lmstudio"];
@@ -1968,6 +1979,8 @@ void App::SetupCommonBridge(WebViewHost& host) {
                       {"lmstudio",
                        {{"endpoint", settings.lmstudio.endpoint},
                         {"model", settings.lmstudio.model}}},
+                      {"claude", {{"path", settings.claude.path}, {"model", settings.claude.model}}},
+                      {"codex", {{"path", settings.codex.path}, {"model", settings.codex.model}}},
                       {"ollama",
                        {{"endpoint", settings.ollama.endpoint},
                         {"model", settings.ollama.model}}},
@@ -2322,6 +2335,32 @@ void App::SetupCommonBridge(WebViewHost& host) {
         return json::object();
     });
 
+    // Claude Code·Codex 설치·로그인 확인 (--version, auth/login status — 토큰을 쓰지 않는다).
+    // path를 주면 저장 전에 그 경로로 시험한다. 결과는 ai.cliStatus 이벤트로 온다.
+    b.Register("ai.cliStatus", [this](const json& p) {
+        std::string requestId = p.value("requestId", "");
+        std::string ownerId = p.value("ownerId", "");
+        CliAi::Kind kind;
+        std::string kindName = p.value("kind", "");
+        if (!CliAi::ParseKind(kindName, kind)) throw std::runtime_error("unknown cli");
+        const CliSettings& cs = kind == CliAi::Kind::Claude ? settings.claude : settings.codex;
+        std::string path = p.contains("path") && p["path"].is_string() ? p["path"].get<std::string>()
+                                                                       : cs.path;
+        cli.Detect(kind, path, [this, requestId, ownerId, kindName](CliAi::Status st) {
+            SendEventToOwner(ownerId, "ai.cliStatus",
+                             {{"requestId", requestId},
+                              {"kind", kindName},
+                              {"found", st.found},
+                              {"path", st.path},
+                              {"version", st.version},
+                              {"authKnown", st.authKnown},
+                              {"loggedIn", st.loggedIn},
+                              {"account", st.account},
+                              {"error", st.error}});
+        });
+        return json::object();
+    });
+
     b.Register("ai.getConfig", [this](const json&) {
         json models = json::array();
         for (const auto& m : LocalAi::Catalog()) {
@@ -2510,6 +2549,30 @@ void App::SetupCommonBridge(WebViewHost& host) {
             return json::object();
         }
 
+        // Claude Code·Codex: 설치된 CLI를 헤드리스로 띄운다. 로그인·구독은 CLI 것을 쓴다.
+        CliAi::Kind cliKind;
+        if (CliAi::ParseKind(settings.aiProvider, cliKind)) {
+            const CliSettings& cs =
+                cliKind == CliAi::Kind::Claude ? settings.claude : settings.codex;
+            CliAi::ChatOptions co;
+            co.model = cs.model;
+            co.jsonFormat = jsonFormat;
+            co.jsonSchema = jsonSchema;
+            if (!ownerId.empty()) ollamaOwners_[requestId] = ownerId;  // 창이 닫히면 중단
+            cli.Chat(
+                requestId, cliKind, cs.path, messages, co,
+                [this, requestId, ownerId](std::string delta) {
+                    SendEventToSticker(ownerId, "ai.chunk",
+                                       {{"requestId", requestId}, {"delta", delta}});
+                },
+                [this, requestId, ownerId](bool ok, std::string err) {
+                    ollamaOwners_.erase(requestId);
+                    SendEventToSticker(ownerId, "ai.done",
+                                       {{"requestId", requestId}, {"ok", ok}, {"error", err}});
+                });
+            return json::object();
+        }
+
         // Ollama·LM Studio도 모델이 메모리에 없으면 첫 응답까지 수십 초가 걸린다(요청을 받고
         // 그때 올린다). 조회는 요청과 나란히 돌려 요청을 늦추지 않고, 아직 올라와 있지
         // 않을 때만 "모델을 올리는 중"을 보낸다. 응답이 이미 끝났으면 보내지 않는다.
@@ -2549,6 +2612,7 @@ void App::SetupCommonBridge(WebViewHost& host) {
 
     b.Register("ai.abort", [this](const json& p) {
         ai.Abort(p.value("requestId", ""));
+        cli.Abort(p.value("requestId", ""));  // 없는 id면 아무 일도 하지 않는다
         return json::object();
     });
 
@@ -2877,6 +2941,7 @@ void App::Quit() {
     localAi.CancelDownloads();
     localAi.StopServer();
     ai.AbortAll();  // 스트리밍 중인 워커가 종료 뒤까지 서버를 붙들고 있지 않도록
+    cli.AbortAll(); // 떠 있는 CLI 프로세스(잡 오브젝트째)도 끝낸다
     // 웹 측 자동 저장 디바운스를 플러시할 시간을 준 뒤 종료
     BroadcastEvent("app.flush", json::object());
     SetTimer(hwnd_, kQuitTimerId, 350, nullptr);

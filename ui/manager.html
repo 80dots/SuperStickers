@@ -306,6 +306,8 @@
           <button data-provider="builtin" data-i18n="ai.backendBuiltin" class="hidden"></button>
           <button data-provider="ollama" data-i18n="ai.backendOllama"></button>
           <button data-provider="lmstudio" data-i18n="ai.backendLmStudio"></button>
+          <button data-provider="claude" data-i18n="ai.backendClaude"></button>
+          <button data-provider="codex" data-i18n="ai.backendCodex"></button>
         </div>
       </div>
     </section>
@@ -373,6 +375,49 @@
         <select id="lmModelSelect"></select>
       </div>
       <p class="desc about-note" data-i18n="ai.lmstudioNote"></p>
+    </section>
+
+    <!-- Claude Code: 설치된 CLI를 헤드리스로 실행 (CliAi). 로그인은 CLI 것을 쓴다 -->
+    <section id="claudeSection" class="hidden">
+      <h2 data-i18n="ai.claudeTitle"></h2>
+      <p class="desc" data-i18n="ai.claudeDesc"></p>
+      <div class="row">
+        <label data-i18n="ai.cliState"></label>
+        <span id="claudeStatus" class="status"></span>
+        <button id="claudeCheckBtn" data-i18n="ai.cliCheck"></button>
+      </div>
+      <div class="row">
+        <label data-i18n="ai.cliPath"></label>
+        <input type="text" id="claudePathInput" class="cli-path" spellcheck="false" data-i18n-ph="ai.cliPathPh">
+      </div>
+      <div class="row">
+        <label data-i18n="settings.model"></label>
+        <input type="text" id="claudeModelInput" spellcheck="false" list="claudeModelList" data-i18n-ph="ai.cliModelPh">
+        <datalist id="claudeModelList"><option value="sonnet"><option value="opus"><option value="haiku"><option value="fable"></datalist>
+      </div>
+      <p class="desc about-note hidden" id="claudeInstall" data-i18n="ai.claudeInstall"></p>
+      <p class="desc about-note cli-cloud-note" data-i18n="ai.claudeNote"></p>
+    </section>
+
+    <!-- Codex: 설치된 CLI를 헤드리스로 실행 (CliAi). 로그인은 CLI 것을 쓴다 -->
+    <section id="codexSection" class="hidden">
+      <h2 data-i18n="ai.codexTitle"></h2>
+      <p class="desc" data-i18n="ai.codexDesc"></p>
+      <div class="row">
+        <label data-i18n="ai.cliState"></label>
+        <span id="codexStatus" class="status"></span>
+        <button id="codexCheckBtn" data-i18n="ai.cliCheck"></button>
+      </div>
+      <div class="row">
+        <label data-i18n="ai.cliPath"></label>
+        <input type="text" id="codexPathInput" class="cli-path" spellcheck="false" data-i18n-ph="ai.cliPathPh">
+      </div>
+      <div class="row">
+        <label data-i18n="settings.model"></label>
+        <input type="text" id="codexModelInput" spellcheck="false" data-i18n-ph="ai.cliModelPh">
+      </div>
+      <p class="desc about-note hidden" id="codexInstall" data-i18n="ai.codexInstall"></p>
+      <p class="desc about-note cli-cloud-note" data-i18n="ai.codexNote"></p>
     </section>
 
     <section id="ollamaSection">

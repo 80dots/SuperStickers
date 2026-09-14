@@ -102,8 +102,17 @@ Settings Store::LoadSettingsUnchecked() {
             s.lmstudio.endpoint = j["lmstudio"].value("endpoint", s.lmstudio.endpoint);
             s.lmstudio.model = j["lmstudio"].value("model", s.lmstudio.model);
         }
+        for (auto [key, cli] : {std::pair<const char*, CliSettings*>{"claude", &s.claude},
+                                {"codex", &s.codex}}) {
+            if (j.contains(key) && j[key].is_object()) {
+                cli->path = j[key].value("path", cli->path);
+                cli->model = j[key].value("model", cli->model);
+            }
+        }
         s.aiProvider = j.value("aiProvider", s.aiProvider);
-        if (s.aiProvider != "builtin" && s.aiProvider != "lmstudio") s.aiProvider = "ollama";
+        if (s.aiProvider != "builtin" && s.aiProvider != "lmstudio" && s.aiProvider != "claude" &&
+            s.aiProvider != "codex")
+            s.aiProvider = "ollama";
         // 자체 모델이 감춰져 있으면 예전에 골라 둔 값도 Ollama로 돌린다 (UI에서 고를 수 없다)
         if (!Settings::kBuiltinBackendEnabled && s.aiProvider == "builtin") s.aiProvider = "ollama";
         if (j.contains("builtin") && j["builtin"].is_object()) {
@@ -199,6 +208,8 @@ void Store::SaveSettings(const Settings& s) {
         {"autostart", s.autostart},
         {"ollama", {{"endpoint", s.ollama.endpoint}, {"model", s.ollama.model}}},
         {"lmstudio", {{"endpoint", s.lmstudio.endpoint}, {"model", s.lmstudio.model}}},
+        {"claude", {{"path", s.claude.path}, {"model", s.claude.model}}},
+        {"codex", {{"path", s.codex.path}, {"model", s.codex.model}}},
         {"aiProvider", s.aiProvider},
         {"builtin",
          {{"modelId", s.builtin.modelId},
