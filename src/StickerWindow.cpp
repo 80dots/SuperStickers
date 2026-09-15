@@ -478,12 +478,17 @@ void StickerWindow::SetMinimized(bool on) {
     int w = r.right - r.left, h = r.bottom - r.top;
     if (on) {
         data.restoreH = h;
+        data.restoreDpi = (int)dpi_;
         data.minimized = true;  // WM_GETMINMAXINFO가 낮은 높이를 허용하도록 먼저 바꾼다
         SetWindowPos(hwnd_, nullptr, 0, 0, w, MinimizedHeightPx(),
                      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
     } else {
         data.minimized = false;
+        data.dock.clear();  // 펼치면 더 이상 가장자리 줄의 일원이 아니다
         int back = data.restoreH > 0 ? data.restoreH : CssPx(450);
+        // 최소화한 뒤 배율이 바뀌었으면 그만큼 비례 조정 (150%에서 잰 높이를 100%에 그대로 쓰면 크다)
+        if (data.restoreH > 0 && data.restoreDpi > 0 && data.restoreDpi != (int)dpi_)
+            back = MulDiv(data.restoreH, (int)dpi_, data.restoreDpi);
         SetWindowPos(hwnd_, nullptr, 0, 0, w, back, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
         // 되돌린 창이 작업 영역 밖으로 나가면 안쪽으로 들인다
         int x = r.left, y = r.top, cw = w, ch = back;
@@ -496,7 +501,38 @@ void StickerWindow::SetMinimized(bool on) {
     host_.PostEvent("sticker.minimized", json{{"on", data.minimized}});
 }
 
-// 창의 현재 위치·크기를 data에 옮겨 적는다
+// 창 크기를 창의 실제 DPI에 맞춘다.
+// 해상도를 낮춰 배율이 150%→100%로 바뀌면 메모가 그 배율의 크기로 줄어든다(최소화 높이
+// 69→46px, 너비 2/3). 되돌아올 때 앱이 꺼져 있었거나 DPI 알림을 받지 못하면 줄어든 크기가
+// 그대로 남아 최소화 메모의 제목줄이 잘렸다(실측). 그래서:
+//  - 저장한 크기가 다른 DPI에서 잰 것인데 창이 그 크기 그대로면(배율 변경을 반영받지 못함)
+//    비율대로 늘리거나 줄인다. 시스템이 이미 조정했으면(크기가 다르면) 기록만 새로 한다.
+//  - 최소화 메모의 높이는 지금 DPI의 제목줄 높이로 고정한다.
+// dpi_도 시스템 값으로 다시 읽는다 — 알림을 놓쳤으면 dpi_부터 낡아 있다.
+bool StickerWindow::FitToCurrentDpi() {
+    UINT real = GetDpiForWindow(hwnd_);
+    if (real) dpi_ = real;
+    RECT r{};
+    GetWindowRect(hwnd_, &r);
+    const int w = r.right - r.left, h = r.bottom - r.top;
+    int nw = w, nh = h;
+    if (data.dpi > 0 && data.dpi != (int)dpi_ && w == data.w && h == data.h) {
+        nw = MulDiv(w, (int)dpi_, data.dpi);
+        nh = MulDiv(h, (int)dpi_, data.dpi);
+    }
+    if (data.minimized) nh = MinimizedHeightPx();
+    const bool resized = nw != w || nh != h;
+    if (resized) {
+        SetWindowPos(hwnd_, nullptr, 0, 0, nw, nh, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    if (resized || data.dpi != (int)dpi_) {
+        StoreGeometryFromWindow();
+        SaveData();
+    }
+    return resized;
+}
+
+// 창의 현재 위치·크기를 data에 옮겨 적는다 (잰 DPI도 함께)
 void StickerWindow::StoreGeometryFromWindow() {
     RECT r{};
     GetWindowRect(hwnd_, &r);
@@ -504,6 +540,7 @@ void StickerWindow::StoreGeometryFromWindow() {
     data.y = r.top;
     data.w = r.right - r.left;
     data.h = r.bottom - r.top;
+    data.dpi = (int)dpi_;
 }
 
 // UI 배율 적용 (WebView 줌 + 레이아웃)
@@ -1106,6 +1143,13 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             RECT* r = (RECT*)lp;
             SetWindowPos(hwnd, nullptr, r->left, r->top, r->right - r->left, r->bottom - r->top,
                          SWP_NOZORDER | SWP_NOACTIVATE);
+            // 새 배율에서의 크기를 그 DPI와 함께 적어 둔다. 되돌아가는 알림을 놓쳐도(앱 종료 등)
+            // FitToCurrentDpi가 "이 크기는 다른 DPI에서 잰 것"임을 알고 비율대로 되돌린다.
+            StoreGeometryFromWindow();
+            SaveData();
+            // 제안 사각형은 옛 높이를 비율로 늘린 값이라 반올림으로 어긋날 수 있고, 가장자리 줄은
+            // 새 높이로 다시 쌓아야 한다 — 디스플레이가 자리 잡은 뒤 한꺼번에 정리한다
+            App::I().ScheduleDisplayReflow();
             return 0;
         }
 
@@ -1218,6 +1262,20 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             dragPeers_.clear();
             // 크기 변화 없이 위치만 바뀐 순수 이동이면 그룹 드롭 검사
             bool moved = (r.left != dragStartRect_.left || r.top != dragStartRect_.top);
+            // 끌어 옮겼으면 가장자리 줄에서 빠진다 (왼쪽 변만 끌어 너비를 바꾼 것은 옮긴 게 아니다)
+            const bool relocated = r.top != dragStartRect_.top ||
+                                   (r.left != dragStartRect_.left && r.right != dragStartRect_.right);
+            if (relocated && !data.dock.empty()) {
+                data.dock.clear();
+                SaveData();
+            }
+            if (relocated) {
+                for (auto& [peer, start] : dragPeers_) {
+                    if (peer->data.dock.empty()) continue;
+                    peer->data.dock.clear();
+                    peer->SaveData();
+                }
+            }
             bool resized = (r.right - r.left != dragStartRect_.right - dragStartRect_.left) ||
                            (r.bottom - r.top != dragStartRect_.bottom - dragStartRect_.top);
             if (moved && !resized) App::I().HandleStickerMoveEnd(this);

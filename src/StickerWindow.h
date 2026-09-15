@@ -29,6 +29,8 @@ public:
     // 최소화: 타이틀바 한 줄만 남긴다 (그룹창의 목록 보기와 같은 높이 감각). 저장된다.
     void SetMinimized(bool on);
     int MinimizedHeightPx() const;
+    // 창 크기를 창의 실제 DPI에 맞춘다 (배율 변경을 놓친 크기·최소화 높이). 바뀌었으면 true.
+    bool FitToCurrentDpi();
     void SetTopmost(bool on);
     void SetColor(const std::string& color);
     void OnThemeChanged();  // 밴드 색 갱신

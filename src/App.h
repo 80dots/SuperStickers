@@ -125,6 +125,10 @@ public:
     // 맨 앞으로만, 우리 창이 이미 앞이면 모두 감춘다.
     void ToggleShowAllFront();
     void ArrangeToEdge(bool right);
+    // 해상도·배율·작업 표시줄이 바뀐 뒤(또는 시작할 때) 최소화 높이를 바로잡고 가장자리 줄을
+    // 새 작업 영역에 다시 세운다. 알림이 연달아 오므로 모아서 한 번 한다.
+    void ScheduleDisplayReflow();
+    void ReflowAfterDisplayChange();
     // 스타일 설정을 페이지가 그대로 쓰는 JSON으로 (init·getState·style.changed가 같은 모양)
     nlohmann::json StyleJson() const;
     void RaiseAllAndRecord();
@@ -219,6 +223,8 @@ private:
     std::set<std::string> firedAlarms_;           // 이번 실행에서 이미 띄운 알람 (id@시각)
     std::set<std::string> failedHotkeys_;         // 등록에 실패한 단축키 ("toggleAll" 등)
     bool raiseFailed_ = false;                    // 보기 단축키의 전경 전환이 거부되었다
+    unsigned reflowGen_ = 0;                      // ScheduleDisplayReflow의 최신 요청 번호
+    void LayoutEdgeColumn(const std::vector<StickerWindow*>& list, bool right);
     // 보기 단축키로 감춘 창들 (스티커는 id, 그룹은 "g:"+id). 이것만 되돌린다 —
     // ×로 닫아 둔 메모까지 꺼내면 안 되므로 data.hidden과는 따로 관리한다.
     std::set<std::string> hotkeyHidden_;

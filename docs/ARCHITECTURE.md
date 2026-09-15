@@ -957,6 +957,31 @@ WebView2의 Web Speech API는 **음성 목록이 비어 있다**(실측 `speechS
   메모(그룹창 제외)를 화면 순서(위→아래, 왼→오른)로 모두 최소화한 뒤 작업 영역의 한쪽
   가장자리에 위에서부터 `8×배율` 간격으로 세운다. 다음 창이 작업 영역 아래에 닿으면 그
   줄의 최대 너비 + 간격만큼 안쪽으로 물러나 새 줄을 시작한다. 너비는 각 창의 것을 지킨다.
+  정렬한 메모에는 `StickerData.dock`("left"/"right")과 `dockOrder`를 남긴다. 끌어 옮기거나
+  (`WM_EXITSIZEMOVE`에서 위쪽이 바뀌었거나 좌우가 함께 바뀜 — 왼쪽 변만 끈 너비 변경은 제외)
+  최소화를 풀거나 그룹에 넣으면 지운다. 같은 가장자리로 다시 정렬하면 화면에 없는 옛 줄 정보는 지운다.
+- **해상도·배율 변경** (`App::ScheduleDisplayReflow` → `ReflowAfterDisplayChange`):
+  **증상** — 150%에서 최소화 높이는 69px인데, 해상도를 낮춰 100%가 되면 시스템이 46px로 줄인다.
+  되돌아올 때 앱이 꺼져 있었거나 `WM_DPICHANGED`를 받지 못하면 46px가 그대로 남아 제목줄이
+  잘렸다(실측: 이 PC에서 10개 중 6개). 이미 최소화된 메모는 `SetMinimized(true)`가 바로 돌아가
+  정렬 단축키도 잘린 높이로 줄을 세웠다.
+  - `WM_DISPLAYCHANGE`·작업 영역 변경(`SPI_SETWORKAREA`)·창마다의 `WM_DPICHANGED`·**앱 시작**이
+    모두 이 예약을 부른다. 알림이 연달아 오므로 세대 번호로 모아 500ms·1500ms 뒤에 정리한다
+    (DPI 알림이 늦게 오는 경우를 위해 한 번 더).
+  - 1) `StickerWindow::FitToCurrentDpi`: `dpi_`를 `GetDpiForWindow`로 다시 읽고, **저장한 크기가
+    다른 DPI에서 잰 것인데 창이 그 크기 그대로면**(배율 변경을 반영받지 못함) 비율대로 조정한다.
+    시스템이 이미 조정했으면(크기가 다르면) 기록만 새로 한다. 이를 위해 `StoreGeometryFromWindow`가
+    `data.dpi`를 함께 적고, `WM_DPICHANGED`도 새 크기를 곧바로 저장한다 — 돌아오는 알림을 놓쳐도
+    "다른 DPI에서 잰 크기"라는 사실이 남는다. 최소화 메모는 높이를 지금 DPI의 제목줄 높이로 고정.
+  - 2) 가장자리 줄을 `dockOrder` 순서로 새 작업 영역에 다시 세운다(`LayoutEdgeColumn`, 정렬과 같은
+    배치). **지금 위치로 순서를 정하지 않는다** — 해상도가 바뀌는 사이 시스템이 창을 옮겨 놓는다.
+    닫아 둔(×) 메모는 빼고, 보기 단축키로 잠시 감춘 메모는 자리를 지킨다. 줄 정보가 없던 예전
+    데이터는 그 가장자리에 줄 정보가 하나도 없을 때만, 가장자리(간격 8×배율)에 붙은 최소화 메모를
+    위→아래로 줄에 넣는다(한 번만 일어나는 이전).
+  - 3) 나머지 창은 기존처럼 작업 영역 안으로 들인다(`ClampAllWindowsToScreen`).
+  - `restoreH`는 잰 DPI(`restoreDpi`)와 함께 두고, 최소화를 풀 때 지금 DPI에 맞춰 비례 조정한다.
+  - 시험: 가짜 `WM_DPICHANGED(96)`로 4개를 2/3로 줄이고 4개를 화면 가운데로 흩뜨린 뒤
+    `WM_DISPLAYCHANGE` → 높이 69px·원래 순서 복귀, 너비 1027→684→1026(윈도우와 같은 1px 반올림).
 - **클립보드를 새 메모로** (단축키 `clipMemo`, `App::NewStickerFromClipboard`): 네이티브가
   클립보드를 CF_HDROP → CF_UNICODETEXT → CF_BITMAP 순으로 읽어 `init.clip`에 싣고, 페이지의
   `applyClip`이 종류를 가른다 — 글은 문단(유튜브 링크면 영상), 경로는 확장자로 3D(`__insertModel3d`)·

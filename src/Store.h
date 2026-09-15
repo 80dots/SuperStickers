@@ -127,12 +127,22 @@ struct StickerData {
     // 새 메모의 기본 색. 프리셋 이름(레거시 "yellow" 등)도 읽을 수 있다.
     std::string color = "#FFFFFF";
     int x = 100, y = 100, w = 510, h = 450;  // 새 메모 기본 크기
+    // x/y/w/h를 잰 DPI (물리 px라 배율이 바뀌면 뜻이 달라진다). 0 = 모름(예전 데이터).
+    int dpi = 0;
     bool topmost = false;
     bool hidden = false;
     // 최소화: 그룹창의 목록 보기처럼 제목 한 줄(타이틀바)만 남긴다. h는 줄어든 높이가 되고,
     // 되돌릴 높이는 restoreH에 둔다.
     bool minimized = false;
     int restoreH = 0;
+    // restoreH를 잴 때의 DPI. 되돌릴 때 지금 DPI에 맞춰 비례 조정한다 — 최소화한 채
+    // 해상도·배율이 바뀌면(앱이 꺼져 있었어도) 물리 px 높이가 엉뚱해진다. 0 = 모름.
+    int restoreDpi = 0;
+    // 가장자리 정렬(Ctrl+Shift+←/→)로 세운 메모: "left" | "right" | "" 와 그 줄의 순서.
+    // 해상도·배율·작업 표시줄이 바뀌면 이 순서대로 새 작업 영역에 다시 세운다.
+    // 사용자가 끌어 옮기거나 최소화를 풀면 지운다.
+    std::string dock;
+    int dockOrder = 0;
     std::vector<std::string> attachments;  // 메모 폴더 기준 경로 ("Image/xxx.png")
     std::string createdAt, updatedAt;
     std::string deletedAt;  // 휴지통 이동 시각 (휴지통 항목에만 존재)

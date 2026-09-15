@@ -157,6 +157,8 @@ void App::OnEnvironmentReady(bool startHidden) {
         }
     }
     if (all.empty() && allGroups.empty() && !startHidden) NewSticker();
+    // 앱이 꺼져 있는 사이 해상도·배율이 바뀌었으면 잘린 최소화 메모·흐트러진 줄이 남아 있다
+    ScheduleDisplayReflow();
 
     MaybeAutoLoadModel();
 }
@@ -920,6 +922,7 @@ void App::AddStickerToGroup(StickerWindow* w, GroupWindow* g) {
     w->Destroy();
     d.groupId = g->data.id;
     d.hidden = false;
+    d.dock.clear();  // 그룹에서 다시 나왔을 때 옛 줄 자리로 끌려가지 않게
     groupedStickers_[d.id] = d;
     store.SaveSticker(d);
     g->data.memberIds.push_back(d.id);
@@ -1252,6 +1255,28 @@ void App::ArrangeToEdge(bool right) {
         return ra.top != rb.top ? ra.top < rb.top : ra.left < rb.left;
     });
 
+    const std::string edge = right ? "right" : "left";
+    // 이 가장자리에 세워 두었지만 지금 화면에 없는 메모는 줄에서 뺀다 (순서가 겹치지 않게)
+    for (auto* w : stickers_) {
+        if (w->data.dock != edge || std::find(list.begin(), list.end(), w) != list.end()) continue;
+        w->data.dock.clear();
+        w->SaveData();
+    }
+    int order = 0;
+    for (auto* w : list) {
+        w->SetMinimized(true);
+        w->FitToCurrentDpi();  // 이미 최소화돼 있던 메모는 SetMinimized가 높이를 다시 재지 않는다
+        w->data.dock = edge;
+        w->data.dockOrder = order++;
+        w->SaveData();
+    }
+    LayoutEdgeColumn(list, right);
+    BringAllToFront();
+}
+
+// 최소화한 메모들을 주 모니터 작업 영역의 한쪽 가장자리에 위에서부터 같은 간격으로 세운다.
+// 한 줄이 아래에 닿으면 안쪽으로 한 줄 더. 위치만 바꾸고 저장한다.
+void App::LayoutEdgeColumn(const std::vector<StickerWindow*>& list, bool right) {
     RECT wa{};
     SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
     const int gap = (int)(8 * settings.uiScale + 0.5);
@@ -1259,7 +1284,6 @@ void App::ArrangeToEdge(bool right) {
     int columnEdge = right ? wa.right - gap : wa.left + gap;  // 이 줄이 붙는 가장자리
     int columnMaxW = 0;
     for (auto* w : list) {
-        w->SetMinimized(true);
         RECT r{};
         GetWindowRect(w->hwnd(), &r);
         int cw = r.right - r.left, ch = r.bottom - r.top;
@@ -1269,14 +1293,75 @@ void App::ArrangeToEdge(bool right) {
             columnMaxW = 0;
         }
         int x = right ? columnEdge - cw : columnEdge;
-        SetWindowPos(w->hwnd(), nullptr, x, y, 0, 0,
-                     SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
-        w->StoreGeometryFromWindow();
-        w->SaveData();
+        if (x != r.left || y != r.top) {  // 시작할 때마다 부르므로 제자리면 쓰지 않는다
+            SetWindowPos(w->hwnd(), nullptr, x, y, 0, 0,
+                         SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+            w->StoreGeometryFromWindow();
+            w->SaveData();
+        }
         y += ch + gap;
         if (cw > columnMaxW) columnMaxW = cw;
     }
-    BringAllToFront();
+}
+
+// 디스플레이 변경 알림은 WM_DISPLAYCHANGE·창마다의 WM_DPICHANGED·작업 영역 변경이 연달아
+// 온다. 마지막 알림 뒤에 한 번, DPI 알림이 늦게 오는 경우를 위해 조금 더 뒤에 한 번 정리한다.
+void App::ScheduleDisplayReflow() {
+    const unsigned gen = ++reflowGen_;
+    for (UINT delay : {500u, 1500u}) {
+        RunOnUiDelayed(delay, [this, gen]() {
+            if (gen == reflowGen_) ReflowAfterDisplayChange();
+        });
+    }
+}
+
+void App::ReflowAfterDisplayChange() {
+    // 1) 크기를 지금 DPI에 맞춘다 (배율 변경을 놓친 크기, 최소화 높이)
+    for (auto* w : stickers_) w->FitToCurrentDpi();
+
+    // 2) 가장자리 줄을 새 작업 영역에 다시 세운다. 줄에 있던 순서를 그대로 쓴다 — 해상도가
+    //    바뀌는 사이 시스템이 창을 옮겨 놓아 지금 위치로는 순서를 알 수 없다.
+    //    닫아 둔(×) 메모는 빼고, 보기 단축키로 잠시 감춘 메모는 자리를 지킨다.
+    RECT wa{};
+    SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
+    const int gap = (int)(8 * settings.uiScale + 0.5);
+    for (bool right : {false, true}) {
+        const std::string edge = right ? "right" : "left";
+        std::vector<StickerWindow*> list;
+        for (auto* w : stickers_)
+            if (!w->data.hidden && w->data.minimized && w->data.dock == edge) list.push_back(w);
+        // 이 기능 이전에 정렬해 둔 메모에는 줄 정보가 없다. 그 가장자리에 줄 정보가 하나도 없을
+        // 때만, 가장자리에 붙어 있는 최소화 메모를 위→아래 순서로 줄에 넣는다 (한 번만 일어난다).
+        if (list.empty()) {
+            for (auto* w : stickers_) {
+                if (w->data.hidden || !w->data.minimized || !w->data.dock.empty()) continue;
+                RECT r{};
+                GetWindowRect(w->hwnd(), &r);
+                if ((right && r.right == wa.right - gap) || (!right && r.left == wa.left + gap))
+                    list.push_back(w);
+            }
+            std::stable_sort(list.begin(), list.end(), [](StickerWindow* a, StickerWindow* b) {
+                RECT ra{}, rb{};
+                GetWindowRect(a->hwnd(), &ra);
+                GetWindowRect(b->hwnd(), &rb);
+                return ra.top < rb.top;
+            });
+            int order = 0;
+            for (auto* w : list) {
+                w->data.dock = edge;
+                w->data.dockOrder = order++;
+                w->SaveData();
+            }
+        }
+        if (list.empty()) continue;
+        std::stable_sort(list.begin(), list.end(), [](StickerWindow* a, StickerWindow* b) {
+            return a->data.dockOrder < b->data.dockOrder;
+        });
+        LayoutEdgeColumn(list, right);
+    }
+
+    // 3) 나머지 창은 작업 영역 안으로 들인다
+    ClampAllWindowsToScreen();
 }
 
 // 보기/감추기 단축키 동작 (규칙은 App.h 선언의 설명 참고)
@@ -3050,14 +3135,14 @@ LRESULT App::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return TRUE;
 
         case WM_DISPLAYCHANGE:
-            // 해상도/모니터 구성 변경: 안정화 후 전체 창을 작업 영역 안으로 보정
-            RunOnUiDelayed(400, [this]() { ClampAllWindowsToScreen(); });
+            // 해상도/모니터 구성 변경: 안정화 후 최소화 높이·가장자리 줄·작업 영역 보정
+            ScheduleDisplayReflow();
             return 0;
 
         case WM_SETTINGCHANGE:
             if (wp == SPI_SETWORKAREA) {
                 // 작업 표시줄 위치/크기 변경
-                RunOnUiDelayed(400, [this]() { ClampAllWindowsToScreen(); });
+                ScheduleDisplayReflow();
                 return 0;
             }
             if (lp && wcscmp((const wchar_t*)lp, L"ImmersiveColorSet") == 0 &&

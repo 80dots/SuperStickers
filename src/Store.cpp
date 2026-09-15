@@ -262,8 +262,10 @@ json Store::ToJson(const StickerData& d) {
         {"pdfName", d.pdfName}, {"pdfTitle", d.pdfTitle},
         {"color", d.color}, {"x", d.x},           {"y", d.y},
         {"w", d.w},       {"h", d.h},             {"topmost", d.topmost},
+        {"dpi", d.dpi},
         {"hidden", d.hidden}, {"attachments", d.attachments},
         {"minimized", d.minimized}, {"restoreH", d.restoreH},
+        {"restoreDpi", d.restoreDpi}, {"dock", d.dock}, {"dockOrder", d.dockOrder},
         {"createdAt", d.createdAt}, {"updatedAt", d.updatedAt},
         {"deletedAt", d.deletedAt},
         {"tags", d.tags}, {"aiTags", d.aiTags},
@@ -327,10 +329,15 @@ StickerData Store::FromJson(const json& j) {
     d.y = j.value("y", d.y);
     d.w = j.value("w", d.w);
     d.h = j.value("h", d.h);
+    d.dpi = j.value("dpi", 0);
     d.topmost = j.value("topmost", false);
     d.hidden = j.value("hidden", false);
     d.minimized = j.value("minimized", false);
     d.restoreH = j.value("restoreH", 0);
+    d.restoreDpi = j.value("restoreDpi", 0);
+    d.dock = j.value("dock", "");
+    if (d.dock != "left" && d.dock != "right") d.dock.clear();
+    d.dockOrder = j.value("dockOrder", 0);
     if (j.contains("attachments") && j["attachments"].is_array()) {
         for (auto& a : j["attachments"])
             if (a.is_string() && ValidAttachmentRel(a.get<std::string>()))
