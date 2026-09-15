@@ -8,8 +8,10 @@
 #include "Store.h"
 #include "WebViewHost.h"
 
-// 프레임리스 스티커 창. WebView2가 사방 6px(밴드) 안쪽을 덮고,
-// 밴드 영역은 WM_NCHITTEST로 네이티브 리사이즈를 처리한다.
+// 프레임리스 스티커 창. WebView2가 클라이언트 전체를 덮는다 — 창 안의 모든 픽셀을 페이지 한
+// 표면이 그려야 네이티브와 WebView가 서로 다른 순간에 화면에 올라가 테두리처럼 보이는 일이
+// 없다. 사방 6px(밴드)는 페이지의 여백이고, 거기서 누르면 window.startResize로 네이티브
+// 크기 조절을 시작한다(sticker-frame.js).
 class StickerWindow {
 public:
     static void RegisterWndClass(HINSTANCE hinst);
@@ -33,8 +35,8 @@ public:
     bool FitToCurrentDpi();
     void SetTopmost(bool on);
     void SetColor(const std::string& color);
-    void OnThemeChanged();  // 밴드 색 갱신
-    // 다중 선택 표시 — 그룹창의 드롭 하이라이트와 같은 모양(GDI+ 안티앨리어싱 라운드 테두리)
+    void OnThemeChanged();  // 배경색 갱신
+    // 다중 선택 표시 — 테두리는 페이지가 그리고(selection.changed), 여기서는 DWM 보더 색만 맞춘다
     void SetSelectedLook(bool on);
     void ApplyUiScale();    // 설정의 UI 배율을 WebView 줌으로 반영
     // 현재 창 rect를 data.x/y/w/h에 기록한다.
@@ -50,7 +52,10 @@ private:
     static LRESULT CALLBACK SWndProc(HWND, UINT, WPARAM, LPARAM);
     LRESULT WndProc(HWND, UINT, WPARAM, LPARAM);
     void LayoutWebView();
-    void UpdateBandBrush();
+    void RaiseSiteView();       // web 메모: 사이트 뷰를 메인 페이지 위로
+    void UpdateBackground();    // 배경 브러시·WebView 기본 배경·DWM 보더를 메모 색으로
+    nlohmann::json WindowMetricsJson() const;  // 페이지가 그리는 테두리 치수 (물리 px)
+    void SyncWindowMetrics();   // DPI가 바뀌었으면 페이지에 새 치수를 보낸다
     int BandPx() const;
 
     void RegisterTypeBridges();  // 타입별(file/web/pdf) 브리지 메서드 등록
@@ -59,7 +64,8 @@ private:
     WebViewHost host_;
     WebViewHost siteHost_;  // type=="web" 전용 (그 외에는 미생성)
     UINT dpi_ = 96;
-    HBRUSH bandBrush_ = nullptr;
+    UINT metricsDpi_ = 0;  // 페이지에 마지막으로 알린 테두리 치수의 DPI
+    HBRUSH bgBrush_ = nullptr;  // WebView가 붙기 전·커지는 순간 드러나는 자리를 칠한다
     bool selected_ = false;  // 다중 선택 표시 여부
     RECT dragStartRect_{};    // 이동 vs 리사이즈 구분용 (그룹 드롭 감지)
     POINT dragStartCursor_{};  // 드래그 시작 시 커서 — 자석과 무관한 "자유 위치" 계산 기준

@@ -9,6 +9,9 @@
         content="script-src 'self'; object-src 'none'; base-uri 'none'">
   <title>Sticker</title>
   <script src="/common/early-theme.js"></script>
+  <!-- 첫 그림부터 메모 색·창 테두리 여백으로 그리려고 <head>에서 부른다 (sticker-frame.js 참고) -->
+  <script src="/common/color.js"></script>
+  <script src="/sticker-frame.js"></script>
   <link rel="stylesheet" href="/common/base.css">
   <link rel="stylesheet" href="/common/theme.css">
   <link rel="stylesheet" href="/common/aiwizard.css">
@@ -279,7 +282,6 @@
   <script src="/vendor/marked.min.js"></script>
   <script src="/common/bridge.js"></script>
   <script src="/common/i18n.js"></script>
-  <script src="/common/color.js"></script>
   <script src="/common/style.js"></script>
   <script src="/common/secretmask.js"></script>
   <script src="/common/prompts.js"></script>

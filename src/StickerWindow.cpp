@@ -24,7 +24,9 @@ using json = nlohmann::json;
 
 namespace {
 const wchar_t* kClassName = L"SuperStickerNote";
-constexpr int kBandDip = 6;    // 네이티브 리사이즈 밴드 폭 (DIP)
+constexpr int kBandDip = 6;    // 리사이즈 밴드 폭 (DIP) — 페이지 가장자리 여백
+constexpr int kRingDip = 3;    // 다중 선택 테두리 두께 (DIP) — 그룹창 드롭 하이라이트와 같다
+constexpr int kCornerDip = 8;  // DWM 라운드 모서리 반지름 (DIP)
 constexpr int kMinWDip = 220;
 constexpr int kMinHDip = 160;
 
@@ -219,7 +221,9 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
     }
     self->dpi_ = GetDpiForWindow(hwnd);
     theme::ApplyRoundCorners(hwnd);  // DWM 라운드 (안티앨리어싱)
-    self->UpdateBandBrush();         // 밴드 브러시 + DWM 보더 색(배경색과 동일 → 안 보임)
+    // 배경 브러시 + WebView 기본 배경 + DWM 보더 색 — 모두 메모 색이라 페이지가 그려지기 전
+    // 어느 순간에도 창이 한 가지 색이다 (WebView를 만들기 전에 불러야 생성 옵션으로 넘어간다)
+    self->UpdateBackground();
 
     // --- 브리지: 스티커 전용 메서드 ---
     Bridge& b = self->host_.bridge();
@@ -310,6 +314,32 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
         return json::object();
     });
 
+    // 페이지 가장자리 여백을 누르면 네이티브 크기 조절 루프를 시작한다 — WebView가 창 전체를
+    // 덮어 WM_NCHITTEST가 오지 않으므로. 같은 루프라 자석(WM_SIZING)·최소 크기가 그대로 돈다.
+    b.Register("window.startResize", [self](const json& p) {
+        static const std::pair<const char*, int> kEdges[] = {
+            {"n", HTTOP},        {"s", HTBOTTOM},   {"w", HTLEFT},        {"e", HTRIGHT},
+            {"nw", HTTOPLEFT},   {"ne", HTTOPRIGHT}, {"sw", HTBOTTOMLEFT}, {"se", HTBOTTOMRIGHT}};
+        const std::string edge = p.value("edge", "");
+        int hit = 0;
+        for (auto& [name, code] : kEdges)
+            if (edge == name) hit = code;
+        if (!hit) throw std::runtime_error("bad edge");
+        // 요청은 비동기로 온다. 그 사이 버튼을 뗐으면 시작하지 않는다 — 버튼이 떨어진 채
+        // 크기 조절에 들어가면 Windows가 커서를 테두리로 옮기는 키보드 크기 조절 모드가 된다.
+        // (GetAsyncKeyState는 물리 버튼을 보므로 좌우가 바뀐 마우스는 오른쪽을 본다)
+        int vk = GetSystemMetrics(SM_SWAPBUTTON) ? VK_RBUTTON : VK_LBUTTON;
+        if (!(GetAsyncKeyState(vk) & 0x8000)) return json::object();
+        POINT pt{};
+        GetCursorPos(&pt);
+        ReleaseCapture();
+        SendMessageW(self->hwnd_, WM_NCLBUTTONDOWN, hit, MAKELPARAM(pt.x, pt.y));
+        return json::object();
+    });
+
+    // 테두리 치수 — init에도 싣지만, 페이지가 이벤트를 받기 전에 DPI가 바뀌었을 수 있어 다시 묻는다
+    b.Register("window.getMetrics", [self](const json&) { return self->WindowMetricsJson(); });
+
     // UI 자동 숨김 상태 보고 (web 메모 전용 — 사이트 뷰가 타이틀바 자리를 채우도록)
     b.Register("window.setUiHidden", [self](const json& p) {
         bool hidden = p.value("hidden", false);
@@ -356,16 +386,19 @@ StickerWindow* StickerWindow::Create(HINSTANCE hinst, const StickerData& d, bool
     self->RegisterTypeBridges();
     App::I().SetupCommonBridge(self->host_);
 
-    json init = App::I().MakeInitJson("sticker", d.id, focusEditor);
-    if (!clip.is_null()) init["clip"] = clip;  // 클립보드로 만든 메모: 페이지가 첫 그림에 넣는다
     // 바탕화면에 없는 메모(감춘 메모)는 WebView를 만들지 않는다 — 표시할 때 만든다.
-    // 그때 설정이 바뀌어 있을 수 있으므로 init은 생성 시점에 다시 만든다.
-    std::string sid = d.id;
-    self->host_.SetInitProvider([sid, focusEditor, clip]() {
-        json j = App::I().MakeInitJson("sticker", sid, focusEditor);
-        if (!clip.is_null()) j["clip"] = clip;
+    // 그때 설정·색·DPI가 바뀌어 있을 수 있으므로 init은 생성 시점에 다시 만든다.
+    auto makeInit = [self, focusEditor, clip]() {
+        json j = App::I().MakeInitJson("sticker", self->data.id, focusEditor);
+        if (!clip.is_null()) j["clip"] = clip;  // 클립보드로 만든 메모: 페이지가 첫 그림에 넣는다
+        // 첫 그림부터 메모 색과 테두리 치수로 그린다 (sticker.load를 기다리면 폴백 색이 한 번 보인다)
+        j["color"] = self->data.color;
+        j["winMetrics"] = self->WindowMetricsJson();
+        self->metricsDpi_ = self->dpi_;
         return j;
-    });
+    };
+    json init = makeInit();
+    self->host_.SetInitProvider(makeInit);
     WebViewHost::Options memoOpts;
     memoOpts.deferUntilShown = !show;
     self->host_.Create(hwnd, L"https://app.sticker/sticker.html", init,
@@ -415,17 +448,17 @@ void StickerWindow::SetTopmost(bool on) {
     SaveData();
 }
 
-// 메모 색 변경 (밴드·DWM 테두리 색도 함께)
+// 메모 색 변경 (배경·DWM 테두리 색도 함께)
 void StickerWindow::SetColor(const std::string& color) {
     data.color = color;
-    UpdateBandBrush();
+    UpdateBackground();
     InvalidateRect(hwnd_, nullptr, TRUE);
     SaveData();
 }
 
-// 테마 변경: 밴드 브러시·테두리 다시 칠하기
+// 테마 변경: 배경 브러시·테두리 다시 칠하기
 void StickerWindow::OnThemeChanged() {
-    UpdateBandBrush();
+    UpdateBackground();
     InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
@@ -437,30 +470,50 @@ void StickerWindow::SaveData() {
 
 void StickerWindow::Destroy() { DestroyWindow(hwnd_); }
 
-// 리사이즈 밴드 브러시와 DWM 테두리 색을 메모 색으로 맞춘다
-void StickerWindow::UpdateBandBrush() {
-    if (bandBrush_) DeleteObject(bandBrush_);
+// 창 배경 브러시·WebView 기본 배경·DWM 테두리 색을 메모 색으로 맞춘다.
+// 페이지가 아직 그리지 않은 자리(WebView 생성 전, 창이 커지는 순간, 다시 표시할 때)가
+// 어디서 드러나든 페이지 배경과 같은 색이어야 테두리처럼 보이지 않는다.
+void StickerWindow::UpdateBackground() {
+    if (bgBrush_) DeleteObject(bgBrush_);
     bool dark = App::I().EffectiveTheme() == "dark";
     COLORREF c = theme::StickerColor(data.color, dark);
-    bandBrush_ = CreateSolidBrush(c);
-    // DWM 보더를 배경색과 같게 — 아웃라인이 티 나지 않음 (색/테마 변경 시 함께 갱신)
-    if (hwnd_) theme::SetWindowBorderColor(hwnd_, c);
+    bgBrush_ = CreateSolidBrush(c);
+    // 사이트 뷰(web 메모)는 바꾸지 않는다 — 배경을 지정하지 않은 외부 사이트가 흰색 대신
+    // 메모 색으로 그려진다. 사이트 뷰는 내용이라 흰 바탕이 먼저 보여도 테두리가 아니다.
+    host_.SetBackgroundColor(c);
+    // DWM 보더를 배경색과 같게 — 아웃라인이 티 나지 않음 (선택 중이면 액센트를 유지)
+    if (hwnd_ && !selected_) theme::SetWindowBorderColor(hwnd_, c);
 }
 
 // 다중 선택 테두리 표시 켜기/끄기
 void StickerWindow::SetSelectedLook(bool on) {
     if (selected_ == on) return;
     selected_ = on;
-    // 창 가장자리 1px(DWM 보더)까지 액센트/배경색으로 맞춰 일체감 유지 (그룹창과 동일)
+    // 테두리 자체는 페이지가 selection.changed를 받아 그린다. 창 가장자리 1px(DWM 보더)만
+    // 같은 액센트로 맞춰 일체감을 지킨다 (그룹창 드롭 하이라이트와 같은 색)
     if (on) {
         theme::SetWindowBorderColor(hwnd_, RGB(0x63, 0x55, 0xE0));
     } else {
-        UpdateBandBrush();  // 원래 메모 색으로 보더 복구
+        UpdateBackground();  // 원래 메모 색으로 보더 복구
     }
-    InvalidateRect(hwnd_, nullptr, TRUE);
 }
 
 int StickerWindow::BandPx() const { return MulDiv(kBandDip, dpi_, 96); }
+
+// 페이지가 그리는 창 테두리 치수 (물리 px). 페이지는 devicePixelRatio로 나눠 CSS px로 쓴다 —
+// 네이티브와 같은 반올림이어야 최소화 높이(제목줄 + 밴드 둘)에 제목줄이 정확히 들어간다.
+json StickerWindow::WindowMetricsJson() const {
+    return json{{"band", BandPx()},
+                {"ring", MulDiv(kRingDip, dpi_, 96)},
+                {"radius", MulDiv(kCornerDip, dpi_, 96)}};
+}
+
+// DPI가 바뀌었으면 페이지에 새 테두리 치수를 알린다
+void StickerWindow::SyncWindowMetrics() {
+    if (metricsDpi_ == dpi_ || !host_.Ready()) return;
+    metricsDpi_ = dpi_;
+    host_.PostEvent("window.metrics", WindowMetricsJson());
+}
 
 // CSS px → 물리 px (UI 배율·DPI 반영)
 int StickerWindow::CssPx(int cssPx) const {
@@ -529,6 +582,7 @@ bool StickerWindow::FitToCurrentDpi() {
         StoreGeometryFromWindow();
         SaveData();
     }
+    SyncWindowMetrics();  // 크기가 그대로면 WM_SIZE가 오지 않는다
     return resized;
 }
 
@@ -551,25 +605,41 @@ void StickerWindow::ApplyUiScale() {
     LayoutWebView();  // 웹 스트립 높이가 배율에 따라 달라짐
 }
 
-// WebView를 밴드 안쪽에 배치 (웹 메모는 상단 스트립과 사이트 뷰로 나눈다)
+// 메인 WebView는 클라이언트 전체를 덮는다 — 밴드도 페이지가 그린다 (StickerWindow.h 참고).
+// 웹 메모는 사이트 뷰를 그 위에 얹는다: 상단 스트립 아래, 밴드만큼 들인 자리.
 void StickerWindow::LayoutWebView() {
     RECT rc{};
     GetClientRect(hwnd_, &rc);
-    int band = BandPx();
+    host_.SetBounds(rc);
+    SyncWindowMetrics();
     if (data.type == "web") {
-        // 상단 스트립(타이틀바 32 + URL바 32 CSS px) = 메인 페이지, 나머지 = 사이트 뷰.
+        // 상단 스트립(타이틀바 32 + URL바 32 CSS px)은 메인 페이지, 그 아래는 사이트 뷰.
         // UI 숨김 중에는 타이틀바가 레이아웃에서 빠져 URL바(32)만 남는다.
+        int band = BandPx();
         double stripCss = webUiHidden_ ? 32.0 : 64.0;
         int strip = (int)(stripCss * App::I().settings.uiScale * dpi_ / 96.0 + 0.5);
-        RECT top{rc.left + band, rc.top + band, rc.right - band,
-                 min(rc.top + band + strip, rc.bottom - band)};
-        RECT bottom{rc.left + band, top.bottom, rc.right - band, rc.bottom - band};
-        host_.SetBounds(top);
-        siteHost_.SetBounds(bottom);
+        RECT site{rc.left + band, min(rc.top + band + strip, rc.bottom - band), rc.right - band,
+                  rc.bottom - band};
+        siteHost_.SetBounds(site);
+        RaiseSiteView();
+    }
+}
+
+// web 메모: 사이트 뷰를 메인 페이지 위로 올린다. 두 WebView의 자식 창은 겹쳐 있고 생성이
+// 비동기라 형제 z 순서가 정해져 있지 않다. 메인 뷰는 클라이언트와 크기가 같고 사이트 뷰는
+// 밴드만큼 들어가 있으므로 크기로 구분한다.
+void StickerWindow::RaiseSiteView() {
+    RECT client{};
+    GetClientRect(hwnd_, &client);
+    HWND first = GetWindow(hwnd_, GW_CHILD);
+    for (HWND c = first; c; c = GetWindow(c, GW_HWNDNEXT)) {
+        RECT r{};
+        GetClientRect(c, &r);
+        if (r.right == client.right && r.bottom == client.bottom) continue;
+        if (c != first)
+            SetWindowPos(c, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         return;
     }
-    RECT bounds{rc.left + band, rc.top + band, rc.right - band, rc.bottom - band};
-    host_.SetBounds(bounds);
 }
 
 // 타입별(file/web/pdf) 브리지 메서드
@@ -1067,6 +1137,8 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             if (wp == TRUE) return 0;  // 비클라이언트 프레임 제거 (프레임리스)
             break;
 
+        // WebView가 클라이언트 전체를 덮으므로 이 판정은 WebView가 붙기 전에만 쓰인다.
+        // 그 뒤의 크기 조절은 페이지 여백이 window.startResize로 시작한다.
         case WM_NCHITTEST: {
             POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             RECT r{};
@@ -1085,29 +1157,13 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             return HTCLIENT;
         }
 
+        // 메모 색으로만 칠한다. 보이는 건 WebView가 붙기 전과 창이 커지는 순간뿐이고, 그때도
+        // WebView 기본 배경·페이지 배경과 같은 색이라 경계가 드러나지 않는다.
+        // (여기에 무엇이든 따로 그리면 페이지와 다른 순간에 화면에 올라가 테두리처럼 보인다)
         case WM_ERASEBKGND: {
             RECT rc{};
             GetClientRect(hwnd, &rc);
-            HDC dc = (HDC)wp;
-            FillRect(dc, &rc, bandBrush_);
-            if (selected_) {
-                // 그룹창에 메모를 드롭할 때의 하이라이트와 동일 (색·두께·모서리 반지름)
-                Gdiplus::Graphics g(dc);
-                g.SetSmoothingMode(Gdiplus::SmoothingModeAntiAlias);
-                float thick = (float)MulDiv(3, dpi_, 96);
-                Gdiplus::Pen pen(Gdiplus::Color(255, 0x63, 0x55, 0xE0), thick);
-                float in = thick / 2.0f;
-                float x = rc.left + in, y = rc.top + in;
-                float w = (rc.right - rc.left) - thick, h = (rc.bottom - rc.top) - thick;
-                float d = (float)MulDiv(16, dpi_, 96);  // 모서리 호 지름 (DWM 라운드와 유사)
-                Gdiplus::GraphicsPath path;
-                path.AddArc(x, y, d, d, 180.0f, 90.0f);
-                path.AddArc(x + w - d, y, d, d, 270.0f, 90.0f);
-                path.AddArc(x + w - d, y + h - d, d, d, 0.0f, 90.0f);
-                path.AddArc(x, y + h - d, d, d, 90.0f, 90.0f);
-                path.CloseFigure();
-                g.DrawPath(&pen, &path);
-            }
+            FillRect((HDC)wp, &rc, bgBrush_);
             return 1;
         }
 
@@ -1120,10 +1176,6 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
         case WM_SIZE:
             LayoutWebView();
-            // 선택 테두리는 창 가장자리를 따라 그려지므로, 크기가 바뀌면 새로 드러난
-            // 부분만 다시 그려져 테두리가 점선처럼 끊긴다. 선택 중일 때는 클라이언트
-            // 전체를 다시 칠해 테두리를 이어 준다.
-            if (selected_) InvalidateRect(hwnd, nullptr, TRUE);
             return 0;
 
         case WM_GETMINMAXINFO: {
@@ -1296,9 +1348,9 @@ LRESULT StickerWindow::WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         case WM_DESTROY:
             host_.Close();
             siteHost_.Close();
-            if (bandBrush_) {
-                DeleteObject(bandBrush_);
-                bandBrush_ = nullptr;
+            if (bgBrush_) {
+                DeleteObject(bgBrush_);
+                bgBrush_ = nullptr;
             }
             App::I().OnStickerDestroyed(this);
             return 0;

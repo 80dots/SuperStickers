@@ -2542,8 +2542,8 @@
       const on = Array.isArray(d.ids) && d.ids.includes(init.stickerId);
       if (on === selected) return;
       selected = on;
-      // 선택 테두리는 네이티브가 그린다(그룹 드롭 하이라이트와 동일한 모양).
-      // 페이지는 Delete 처리를 위해 선택 여부만 알고 있으면 된다.
+      // 선택 테두리는 sticker-frame.js가 같은 이벤트로 그린다.
+      // 여기서는 Delete 처리를 위해 선택 여부만 알고 있으면 된다.
       // 선택되면 캐럿을 빼서 Delete가 글자 지우기와 헷갈리지 않게 한다
       if (on && document.activeElement && document.activeElement !== document.body) {
         document.activeElement.blur();

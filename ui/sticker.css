@@ -1,9 +1,43 @@
+/* 창 전체가 이 페이지다 — 가장자리 밴드(--frame)는 body의 여백이고, body 배경은 캔버스로
+   번져 여백까지 같은 표면에 칠해진다 (sticker-frame.js). */
+html { overflow: hidden; }
 body {
+  margin: var(--frame, 6px);
+  height: calc(100% - 2 * var(--frame, 6px));
   background: var(--note-bg);
   color: var(--note-fg, var(--fg));
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* ---------- 창 테두리: 크기 조절 영역 · 다중 선택 테두리 (sticker-frame.js) ---------- */
+#winFrame {
+  position: fixed;
+  inset: 0;
+  z-index: 2147483647;  /* 대화상자·선택 메뉴 위에서도 크기 조절이 되도록 */
+  pointer-events: none;
+}
+.wf-zone { position: absolute; pointer-events: auto; }
+.wf-n, .wf-s { left: var(--frame); right: var(--frame); height: var(--frame); cursor: ns-resize; }
+.wf-w, .wf-e { top: var(--frame); bottom: var(--frame); width: var(--frame); cursor: ew-resize; }
+.wf-n { top: 0; }
+.wf-s { bottom: 0; }
+.wf-w { left: 0; }
+.wf-e { right: 0; }
+.wf-nw, .wf-ne, .wf-sw, .wf-se { width: var(--frame); height: var(--frame); }
+.wf-nw { top: 0; left: 0; cursor: nwse-resize; }
+.wf-se { bottom: 0; right: 0; cursor: nwse-resize; }
+.wf-ne { top: 0; right: 0; cursor: nesw-resize; }
+.wf-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+/* 선택 테두리 — 그룹창에 메모를 드롭할 때의 하이라이트(GroupWindow.cpp)와 같은 색·두께 */
+html.win-selected #winFrame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: var(--sel-ring, 3px) solid #6355E0;
+  border-radius: var(--win-radius, 9.5px);
+  pointer-events: none;
 }
 /* 배경 이미지(설정 → 스타일): 메모 색 위에 얹는다. 프리셋은 투명 패턴이라 색이 비친다.
    사용자 이미지는 꽉 채우고, 글이 읽히도록 메모 색을 살짝 덮어 준다. */

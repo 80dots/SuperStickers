@@ -34,10 +34,33 @@ YouTube 임베드 재생 등 웹 콘텐츠 요구사항 때문에 순수 Win32 �
 
 - `WS_POPUP | WS_THICKFRAME` + `WM_NCCALCSIZE`(wParam=TRUE 시 0 반환)로 프레임 제거,
   `DWMWA_WINDOW_CORNER_PREFERENCE`로 Windows 11 라운드 코너 적용.
-- **리사이즈**: WebView2가 마우스를 삼키므로 컨트롤러를 클라이언트 사방 6px(DPI 스케일)
-  안쪽에 배치하고, 바깥 밴드는 `WM_NCHITTEST`에서 `HTLEFT` 등을 반환해 네이티브 리사이즈 유지.
-  밴드는 `WM_ERASEBKGND`에서 스티커 색으로 칠해 이음새가 보이지 않음 (src/Theme.cpp 팔레트는
-  ui/common/theme.css와 동기화 유지 필요).
+- **창 안의 모든 픽셀은 페이지 한 표면이 그린다** (2026-09-15): WebView 컨트롤러가 클라이언트
+  **전체**를 덮고, 사방 6 DIP 리사이즈 밴드는 페이지 body의 여백이다(`--frame`, body 배경이
+  캔버스로 번져 여백까지 칠해진다).
+  - **왜**: 예전에는 네이티브가 밴드를 GDI로 칠하고 WebView를 그 안쪽에 두었다. 두 표면은 다른
+    프로세스가 다른 순간에 화면에 올리므로 한쪽만 바뀐 순간 밴드가 두꺼운 테두리로 보였다.
+    실측(연속 캡처): 앱 시작 때 메모마다 약 100ms 동안 안쪽이 흰색(WebView 기본 배경) → 노랑
+    (theme.css 폴백 `--note-bg`) → 실제 색 순으로 바뀌며 색 밴드가 드러났고, 새 메모도 같았다.
+    배경 이미지를 쓰면 무늬 둘레에 민무늬 액자가 늘 남았다. 바꾼 뒤 같은 측정에서 어긋난 프레임 0.
+  - **리사이즈**: WebView가 마우스를 모두 받으므로 페이지 가장자리의 투명 영역(`#winFrame .wf-zone`,
+    `ui/sticker-frame.js`)이 mousedown을 `window.startResize {edge}`로 넘기고, 네이티브가
+    `WM_NCLBUTTONDOWN(HTLEFT…)`로 크기 조절 루프를 시작한다(`window.startDrag`와 같은 방식이라
+    자석·최소 크기가 그대로 돈다). 요청이 비동기로 오므로 **버튼이 아직 눌려 있을 때만** 시작한다 —
+    뗀 뒤에 루프에 들어가면 Windows가 커서를 옮기는 키보드 크기 조절 모드가 된다. 영역은 `<html>`
+    바로 아래(body 밖)라 최소화·UI 페이드 규칙에 가려지지 않고, window 캡처 단계에서 입력을 먹어
+    예전 네이티브 밴드처럼 문서의 다른 처리(선택 해제·UI 표시)로 흘리지 않는다.
+    `WM_NCHITTEST`는 WebView가 붙기 전에만 쓰인다.
+  - **치수**: 네이티브가 물리 px로 준다(`init.winMetrics`, DPI 변경 시 `window.metrics` 이벤트,
+    시작 시 `window.getMetrics`) → 페이지가 `devicePixelRatio`로 나눈다. 네이티브와 반올림이
+    같아야 최소화 높이(제목줄 34 CSS px + 밴드 둘)에 제목줄이 정확히 들어간다.
+  - **페이지가 그리기 전의 빈 순간도 같은 색**: `WebViewHost::SetBackgroundColor`가 메모 색을
+    컨트롤러 생성 옵션(`ICoreWebView2ControllerOptions3::DefaultBackgroundColor`)으로 넘기고
+    (생성 후 변경은 `put_DefaultBackgroundColor`), init에 `color`를 실어 `<head>`의
+    `sticker-frame.js`가 CSS보다 먼저 `--note-bg`를 건다(color.js도 그래서 head에서 로드).
+    네이티브 `WM_ERASEBKGND`도 같은 색만 칠한다 — **여기에 무엇이든 따로 그리면 다시 두 표면이 된다.**
+  - web 메모의 사이트 뷰는 메인 페이지 위에 밴드만큼 들여 얹는다. 두 자식 창의 z 순서는 생성이
+    비동기라 정해져 있지 않아 `RaiseSiteView`가 크기로 사이트 뷰를 찾아 올린다. 사이트 뷰의 기본
+    배경은 바꾸지 않는다(배경을 지정하지 않은 외부 사이트가 메모 색으로 그려진다).
 - **드래그**: 웹 타이틀바 `mousedown` → 브리지 `window.startDrag` → 네이티브가
   `ReleaseCapture(); SendMessage(WM_NCLBUTTONDOWN, HTCAPTION)`.
 - 닫기(X)는 `WM_CLOSE`를 가로채 숨김 + `hidden=true` 저장. 트레이 "종료"만 실제 종료.
@@ -830,7 +853,8 @@ WebView2의 Web Speech API는 **음성 목록이 비어 있다**(실측 `speechS
   `S' = 0.40·S`. 이 알고리즘은 두 곳에 중복 구현되어 있으며 반드시 동기화 유지:
   - 웹: `ui/common/color.js` `effectiveBg()` — body 배경·글자색(`--note-bg`/`--note-fg`),
     글자색은 배경 상대 휘도 < 0.5이면 밝은 색으로 자동 선택(`textColorFor`).
-  - 네이티브: `src/Theme.cpp` `StickerColor()` — 리사이즈 밴드 브러시 (웹 배경과 이음새 없이 일치).
+  - 네이티브: `src/Theme.cpp` `StickerColor()` — 창 배경 브러시·WebView 기본 배경·DWM 보더
+    (페이지가 그리기 전에 보이는 색이 페이지 배경과 같아야 한다).
 
 ### 메모 그룹
 
@@ -909,12 +933,11 @@ WebView2의 Web Speech API는 **음성 목록이 비어 있다**(실측 `speechS
   않는다** — 거기서는 파일 다중 선택이 먼저다(가로채면 preventDefault로 목록의 클릭
   처리까지 막힌다). 상태 변경은 `selection.changed {ids}` 방송으로
   각 창의 선택 테두리를 갱신한다(`SyncSelectionLook`). 테두리는 **그룹창에 메모를 드롭할
-  때의 하이라이트와 같은 모양** — 네이티브 WM_ERASEBKGND에서 GDI+ 안티앨리어싱 라운드
-  패스로 그리고(색 #3B82F6, 두께 3dip, 모서리 지름 16dip), DWM 보더 색도 같은 액센트로
-  맞춘다. 그룹창의 드롭 하이라이트 코드와 동일하게 유지할 것 (한쪽만 바꾸면 어긋난다).
-  **주의**: 창 클래스에 CS_HREDRAW/CS_VREDRAW가 없어 크기가 바뀌면 새로 드러난 영역만
-  다시 그려진다 → 테두리가 점선처럼 끊긴다. 그래서 선택 중에는 WM_SIZE에서 클라이언트
-  전체를 무효화해 테두리를 이어 준다.
+  때의 하이라이트와 같은 모양**(색 #6355E0, 두께 3dip, 바깥 곡선이 DWM 라운드를 따름)이다.
+  메모창은 페이지가 그린다 — `sticker-frame.js`가 `selection.changed`로 `html.win-selected`를
+  켜고 `#winFrame::after`의 border로 그린다(네이티브가 그리면 페이지와 다른 순간에 화면에
+  올라간다, "프레임리스 스티커 창" 참고). 네이티브는 DWM 보더 색만 같은 액센트로 맞춘다.
+  그룹창의 드롭 하이라이트(GroupWindow.cpp, GDI+)와 색·두께를 함께 유지할 것.
   - **함께 이동**: `WM_ENTERSIZEMOVE`에서 선택된 다른 창들의 시작 위치를 모아 두고,
     `WM_MOVING`마다 드래그 창의 이동량(자석 보정 후)을 그대로 적용해 상대 위치를 지킨다.
     자석은 함께 끌려오는 창을 후보에서 제외한다(서로 당겨 레이아웃이 무너지므로).

@@ -20,6 +20,11 @@ wil::com_ptr<ICoreWebView2Environment> g_env;
 bool g_envCreating = false;
 std::vector<std::function<void(HRESULT)>> g_envWaiters;
 
+// COLORREF → WebView2 색 (불투명)
+COREWEBVIEW2_COLOR ToWebViewColor(COLORREF c) {
+    return COREWEBVIEW2_COLOR{255, GetRValue(c), GetGValue(c), GetBValue(c)};
+}
+
 // http(s) URL인지
 bool IsHttpUrl(const std::wstring& uri) {
     return uri.rfind(L"http://", 0) == 0 || uri.rfind(L"https://", 0) == 0;
@@ -190,8 +195,7 @@ void WebViewHost::CreateInternal() {
     Options opts = opts_;
     auto alive = alive_;
 
-    g_env->CreateCoreWebView2Controller(
-        hostHwnd_,
+    auto handler =
         Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
             [this, alive, url, initJson, onReady, opts](
                 HRESULT hr, ICoreWebView2Controller* controller) -> HRESULT {
@@ -248,6 +252,10 @@ void WebViewHost::CreateInternal() {
                         COREWEBVIEW2_COLOR transparent{0, 0, 0, 0};
                         c2->put_DefaultBackgroundColor(transparent);
                     }
+                } else if (hasBgColor_) {
+                    // 생성 옵션을 모르는 런타임이거나, 생성 중에 색이 바뀐 경우
+                    if (auto c2 = controller_.try_query<ICoreWebView2Controller2>())
+                        c2->put_DefaultBackgroundColor(ToWebViewColor(bgColor_));
                 }
 
                 wil::com_ptr<ICoreWebView2Settings> settings;
@@ -412,8 +420,32 @@ void WebViewHost::CreateInternal() {
                 if (onReady) onReady();  // 소유 창이 여기서 SetBounds 수행
                 if (!url.empty()) webview_->Navigate(url.c_str());
                 return S_OK;
-            })
-            .Get());
+            });
+
+    // 배경색은 생성 옵션으로 넘긴다. 만든 뒤에 바꾸면 컨트롤러가 붙는 순간 기본 흰색이
+    // 한 번 보일 수 있다 (옵션을 모르는 런타임이면 위 콜백이 만든 직후에 바꾼다).
+    if (hasBgColor_ && !opts.transparentBg) {
+        auto env10 = g_env.try_query<ICoreWebView2Environment10>();
+        wil::com_ptr<ICoreWebView2ControllerOptions> controllerOpts;
+        if (env10 && SUCCEEDED(env10->CreateCoreWebView2ControllerOptions(&controllerOpts)) &&
+            controllerOpts) {
+            if (auto o3 = controllerOpts.try_query<ICoreWebView2ControllerOptions3>())
+                o3->put_DefaultBackgroundColor(ToWebViewColor(bgColor_));
+            env10->CreateCoreWebView2ControllerWithOptions(hostHwnd_, controllerOpts.get(),
+                                                          handler.Get());
+            return;
+        }
+    }
+    g_env->CreateCoreWebView2Controller(hostHwnd_, handler.Get());
+}
+
+// 페이지가 그리기 전에 보이는 배경색 (WebViewHost.h 참고)
+void WebViewHost::SetBackgroundColor(COLORREF color) {
+    hasBgColor_ = true;
+    bgColor_ = color;
+    if (opts_.transparentBg || !controller_) return;
+    if (auto c2 = controller_.try_query<ICoreWebView2Controller2>())
+        c2->put_DefaultBackgroundColor(ToWebViewColor(color));
 }
 
 // 표시 여부 (숨기면 렌더링이 멈춘다)

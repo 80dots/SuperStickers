@@ -40,6 +40,10 @@ public:
     // 굳어 버리는데, 그 사이 테마·언어·서체가 바뀔 수 있다 (숨은 메모는 몇 시간 뒤에 열린다).
     void SetInitProvider(std::function<nlohmann::json()> fn) { initProvider_ = std::move(fn); }
 
+    // 페이지가 그리기 전(생성 직후·다시 표시할 때)에 보이는 배경색. 기본값 흰색이 메모 색과
+    // 달라 창이 뜰 때 두꺼운 테두리처럼 보였다. 생성 전에 부르면 생성 옵션으로 넘겨 첫
+    // 프레임부터 이 색이고, 생성 후에 부르면 곧바로 바꾼다.
+    void SetBackgroundColor(COLORREF color);
     void SetBounds(const RECT& r);
     void SetVisible(bool visible);
     // UI Scale: 브라우저 줌으로 페이지 전체(CSS px)를 DPI 변경처럼 일괄 스케일
@@ -73,6 +77,8 @@ private:
     std::function<nlohmann::json()> initProvider_;  // 있으면 init_ 대신 생성 시점에 호출
     std::function<void()> onReady_;
     Options opts_{};
+    bool hasBgColor_ = false;
+    COLORREF bgColor_ = 0;
     int createAttempts_ = 0;
     // 비동기 콜백(컨트롤러 생성·재시도·환경 준비)이 도착했을 때 이 객체가 아직 살아 있는지.
     // 창은 생성 완료 전에도 파괴될 수 있다(그룹에 드롭, 삭제, 종료) — raw this를 잡은 콜백이
